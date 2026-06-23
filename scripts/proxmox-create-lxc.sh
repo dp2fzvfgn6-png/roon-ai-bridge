@@ -17,7 +17,7 @@ DEFAULT_VLAN_TAG="60"
 DEFAULT_FIREWALL="1"
 DEFAULT_IP_CIDR="dhcp"
 DEFAULT_GATEWAY=""
-DEFAULT_DNS="1.1.1.1"
+DEFAULT_DNS=""
 DEFAULT_PORT="3000"
 DEFAULT_GIT_REF="main"
 DEFAULT_START_ON_BOOT="1"
@@ -120,7 +120,7 @@ collect_config() {
     GATEWAY="${GATEWAY:-}"
   fi
 
-  prompt_default DNS "DNS server" "${DEFAULT_DNS}"
+  prompt_default DNS "DNS server, empty = DHCP/default" "${DEFAULT_DNS}"
   prompt_default REPO_URL "Git repository URL" "${DEFAULT_REPO_URL}"
   prompt_default GIT_REF "Git branch/tag" "${DEFAULT_GIT_REF}"
   prompt_default PORT "HTTP port" "${DEFAULT_PORT}"
@@ -191,6 +191,7 @@ create_lxc() {
   local template_ref="${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}"
   local rootfs_ref="${ROOTFS_STORAGE}:${ROOTFS_SIZE}"
   local net0
+  local create_args=()
   net0="$(network_config)"
 
   if [[ -z "${PASSWORD}" ]]; then
@@ -199,19 +200,26 @@ create_lxc() {
   fi
 
   log "Creating LXC ${VMID} (${HOSTNAME})"
-  pct create "${VMID}" "${template_ref}" \
-    --hostname "${HOSTNAME}" \
-    --cores "${CORES}" \
-    --memory "${MEMORY}" \
-    --swap "${SWAP}" \
-    --rootfs "${rootfs_ref}" \
-    --net0 "${net0}" \
-    --nameserver "${DNS}" \
-    --features "nesting=1,keyctl=1" \
-    --unprivileged "$([[ "${PRIVILEGED}" == "1" ]] && echo 0 || echo 1)" \
-    --onboot "${START_ON_BOOT}" \
-    --password "${PASSWORD}" \
+  create_args=(
+    create "${VMID}" "${template_ref}"
+    --hostname "${HOSTNAME}"
+    --cores "${CORES}"
+    --memory "${MEMORY}"
+    --swap "${SWAP}"
+    --rootfs "${rootfs_ref}"
+    --net0 "${net0}"
+    --features "nesting=1,keyctl=1"
+    --unprivileged "$([[ "${PRIVILEGED}" == "1" ]] && echo 0 || echo 1)"
+    --onboot "${START_ON_BOOT}"
+    --password "${PASSWORD}"
     --ostype debian
+  )
+
+  if [[ -n "${DNS}" ]]; then
+    create_args+=(--nameserver "${DNS}")
+  fi
+
+  pct "${create_args[@]}"
 }
 
 run_in_lxc() {

@@ -76,7 +76,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-b
 - `FIREWALL`: default `1`.
 - `IP_CIDR`: default `dhcp`.
 - `GATEWAY`: required only when using a static IP.
-- `DNS`: default `1.1.1.1`.
+- `DNS`: empty by default; leave empty to use DHCP/default DNS.
 - `REPO_URL`: default `https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git`.
 - `GIT_REF`: default `main`.
 - `PORT`: default `3000`.
