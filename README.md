@@ -95,7 +95,7 @@ The network defaults match your Roon VM network screenshot:
 Interactive one-liner:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
 ```
 
 Example with DHCP:
@@ -106,7 +106,7 @@ ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
 ```
 
 Example with static IP and VLAN:
@@ -120,7 +120,7 @@ VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
 ```
 
 Useful variables:
@@ -130,7 +130,7 @@ Useful variables:
 - `TEMPLATE_STORAGE`: default `local`.
 - `TEMPLATE`: empty by default, auto-detects latest Debian 12 template.
 - `ROOTFS_STORAGE`: default `local-lvm`.
-- `ROOTFS_SIZE`: default `8G`.
+- `ROOTFS_SIZE`: default `8`, in GB. Values like `8G` are accepted and normalized.
 - `MEMORY`: default `1024`.
 - `SWAP`: default `512`.
 - `CORES`: default `1`.

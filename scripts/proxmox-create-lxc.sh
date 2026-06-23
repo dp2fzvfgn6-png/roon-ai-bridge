@@ -10,7 +10,7 @@ DEFAULT_HOSTNAME="roon-ai-bridge"
 DEFAULT_TEMPLATE=""
 DEFAULT_TEMPLATE_STORAGE="local"
 DEFAULT_ROOTFS_STORAGE="local-lvm"
-DEFAULT_ROOTFS_SIZE="8G"
+DEFAULT_ROOTFS_SIZE="8"
 DEFAULT_MEMORY="1024"
 DEFAULT_SWAP="512"
 DEFAULT_CORES="1"
@@ -188,6 +188,20 @@ list_debian_templates() {
   read_list "pveam available --section system | awk '/debian-12-standard_.*_amd64\\.tar\\.zst/ {print \$2}' | sort -V"
 }
 
+normalize_rootfs_size() {
+  local raw="$1"
+  raw="${raw//[[:space:]]/}"
+  raw="${raw%GiB}"
+  raw="${raw%gib}"
+  raw="${raw%GB}"
+  raw="${raw%gb}"
+  raw="${raw%G}"
+  raw="${raw%g}"
+
+  [[ "${raw}" =~ ^[0-9]+$ ]] || die "Root filesystem size must be a whole number of GB, for example 8."
+  printf '%s' "${raw}"
+}
+
 collect_config() {
   local detected_options=()
   local suggested_vmid=""
@@ -213,7 +227,7 @@ collect_config() {
   detected_options=("${REPLY_LIST[@]}")
   prompt_choice ROOTFS_STORAGE "Root filesystem storage options:" "${DEFAULT_ROOTFS_STORAGE}" "${DEFAULT_ROOTFS_STORAGE}" "${detected_options[@]}"
 
-  prompt_default ROOTFS_SIZE "Root filesystem size" "${DEFAULT_ROOTFS_SIZE}"
+  prompt_default ROOTFS_SIZE "Root filesystem size in GB" "${DEFAULT_ROOTFS_SIZE}"
   prompt_default MEMORY "Memory MB" "${DEFAULT_MEMORY}"
   prompt_default SWAP "Swap MB" "${DEFAULT_SWAP}"
   prompt_default CORES "CPU cores" "${DEFAULT_CORES}"
@@ -326,9 +340,13 @@ network_config() {
 
 create_lxc() {
   local template_ref="${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}"
-  local rootfs_ref="${ROOTFS_STORAGE}:${ROOTFS_SIZE}"
+  local rootfs_size_gb
+  local rootfs_ref
   local net0
   local create_args=()
+
+  rootfs_size_gb="$(normalize_rootfs_size "${ROOTFS_SIZE}")"
+  rootfs_ref="${ROOTFS_STORAGE}:${rootfs_size_gb}"
   net0="$(network_config)"
 
   if [[ -z "${PASSWORD}" ]]; then

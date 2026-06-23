@@ -14,7 +14,7 @@ This documentation covers the current v0.1 repository:
 Quick install from the Proxmox host:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
 ```
 
 Quick update from inside the LXC:
