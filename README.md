@@ -69,6 +69,16 @@ There are two paths:
 - Automatic installer from the Proxmox host.
 - Manual installation inside an existing LXC.
 
+Full documentation lives in [docs/](docs/README.md):
+
+- [Proxmox LXC install](docs/install-proxmox-lxc.md)
+- [Update existing LXC](docs/update-lxc.md)
+- [Configuration](docs/configuration.md)
+- [HTTP API](docs/api.md)
+- [Architecture](docs/architecture.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Roadmap](docs/roadmap.md)
+
 ## Automatic Proxmox Installer
 
 The script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) is designed to run as `root` on the Proxmox host. It creates the LXC, enables `nesting/keyctl`, installs Docker inside the container, clones this repo and starts the app with Docker Compose.
