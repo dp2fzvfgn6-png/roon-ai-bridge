@@ -1,0 +1,8 @@
+node_modules
+dist
+npm-debug.log*
+.env
+data/*
+!data/.gitkeep
+.git
+.agents

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+npm-debug.log*
+.env
+.agents/
+roon-ai-mcp/
+data/*
+!data/.gitkeep

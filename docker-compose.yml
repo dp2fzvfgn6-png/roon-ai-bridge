@@ -1,0 +1,13 @@
+services:
+  roon-ai-bridge:
+    build: .
+    container_name: roon-ai-bridge
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3000}
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
