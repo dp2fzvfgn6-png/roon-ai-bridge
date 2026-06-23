@@ -24,7 +24,10 @@ DEFAULT_START_ON_BOOT="1"
 DEFAULT_PRIVILEGED="1"
 
 VMID="${VMID:-}"
-HOSTNAME="${HOSTNAME:-}"
+HOSTNAME="${LXC_HOSTNAME:-${CT_HOSTNAME:-${HOSTNAME:-}}}"
+if [[ "${HOSTNAME}" == "$(hostname -s 2>/dev/null || true)" || "${HOSTNAME}" == "$(hostname 2>/dev/null || true)" ]]; then
+  HOSTNAME=""
+fi
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-}"
 TEMPLATE="${TEMPLATE:-}"
 ROOTFS_STORAGE="${ROOTFS_STORAGE:-}"
@@ -227,6 +230,7 @@ collect_config() {
 
 ensure_vmid() {
   pct status "${VMID}" >/dev/null 2>&1 && die "A CT/VM with VMID=${VMID} already exists."
+  return 0
 }
 
 resolve_template() {

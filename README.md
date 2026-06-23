@@ -95,7 +95,7 @@ The network defaults match your Roon VM network screenshot:
 Interactive one-liner:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
 ```
 
 Example with DHCP:
@@ -106,27 +106,27 @@ ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
 ```
 
 Example with static IP and VLAN:
 
 ```bash
 VMID=230 \
-HOSTNAME=roon-ai-bridge \
+LXC_HOSTNAME=roon-ai-bridge \
 ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
 ```
 
 Useful variables:
 
 - `VMID`: LXC ID. If empty, the script tries to use the next available ID.
-- `HOSTNAME`: default `roon-ai-bridge`.
+- `LXC_HOSTNAME` or `CT_HOSTNAME`: default `roon-ai-bridge`.
 - `TEMPLATE_STORAGE`: default `local`.
 - `TEMPLATE`: empty by default, auto-detects latest Debian 12 template.
 - `ROOTFS_STORAGE`: default `local-lvm`.
