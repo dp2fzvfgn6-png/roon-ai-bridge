@@ -35,7 +35,7 @@ For those questions, select a number, type a custom value or press Enter for the
 ## Interactive Install
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
 ```
 
 ## DHCP Install Without Prompts
@@ -47,7 +47,7 @@ ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
 ```
 
 ## Static IP Install Without Prompts
@@ -64,7 +64,7 @@ VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=vmid-prompt-fix')"
 ```
 
 ## Installer Variables

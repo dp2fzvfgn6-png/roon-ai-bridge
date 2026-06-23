@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+trap 'rc=$?; printf "\nERROR: Installer failed at line %s while running: %s\n" "$LINENO" "$BASH_COMMAND" >&2; exit "$rc"' ERR
+
 APP_NAME="roon-ai-bridge"
 DEFAULT_REPO_URL="https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git"
 
@@ -141,6 +143,23 @@ find_next_vmid() {
   pvesh get /cluster/nextid 2>/dev/null || true
 }
 
+prompt_vmid() {
+  local suggested_vmid="$1"
+  local answer=""
+
+  if [[ -n "${VMID}" ]]; then
+    return
+  fi
+
+  if has_tty; then
+    printf 'LXC VMID [%s]: ' "${suggested_vmid:-230}" > /dev/tty
+    IFS= read -r answer < /dev/tty || true
+    VMID="${answer:-${suggested_vmid:-230}}"
+  else
+    VMID="${suggested_vmid:-230}"
+  fi
+}
+
 read_list() {
   local command_text="$1"
   local output=""
@@ -171,12 +190,11 @@ list_debian_templates() {
 
 collect_config() {
   local detected_options=()
+  local suggested_vmid=""
 
-  if [[ -z "${VMID}" ]]; then
-    VMID="$(find_next_vmid)"
-  fi
+  suggested_vmid="${VMID:-$(find_next_vmid)}"
+  prompt_vmid "${suggested_vmid}"
 
-  prompt_default VMID "LXC VMID" "${VMID:-230}"
   prompt_default HOSTNAME "Hostname" "${DEFAULT_HOSTNAME}"
 
   list_template_storages
@@ -229,8 +247,32 @@ collect_config() {
 }
 
 ensure_vmid() {
-  pct status "${VMID}" >/dev/null 2>&1 && die "A CT/VM with VMID=${VMID} already exists."
+  if pct status "${VMID}" >/dev/null 2>&1; then
+    die "A CT/VM with VMID=${VMID} already exists."
+  fi
   return 0
+}
+
+print_config_summary() {
+  log "Installer configuration"
+  printf '  VMID:             %s\n' "${VMID}"
+  printf '  Hostname:         %s\n' "${HOSTNAME}"
+  printf '  Template storage: %s\n' "${TEMPLATE_STORAGE}"
+  printf '  Template:         %s\n' "${TEMPLATE:-latest Debian 12}"
+  printf '  Rootfs storage:   %s\n' "${ROOTFS_STORAGE}"
+  printf '  Rootfs size:      %s\n' "${ROOTFS_SIZE}"
+  printf '  Memory MB:        %s\n' "${MEMORY}"
+  printf '  Swap MB:          %s\n' "${SWAP}"
+  printf '  CPU cores:        %s\n' "${CORES}"
+  printf '  Bridge:           %s\n' "${BRIDGE}"
+  printf '  VLAN tag:         %s\n' "${VLAN_TAG:-none}"
+  printf '  Firewall net0:    %s\n' "${FIREWALL}"
+  printf '  IPv4:             %s\n' "${IP_CIDR}"
+  printf '  Gateway:          %s\n' "${GATEWAY:-none}"
+  printf '  DNS:              %s\n' "${DNS:-DHCP/default}"
+  printf '  Repo:             %s\n' "${REPO_URL}"
+  printf '  Git ref:          %s\n' "${GIT_REF}"
+  printf '  HTTP port:        %s\n' "${PORT}"
 }
 
 resolve_template() {
@@ -415,6 +457,7 @@ main() {
   require_command openssl
 
   collect_config
+  print_config_summary
   ensure_vmid
   resolve_template
   ensure_template
