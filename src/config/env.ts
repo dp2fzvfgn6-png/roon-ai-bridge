@@ -29,7 +29,7 @@ export function loadConfig(): AppConfig {
     logLevel: process.env.LOG_LEVEL || "info",
     roonExtensionName: process.env.ROON_EXTENSION_NAME || "Roon AI Bridge",
     roonExtensionId:
-      process.env.ROON_EXTENSION_ID || "com.linestudio.roon-ai-bridge",
+      process.env.ROON_EXTENSION_ID || "com.local.roon-ai-bridge",
     dataDir: process.env.DATA_DIR || path.join(process.cwd(), "data"),
     enableBrowse: boolFromEnv(process.env.ENABLE_BROWSE),
     enableMcp: boolFromEnv(process.env.ENABLE_MCP),

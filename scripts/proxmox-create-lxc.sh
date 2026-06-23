@@ -126,7 +126,7 @@ collect_config() {
   prompt_default GIT_REF "Git branch/tag" "${DEFAULT_GIT_REF}"
   prompt_default PORT "HTTP port" "${DEFAULT_PORT}"
   prompt_default ROON_EXTENSION_NAME "Roon extension name" "Roon AI Bridge"
-  prompt_default ROON_EXTENSION_ID "Roon extension ID" "com.linestudio.roon-ai-bridge"
+  prompt_default ROON_EXTENSION_ID "Roon extension ID" "com.local.roon-ai-bridge"
   prompt_default START_ON_BOOT "Start LXC on Proxmox boot, 1/0" "${DEFAULT_START_ON_BOOT}"
   prompt_default PRIVILEGED "Privileged LXC for Docker, 1/0" "${DEFAULT_PRIVILEGED}"
 
