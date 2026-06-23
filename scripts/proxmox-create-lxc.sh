@@ -65,6 +65,7 @@ prompt_default() {
   local var_name="$1"
   local label="$2"
   local default_value="$3"
+  local display_value="${4:-$default_value}"
   local current_value="${!var_name:-}"
   local answer=""
 
@@ -73,7 +74,7 @@ prompt_default() {
   fi
 
   if has_tty; then
-    printf '%s [%s]: ' "${label}" "${default_value}" > /dev/tty
+    printf '%s [%s]: ' "${label}" "${display_value}" > /dev/tty
     IFS= read -r answer < /dev/tty || true
     printf -v "${var_name}" '%s' "${answer:-$default_value}"
   else
@@ -120,7 +121,7 @@ collect_config() {
     GATEWAY="${GATEWAY:-}"
   fi
 
-  prompt_default DNS "DNS server, empty = DHCP/default" "${DEFAULT_DNS}"
+  prompt_default DNS "DNS server" "${DEFAULT_DNS}" "DHCP/default"
   prompt_default REPO_URL "Git repository URL" "${DEFAULT_REPO_URL}"
   prompt_default GIT_REF "Git branch/tag" "${DEFAULT_GIT_REF}"
   prompt_default PORT "HTTP port" "${DEFAULT_PORT}"
