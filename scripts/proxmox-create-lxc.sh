@@ -82,6 +82,48 @@ prompt_default() {
   fi
 }
 
+prompt_choice() {
+  local var_name="$1"
+  local label="$2"
+  local default_value="$3"
+  local display_value="${4:-$default_value}"
+  shift 4
+  local options=("$@")
+  local current_value="${!var_name:-}"
+  local answer=""
+  local option=""
+  local i=0
+
+  if [[ -n "${current_value}" ]]; then
+    return
+  fi
+
+  if ! has_tty || [[ "${#options[@]}" -eq 0 ]]; then
+    printf -v "${var_name}" '%s' "${default_value}"
+    return
+  fi
+
+  printf '\n%s\n' "${label}" > /dev/tty
+  for i in "${!options[@]}"; do
+    option="${options[$i]}"
+    if [[ -n "${default_value}" && "${option}" == "${default_value}" ]]; then
+      printf '  %s) %s (default)\n' "$((i + 1))" "${option}" > /dev/tty
+    else
+      printf '  %s) %s\n' "$((i + 1))" "${option}" > /dev/tty
+    fi
+  done
+  printf 'Select number, type custom value, or press Enter [%s]: ' "${display_value}" > /dev/tty
+  IFS= read -r answer < /dev/tty || true
+
+  if [[ -z "${answer}" ]]; then
+    printf -v "${var_name}" '%s' "${default_value}"
+  elif [[ "${answer}" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= ${#options[@]} )); then
+    printf -v "${var_name}" '%s' "${options[$((answer - 1))]}"
+  else
+    printf -v "${var_name}" '%s' "${answer}"
+  fi
+}
+
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
     die "Run this script as root on the Proxmox host."
@@ -96,21 +138,69 @@ find_next_vmid() {
   pvesh get /cluster/nextid 2>/dev/null || true
 }
 
+read_list() {
+  local command_text="$1"
+  local output=""
+  output="$(bash -lc "${command_text}" 2>/dev/null || true)"
+  [[ -n "${output}" ]] || return 0
+  mapfile -t REPLY_LIST <<< "${output}"
+}
+
+list_template_storages() {
+  REPLY_LIST=()
+  read_list "pvesm status -content vztmpl | awk 'NR > 1 {print \$1}' | sort -u"
+}
+
+list_rootfs_storages() {
+  REPLY_LIST=()
+  read_list "pvesm status -content rootdir | awk 'NR > 1 {print \$1}' | sort -u"
+}
+
+list_network_bridges() {
+  REPLY_LIST=()
+  read_list "ip -o link show | awk -F': ' '{print \$2}' | cut -d@ -f1 | grep -E '^vmbr[0-9]+' | sort -V"
+}
+
+list_debian_templates() {
+  REPLY_LIST=()
+  read_list "pveam available --section system | awk '/debian-12-standard_.*_amd64\\.tar\\.zst/ {print \$2}' | sort -V"
+}
+
 collect_config() {
+  local detected_options=()
+
   if [[ -z "${VMID}" ]]; then
     VMID="$(find_next_vmid)"
   fi
 
   prompt_default VMID "LXC VMID" "${VMID:-230}"
   prompt_default HOSTNAME "Hostname" "${DEFAULT_HOSTNAME}"
-  prompt_default TEMPLATE_STORAGE "Template storage" "${DEFAULT_TEMPLATE_STORAGE}"
-  prompt_default TEMPLATE "Template file, empty = latest Debian 12" "${DEFAULT_TEMPLATE}"
-  prompt_default ROOTFS_STORAGE "Root filesystem storage" "${DEFAULT_ROOTFS_STORAGE}"
+
+  list_template_storages
+  detected_options=("${REPLY_LIST[@]}")
+  prompt_choice TEMPLATE_STORAGE "Template storage options:" "${DEFAULT_TEMPLATE_STORAGE}" "${DEFAULT_TEMPLATE_STORAGE}" "${detected_options[@]}"
+
+  if has_tty && [[ -z "${TEMPLATE}" ]]; then
+    log "Refreshing Proxmox template catalog"
+    pveam update
+  fi
+  list_debian_templates
+  detected_options=("${REPLY_LIST[@]}")
+  prompt_choice TEMPLATE "Debian 12 template options:" "${DEFAULT_TEMPLATE}" "latest Debian 12" "${detected_options[@]}"
+
+  list_rootfs_storages
+  detected_options=("${REPLY_LIST[@]}")
+  prompt_choice ROOTFS_STORAGE "Root filesystem storage options:" "${DEFAULT_ROOTFS_STORAGE}" "${DEFAULT_ROOTFS_STORAGE}" "${detected_options[@]}"
+
   prompt_default ROOTFS_SIZE "Root filesystem size" "${DEFAULT_ROOTFS_SIZE}"
   prompt_default MEMORY "Memory MB" "${DEFAULT_MEMORY}"
   prompt_default SWAP "Swap MB" "${DEFAULT_SWAP}"
   prompt_default CORES "CPU cores" "${DEFAULT_CORES}"
-  prompt_default BRIDGE "Network bridge" "${DEFAULT_BRIDGE}"
+
+  list_network_bridges
+  detected_options=("${REPLY_LIST[@]}")
+  prompt_choice BRIDGE "Network bridge options:" "${DEFAULT_BRIDGE}" "${DEFAULT_BRIDGE}" "${detected_options[@]}"
+
   prompt_default VLAN_TAG "VLAN tag, empty = none" "${DEFAULT_VLAN_TAG}"
   prompt_default FIREWALL "Enable Proxmox firewall on net0, 1/0" "${DEFAULT_FIREWALL}"
   prompt_default IP_CIDR "IPv4 CIDR or dhcp" "${DEFAULT_IP_CIDR}"
@@ -317,6 +407,7 @@ main() {
   require_command pct
   require_command pveam
   require_command pvesh
+  require_command pvesm
   require_command openssl
 
   collect_config

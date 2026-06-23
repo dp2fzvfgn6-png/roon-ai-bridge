@@ -83,7 +83,9 @@ Full documentation lives in [docs/](docs/README.md):
 
 The script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) is designed to run as `root` on the Proxmox host. It creates the LXC, enables `nesting/keyctl`, installs Docker inside the container, clones this repo and starts the app with Docker Compose.
 
-If you run it without variables, it asks for the configuration and uses defaults when you press Enter. The network defaults match your Roon VM network screenshot:
+If you run it without variables, it asks for the configuration and uses defaults when you press Enter. When Proxmox can detect available options, the installer shows numbered choices for template storage, Debian template, root filesystem storage and network bridge. You can select a number, type a custom value or press Enter for the default.
+
+The network defaults match your Roon VM network screenshot:
 
 - Bridge: `vmbr30`
 - VLAN Tag: `60`
@@ -93,7 +95,7 @@ If you run it without variables, it asks for the configuration and uses defaults
 Interactive one-liner:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=dns-dhcp')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
 ```
 
 Example with DHCP:
@@ -104,7 +106,7 @@ ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=dns-dhcp')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
 ```
 
 Example with static IP and VLAN:
@@ -118,7 +120,7 @@ VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=dns-dhcp')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=choices')"
 ```
 
 Useful variables:
