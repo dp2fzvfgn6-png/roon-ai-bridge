@@ -1,54 +1,54 @@
 # Roon AI Bridge
 
-Extensión local para Roon con API HTTP en Node.js. La v0.1 está limitada a validar que un LXC separado, en la misma VLAN/subred que Roon Core, puede registrar y autorizar una extensión, listar zonas, leer now playing, controlar reproducción y cambiar volumen cuando Roon lo permite.
+Local Roon extension with a small HTTP API in Node.js. v0.1 is intentionally limited to validating that a separate Proxmox LXC, in the same VLAN/subnet as Roon Core, can register and authorize an extension, list zones, read now playing, control playback and control volume when Roon allows it.
 
-No expone nada a internet. No implementa autenticación, MCP, OpenAI, ChatGPT, Cloudflare, TIDAL directo, playlists ni búsqueda avanzada.
+This project does not expose anything to the internet. v0.1 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access, playlists or advanced search.
 
-## Arquitectura
+## Architecture
 
-El proyecto está preparado como base modular para crecer sin convertir la v0.1 en un script monolítico.
+The project is structured so v0.1 stays small but can grow without a rewrite.
 
 ```text
 src/
   index.ts
-  config/          variables de entorno y configuración
-  roon/            conexión, tipos y servicios Roon
-  api/             servidor Express y rutas HTTP
-  services/        servicios de aplicación futuros
-  db/              adaptador futuro de persistencia
-  mcp/             documentación y stubs futuros MCP
-  security/        notas de seguridad futuras
-  utils/           logger, errores y validación
+  config/          environment and app configuration
+  roon/            Roon client, types and Roon services
+  api/             Express server and HTTP routes
+  services/        future application services
+  db/              future persistence adapter
+  mcp/             future MCP notes and stubs
+  security/        future security notes
+  utils/           logger, errors and validation
 db/
-  schema.sql       esquema SQLite previsto
+  schema.sql       planned SQLite schema
 data/
-  roonstate.json   autorización de Roon en runtime
+  roonstate.json   runtime Roon authorization state
 ```
 
-La v0.1 usa `node-roon-api` y `node-roon-api-transport`. `node-roon-api-browse` queda reservado para v0.2.
+v0.1 uses `node-roon-api` and `node-roon-api-transport`. `node-roon-api-browse` is reserved for v0.2.
 
-## Qué implementa v0.1
+## v0.1 Scope
 
-- Registro de extensión en Roon.
-- Autorización desde `Settings > Setup > Extensions`.
-- Conexión y reconexión con Roon Core en LAN.
-- Listado de zonas.
-- Now playing básico.
+- Register the Roon extension.
+- Authorize it from `Settings > Setup > Extensions`.
+- Connect and reconnect to Roon Core on the LAN.
+- List zones.
+- Show basic now playing.
 - Control `play`, `pause`, `playpause`, `stop`, `next`, `previous`.
-- Control de volumen relativo o absoluto si el output lo soporta.
-- API HTTP local en puerto configurable.
-- Errores homogéneos.
-- Logs centralizados.
+- Control relative or absolute volume when the output supports it.
+- Expose a local HTTP API on a configurable port.
+- Return homogeneous API errors.
+- Use centralized logs.
 
-## Variables de entorno
+## Environment
 
-Copia `.env.example` a `.env`:
+Copy `.env.example` to `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Valores principales:
+Main values:
 
 ```env
 PORT=3000
@@ -62,91 +62,119 @@ ENABLE_MCP=false
 ENABLE_AUTH=false
 ```
 
-## Despliegue en LXC Proxmox
+## Proxmox LXC Deployment
 
-Hay dos caminos:
+There are two paths:
 
-- Instalador automático desde el host Proxmox.
-- Instalación manual dentro de un LXC creado previamente.
+- Automatic installer from the Proxmox host.
+- Manual installation inside an existing LXC.
 
-## Instalador automático Proxmox
+## Automatic Proxmox Installer
 
-El script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) está pensado para ejecutarse en la consola del host Proxmox como `root`. Crea el LXC, activa `nesting/keyctl`, instala Docker dentro del contenedor y, si le pasas `REPO_URL`, clona y arranca la app.
+The script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) is designed to run as `root` on the Proxmox host. It creates the LXC, enables `nesting/keyctl`, installs Docker inside the container, clones this repo and starts the app with Docker Compose.
 
-Ejemplo con DHCP:
+If you run it without variables, it asks for the configuration and uses defaults when you press Enter. The network defaults match your Roon VM network screenshot:
 
-```bash
-VMID=230 \
-ROOTFS_STORAGE=local-lvm \
-BRIDGE=vmbr0 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash scripts/proxmox-create-lxc.sh
-```
+- Bridge: `vmbr30`
+- VLAN Tag: `60`
+- Proxmox firewall on net0: enabled
+- IP: `dhcp`
 
-Ejemplo con IP fija y VLAN:
-
-```bash
-VMID=230 \
-HOSTNAME=roon-ai-bridge \
-ROOTFS_STORAGE=local-lvm \
-BRIDGE=vmbr0 \
-VLAN_TAG=20 \
-IP_CIDR=192.168.20.50/24 \
-GATEWAY=192.168.20.1 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash scripts/proxmox-create-lxc.sh
-```
-
-Cuando el repo esté publicado, también puedes usarlo en formato “pegar un comando”, parecido a PVE helper scripts:
+Interactive one-liner:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh)"
 ```
 
-Con variables:
+Example with DHCP:
 
 ```bash
-VMID=230 BRIDGE=vmbr0 VLAN_TAG=20 IP_CIDR=192.168.20.50/24 GATEWAY=192.168.20.1 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh)"
+VMID=230 \
+ROOTFS_STORAGE=local-lvm \
+BRIDGE=vmbr30 \
+VLAN_TAG=60 \
+REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh)"
 ```
 
-Variables útiles:
+Example with static IP and VLAN:
 
-- `VMID`: ID del LXC. Si no se define, el script intenta usar el siguiente libre.
-- `HOSTNAME`: por defecto `roon-ai-bridge`.
-- `TEMPLATE_STORAGE`: por defecto `local`.
-- `TEMPLATE`: por defecto Debian 12.
-- `ROOTFS_STORAGE`: por defecto `local-lvm`.
-- `ROOTFS_SIZE`: por defecto `8G`.
-- `MEMORY`: por defecto `1024`.
-- `SWAP`: por defecto `512`.
-- `CORES`: por defecto `1`.
-- `BRIDGE`: por defecto `vmbr0`.
-- `VLAN_TAG`: opcional.
-- `IP_CIDR`: por defecto `dhcp`.
-- `GATEWAY`: requerido si usas IP fija.
-- `REPO_URL`: URL Git del proyecto. Si no se define, solo crea el LXC con Docker.
-- `GIT_REF`: rama/tag, por defecto `main`.
-- `PORT`: por defecto `3000`.
-- `PRIVILEGED`: por defecto `1`, recomendado para simplificar Docker dentro de LXC.
+```bash
+VMID=230 \
+HOSTNAME=roon-ai-bridge \
+ROOTFS_STORAGE=local-lvm \
+BRIDGE=vmbr30 \
+VLAN_TAG=60 \
+IP_CIDR=192.168.60.50/24 \
+GATEWAY=192.168.60.1 \
+REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh)"
+```
 
-Después del instalador, autoriza la extensión en Roon:
+Useful variables:
+
+- `VMID`: LXC ID. If empty, the script tries to use the next available ID.
+- `HOSTNAME`: default `roon-ai-bridge`.
+- `TEMPLATE_STORAGE`: default `local`.
+- `TEMPLATE`: empty by default, auto-detects latest Debian 12 template.
+- `ROOTFS_STORAGE`: default `local-lvm`.
+- `ROOTFS_SIZE`: default `8G`.
+- `MEMORY`: default `1024`.
+- `SWAP`: default `512`.
+- `CORES`: default `1`.
+- `BRIDGE`: default `vmbr30`.
+- `VLAN_TAG`: default `60`; leave empty if you do not use VLAN.
+- `FIREWALL`: default `1`.
+- `IP_CIDR`: default `dhcp`.
+- `GATEWAY`: required only when using a static IP.
+- `DNS`: default `1.1.1.1`.
+- `REPO_URL`: default `https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git`.
+- `GIT_REF`: default `main`.
+- `PORT`: default `3000`.
+- `PRIVILEGED`: default `1`, recommended to simplify Docker inside LXC.
+
+Important: if this GitHub repository is private, `curl` against `raw.githubusercontent.com` needs authentication. For a simple unauthenticated one-liner, the repository must be public, or you must download the script with an authenticated method.
+
+After the installer finishes, authorize the extension in Roon:
 
 ```text
 Settings > Setup > Extensions > Roon AI Bridge
 ```
 
-## Instalación manual
+## Updating An Existing LXC
 
-1. Crea un LXC Debian/Ubuntu dedicado llamado `roon-ai-bridge`.
-2. Ponlo en la misma bridge/VLAN que el Roon Core.
-3. Comprueba que el LXC tiene IP de la misma subred.
-4. Verifica conectividad:
+The Proxmox installer is for the Proxmox host. It cannot be reused inside the LXC because it depends on host commands such as `pct`, `pveam` and `pvesh`.
+
+To update the app from inside the LXC, use [scripts/lxc-update-app.sh](scripts/lxc-update-app.sh):
 
 ```bash
-ping <IP_DEL_ROON_CORE>
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```
 
-## Instalar Docker y Docker Compose
+It runs:
+
+- `git fetch`
+- `git pull --ff-only`
+- `docker compose up -d --build`
+
+You can also trigger the update from the Proxmox host:
+
+```bash
+pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
+```
+
+## Manual Installation
+
+1. Create a dedicated Debian/Ubuntu LXC named `roon-ai-bridge`.
+2. Put it on the same bridge/VLAN as Roon Core.
+3. Make sure the LXC has an IP in the same subnet.
+4. Verify connectivity:
+
+```bash
+ping <ROON_CORE_IP>
+```
+
+## Install Docker And Docker Compose
 
 Debian:
 
@@ -161,42 +189,32 @@ apt update
 apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Si el LXC usa Ubuntu, cambia la URL a `https://download.docker.com/linux/ubuntu`.
+If the LXC uses Ubuntu, change the Docker URL to `https://download.docker.com/linux/ubuntu`.
 
-## Instalar el proyecto
+## Install The Project
 
 ```bash
 cd /opt
-git clone <URL_DE_ESTE_REPO> roon-ai-bridge
+git clone https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git roon-ai-bridge
 cd /opt/roon-ai-bridge
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Ver logs:
+View logs:
 
 ```bash
 docker compose logs -f
 ```
 
-Docker Compose usa:
+Docker Compose uses:
 
 - `network_mode: host`
 - `restart: unless-stopped`
 - `env_file: .env`
 - `./data:/app/data`
 
-## Autorizar en Roon
-
-Abre Roon:
-
-```text
-Settings > Setup > Extensions > Roon AI Bridge
-```
-
-Pulsa `Enable`. La autorización queda persistida en `./data/roonstate.json`.
-
-## Endpoints funcionales
+## API
 
 Health:
 
@@ -204,25 +222,25 @@ Health:
 curl http://localhost:3000/health
 ```
 
-Estado:
+Status:
 
 ```bash
 curl http://localhost:3000/roon/status
 ```
 
-Capacidades:
+Capabilities:
 
 ```bash
 curl http://localhost:3000/roon/capabilities
 ```
 
-Zonas:
+Zones:
 
 ```bash
 curl http://localhost:3000/roon/zones
 ```
 
-Control:
+Playback control:
 
 ```bash
 curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/control \
@@ -230,7 +248,7 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/control \
   -d '{"command":"playpause"}'
 ```
 
-Volumen relativo:
+Relative volume:
 
 ```bash
 curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
@@ -238,7 +256,7 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
   -d '{"mode":"relative","value":1}'
 ```
 
-Volumen absoluto:
+Absolute volume:
 
 ```bash
 curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
@@ -246,9 +264,9 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
   -d '{"mode":"absolute","value":35}'
 ```
 
-## Endpoints preparados con 501
+## Prepared 501 Endpoints
 
-Estos endpoints existen para fijar la arquitectura, pero devuelven `501 Not Implemented` en v0.1:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.1:
 
 - `GET /roon/library`
 - `GET /roon/search?q=...`
@@ -261,7 +279,7 @@ Estos endpoints existen para fijar la arquitectura, pero devuelven `501 Not Impl
 - `GET /history`
 - `GET /preferences`
 
-Formato de error:
+Error format:
 
 ```json
 {
@@ -273,44 +291,30 @@ Formato de error:
 }
 ```
 
-## Códigos de error previstos
+## Troubleshooting
 
-- `ROON_NOT_CONNECTED`
-- `ROON_NOT_AUTHORIZED`
-- `TRANSPORT_NOT_READY`
-- `ZONE_NOT_FOUND`
-- `OUTPUT_NOT_FOUND`
-- `UNSUPPORTED_COMMAND`
-- `VOLUME_NOT_SUPPORTED`
-- `INVALID_VOLUME_MODE`
-- `INVALID_VOLUME_VALUE`
-- `NOT_IMPLEMENTED`
-- `INTERNAL_ERROR`
+If Roon does not show the extension:
 
-## Troubleshooting en LXC separado
+- Confirm that the LXC is on the same VLAN/subnet as Roon Core.
+- Use `network_mode: host`; Roon discovery depends on local networking.
+- Check firewalls on Proxmox, the LXC and the Roon Core VM/LXC.
+- Confirm you are not using Docker bridge mode for this service.
+- Check logs with `docker compose logs -f`.
+- Delete `./data/roonstate.json` only if you want to force a new Roon authorization.
 
-Si Roon no muestra la extensión:
-
-- Confirma que el LXC está en la misma VLAN/subred que Roon Core.
-- Usa `network_mode: host`; el descubrimiento de Roon depende de la red local.
-- Revisa firewalls del LXC, Proxmox y la VM/LXC de Roon Core.
-- Comprueba que no estás usando Docker bridge para este servicio.
-- Revisa logs con `docker compose logs -f`.
-- Borra `./data/roonstate.json` solo si quieres forzar una nueva autorización.
-
-Si `/roon/status` dice `transport_ready: false`, la extensión puede estar pendiente de autorización o Roon todavía no ha expuesto el servicio de transporte.
+If `/roon/status` says `transport_ready: false`, the extension may still be pending authorization, or Roon has not exposed the transport service yet.
 
 ## Roadmap
 
-- v0.1: control básico.
+- v0.1: basic control.
 - v0.2: browse/library.
 - v0.3: search/play by query.
 - v0.4: queue management.
 - v0.5: virtual playlists.
 - v0.6: MCP server.
 - v0.7: auth + Cloudflare Tunnel.
-- v0.8: ChatGPT App / integración final.
+- v0.8: ChatGPT App / final integration.
 
-## Seguridad
+## Security
 
-Esta fase es solo LAN. No publiques el puerto `3000` a internet y no lo pongas detrás de túneles, proxies públicos ni reglas NAT. La autenticación queda planificada para una fase posterior.
+This phase is LAN-only. Do not publish port `3000` to the internet and do not put it behind tunnels, public proxies or NAT rules. Authentication is planned for a later phase.

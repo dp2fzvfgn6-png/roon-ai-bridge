@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 APP_NAME="roon-ai-bridge"
+DEFAULT_REPO_URL="https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git"
+
 DEFAULT_HOSTNAME="roon-ai-bridge"
 DEFAULT_TEMPLATE=""
 DEFAULT_TEMPLATE_STORAGE="local"
@@ -10,31 +12,41 @@ DEFAULT_ROOTFS_SIZE="8G"
 DEFAULT_MEMORY="1024"
 DEFAULT_SWAP="512"
 DEFAULT_CORES="1"
-DEFAULT_BRIDGE="vmbr0"
+DEFAULT_BRIDGE="vmbr30"
+DEFAULT_VLAN_TAG="60"
+DEFAULT_FIREWALL="1"
+DEFAULT_IP_CIDR="dhcp"
+DEFAULT_GATEWAY=""
+DEFAULT_DNS="1.1.1.1"
 DEFAULT_PORT="3000"
+DEFAULT_GIT_REF="main"
+DEFAULT_START_ON_BOOT="1"
+DEFAULT_PRIVILEGED="1"
 
 VMID="${VMID:-}"
-HOSTNAME="${HOSTNAME:-$DEFAULT_HOSTNAME}"
-TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-$DEFAULT_TEMPLATE_STORAGE}"
-TEMPLATE="${TEMPLATE:-$DEFAULT_TEMPLATE}"
-ROOTFS_STORAGE="${ROOTFS_STORAGE:-$DEFAULT_ROOTFS_STORAGE}"
-ROOTFS_SIZE="${ROOTFS_SIZE:-$DEFAULT_ROOTFS_SIZE}"
-MEMORY="${MEMORY:-$DEFAULT_MEMORY}"
-SWAP="${SWAP:-$DEFAULT_SWAP}"
-CORES="${CORES:-$DEFAULT_CORES}"
-BRIDGE="${BRIDGE:-$DEFAULT_BRIDGE}"
+HOSTNAME="${HOSTNAME:-}"
+TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-}"
+TEMPLATE="${TEMPLATE:-}"
+ROOTFS_STORAGE="${ROOTFS_STORAGE:-}"
+ROOTFS_SIZE="${ROOTFS_SIZE:-}"
+MEMORY="${MEMORY:-}"
+SWAP="${SWAP:-}"
+CORES="${CORES:-}"
+BRIDGE="${BRIDGE:-}"
 VLAN_TAG="${VLAN_TAG:-}"
-IP_CIDR="${IP_CIDR:-dhcp}"
+FIREWALL="${FIREWALL:-}"
+IP_CIDR="${IP_CIDR:-}"
 GATEWAY="${GATEWAY:-}"
-DNS="${DNS:-1.1.1.1}"
+DNS="${DNS:-}"
 PASSWORD="${PASSWORD:-}"
 REPO_URL="${REPO_URL:-}"
-GIT_REF="${GIT_REF:-main}"
-PORT="${PORT:-$DEFAULT_PORT}"
-ROON_EXTENSION_NAME="${ROON_EXTENSION_NAME:-Roon AI Bridge}"
-ROON_EXTENSION_ID="${ROON_EXTENSION_ID:-com.linestudio.roon-ai-bridge}"
-START_ON_BOOT="${START_ON_BOOT:-1}"
-PRIVILEGED="${PRIVILEGED:-1}"
+GIT_REF="${GIT_REF:-}"
+PORT="${PORT:-}"
+ROON_EXTENSION_NAME="${ROON_EXTENSION_NAME:-}"
+ROON_EXTENSION_ID="${ROON_EXTENSION_ID:-}"
+START_ON_BOOT="${START_ON_BOOT:-}"
+PRIVILEGED="${PRIVILEGED:-}"
+INTERACTIVE="${INTERACTIVE:-1}"
 
 log() {
   printf '\n[%s] %s\n' "$(date -Is)" "$*"
@@ -45,27 +57,85 @@ die() {
   exit 1
 }
 
+has_tty() {
+  [[ "${INTERACTIVE}" == "1" && -r /dev/tty ]]
+}
+
+prompt_default() {
+  local var_name="$1"
+  local label="$2"
+  local default_value="$3"
+  local current_value="${!var_name:-}"
+  local answer=""
+
+  if [[ -n "${current_value}" ]]; then
+    return
+  fi
+
+  if has_tty; then
+    printf '%s [%s]: ' "${label}" "${default_value}" > /dev/tty
+    IFS= read -r answer < /dev/tty || true
+    printf -v "${var_name}" '%s' "${answer:-$default_value}"
+  else
+    printf -v "${var_name}" '%s' "${default_value}"
+  fi
+}
+
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    die "Ejecuta este script como root en el host Proxmox."
+    die "Run this script as root on the Proxmox host."
   fi
 }
 
 require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "No encuentro el comando requerido: $1"
+  command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
 find_next_vmid() {
   pvesh get /cluster/nextid 2>/dev/null || true
 }
 
-ensure_vmid() {
+collect_config() {
   if [[ -z "${VMID}" ]]; then
     VMID="$(find_next_vmid)"
   fi
 
-  [[ -n "${VMID}" ]] || die "No se pudo calcular VMID. Define VMID=123."
-  pct status "${VMID}" >/dev/null 2>&1 && die "Ya existe un CT/VM con VMID=${VMID}."
+  prompt_default VMID "LXC VMID" "${VMID:-230}"
+  prompt_default HOSTNAME "Hostname" "${DEFAULT_HOSTNAME}"
+  prompt_default TEMPLATE_STORAGE "Template storage" "${DEFAULT_TEMPLATE_STORAGE}"
+  prompt_default TEMPLATE "Template file, empty = latest Debian 12" "${DEFAULT_TEMPLATE}"
+  prompt_default ROOTFS_STORAGE "Root filesystem storage" "${DEFAULT_ROOTFS_STORAGE}"
+  prompt_default ROOTFS_SIZE "Root filesystem size" "${DEFAULT_ROOTFS_SIZE}"
+  prompt_default MEMORY "Memory MB" "${DEFAULT_MEMORY}"
+  prompt_default SWAP "Swap MB" "${DEFAULT_SWAP}"
+  prompt_default CORES "CPU cores" "${DEFAULT_CORES}"
+  prompt_default BRIDGE "Network bridge" "${DEFAULT_BRIDGE}"
+  prompt_default VLAN_TAG "VLAN tag, empty = none" "${DEFAULT_VLAN_TAG}"
+  prompt_default FIREWALL "Enable Proxmox firewall on net0, 1/0" "${DEFAULT_FIREWALL}"
+  prompt_default IP_CIDR "IPv4 CIDR or dhcp" "${DEFAULT_IP_CIDR}"
+
+  if [[ "${IP_CIDR}" != "dhcp" ]]; then
+    prompt_default GATEWAY "IPv4 gateway" "${DEFAULT_GATEWAY}"
+  else
+    GATEWAY="${GATEWAY:-}"
+  fi
+
+  prompt_default DNS "DNS server" "${DEFAULT_DNS}"
+  prompt_default REPO_URL "Git repository URL" "${DEFAULT_REPO_URL}"
+  prompt_default GIT_REF "Git branch/tag" "${DEFAULT_GIT_REF}"
+  prompt_default PORT "HTTP port" "${DEFAULT_PORT}"
+  prompt_default ROON_EXTENSION_NAME "Roon extension name" "Roon AI Bridge"
+  prompt_default ROON_EXTENSION_ID "Roon extension ID" "com.linestudio.roon-ai-bridge"
+  prompt_default START_ON_BOOT "Start LXC on Proxmox boot, 1/0" "${DEFAULT_START_ON_BOOT}"
+  prompt_default PRIVILEGED "Privileged LXC for Docker, 1/0" "${DEFAULT_PRIVILEGED}"
+
+  [[ -n "${VMID}" ]] || die "VMID is required."
+  [[ -n "${BRIDGE}" ]] || die "Bridge is required."
+  [[ "${IP_CIDR}" == "dhcp" || -n "${GATEWAY}" ]] || die "Gateway is required when using a static IP."
+}
+
+ensure_vmid() {
+  pct status "${VMID}" >/dev/null 2>&1 && die "A CT/VM with VMID=${VMID} already exists."
 }
 
 resolve_template() {
@@ -73,7 +143,7 @@ resolve_template() {
     return
   fi
 
-  log "Buscando ultimo template Debian 12 disponible"
+  log "Finding latest Debian 12 LXC template"
   pveam update
   TEMPLATE="$(
     pveam available --section system |
@@ -82,19 +152,19 @@ resolve_template() {
       tail -n 1
   )"
 
-  [[ -n "${TEMPLATE}" ]] || die "No se encontro template Debian 12. Define TEMPLATE=debian-12-standard_...tar.zst"
-  log "Template seleccionado: ${TEMPLATE}"
+  [[ -n "${TEMPLATE}" ]] || die "Could not find a Debian 12 template. Set TEMPLATE=debian-12-standard_...tar.zst"
+  log "Selected template: ${TEMPLATE}"
 }
 
 ensure_template() {
   local template_path="/var/lib/vz/template/cache/${TEMPLATE}"
 
   if [[ -f "${template_path}" ]]; then
-    log "Template encontrado: ${template_path}"
+    log "Template found: ${template_path}"
     return
   fi
 
-  log "Descargando template ${TEMPLATE} en storage ${TEMPLATE_STORAGE}"
+  log "Downloading template ${TEMPLATE} into storage ${TEMPLATE_STORAGE}"
   pveam update
   pveam download "${TEMPLATE_STORAGE}" "${TEMPLATE}"
 }
@@ -110,6 +180,10 @@ network_config() {
     config="${config},tag=${VLAN_TAG}"
   fi
 
+  if [[ "${FIREWALL}" == "1" || "${FIREWALL,,}" == "true" || "${FIREWALL,,}" == "yes" ]]; then
+    config="${config},firewall=1"
+  fi
+
   printf '%s' "${config}"
 }
 
@@ -121,10 +195,10 @@ create_lxc() {
 
   if [[ -z "${PASSWORD}" ]]; then
     PASSWORD="$(openssl rand -base64 24)"
-    log "PASSWORD no definido; generado password root aleatorio para el CT."
+    log "PASSWORD not set; generated a random root password for the CT."
   fi
 
-  log "Creando LXC ${VMID} (${HOSTNAME})"
+  log "Creating LXC ${VMID} (${HOSTNAME})"
   pct create "${VMID}" "${template_ref}" \
     --hostname "${HOSTNAME}" \
     --cores "${CORES}" \
@@ -145,10 +219,10 @@ run_in_lxc() {
 }
 
 start_lxc() {
-  log "Arrancando LXC ${VMID}"
+  log "Starting LXC ${VMID}"
   pct start "${VMID}"
 
-  log "Esperando red dentro del LXC"
+  log "Waiting for network inside LXC"
   for _ in $(seq 1 60); do
     if run_in_lxc "getent hosts deb.debian.org >/dev/null 2>&1 || ping -c1 -W1 1.1.1.1 >/dev/null 2>&1"; then
       return
@@ -156,11 +230,11 @@ start_lxc() {
     sleep 2
   done
 
-  die "El LXC arrancó, pero no parece tener red."
+  die "The LXC started, but network does not seem ready."
 }
 
 install_docker_in_lxc() {
-  log "Instalando Docker y Docker Compose dentro del LXC"
+  log "Installing Docker and Docker Compose inside LXC"
   run_in_lxc '
     set -Eeuo pipefail
     export DEBIAN_FRONTEND=noninteractive
@@ -187,14 +261,7 @@ EOF
 }
 
 deploy_app() {
-  if [[ -z "${REPO_URL}" ]]; then
-    log "REPO_URL no definido. Se deja el LXC listo con Docker, pero sin clonar la app."
-    log "Cuando tengas el repo remoto, ejecuta dentro del LXC:"
-    log "  git clone <URL> /opt/${APP_NAME} && cd /opt/${APP_NAME} && cp .env.example .env && docker compose up -d --build"
-    return
-  fi
-
-  log "Desplegando ${APP_NAME} desde ${REPO_URL} (${GIT_REF})"
+  log "Deploying ${APP_NAME} from ${REPO_URL} (${GIT_REF})"
   run_in_lxc "
     set -Eeuo pipefail
     rm -rf /opt/${APP_NAME}
@@ -220,17 +287,19 @@ print_summary() {
   local ip
   ip="$(pct exec "${VMID}" -- bash -lc "hostname -I | awk '{print \$1}'" 2>/dev/null || true)"
 
-  log "Instalación terminada"
+  log "Installation finished"
   printf '\n'
   printf 'LXC VMID:      %s\n' "${VMID}"
   printf 'Hostname:      %s\n' "${HOSTNAME}"
-  printf 'IP detectada:  %s\n' "${ip:-desconocida}"
-  printf 'API health:    http://%s:%s/health\n' "${ip:-IP_DEL_LXC}" "${PORT}"
+  printf 'Bridge/VLAN:   %s / %s\n' "${BRIDGE}" "${VLAN_TAG:-none}"
+  printf 'Firewall net0: %s\n' "${FIREWALL}"
+  printf 'IP detected:   %s\n' "${ip:-unknown}"
+  printf 'API health:    http://%s:%s/health\n' "${ip:-LXC_IP}" "${PORT}"
   printf '\n'
-  printf 'Siguientes pasos:\n'
-  printf '1. Abre Roon: Settings > Setup > Extensions > Roon AI Bridge > Enable\n'
-  printf '2. Mira logs: pct exec %s -- bash -lc "cd /opt/%s && docker compose logs -f"\n' "${VMID}" "${APP_NAME}"
-  printf '3. Prueba: curl http://%s:%s/roon/status\n' "${ip:-IP_DEL_LXC}" "${PORT}"
+  printf 'Next steps:\n'
+  printf '1. Open Roon: Settings > Setup > Extensions > Roon AI Bridge > Enable\n'
+  printf '2. Logs: pct exec %s -- bash -lc "cd /opt/%s && docker compose logs -f"\n' "${VMID}" "${APP_NAME}"
+  printf '3. Test: curl http://%s:%s/roon/status\n' "${ip:-LXC_IP}" "${PORT}"
   printf '\n'
 }
 
@@ -241,6 +310,7 @@ main() {
   require_command pvesh
   require_command openssl
 
+  collect_config
   ensure_vmid
   resolve_template
   ensure_template
