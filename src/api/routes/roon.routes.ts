@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ApiContext } from "../server";
 import { browseImplemented } from "../../roon/roonBrowseService";
+import { queueImplemented } from "../../roon/roonQueueService";
 
 export function createRoonRouter(context: ApiContext): Router {
   const router = Router();
@@ -23,7 +24,7 @@ export function createRoonRouter(context: ApiContext): Router {
         volume: true,
         browse: context.config.enableBrowse && browseImplemented,
         search: context.config.enableBrowse && browseImplemented,
-        queue: false,
+        queue: queueImplemented,
         virtual_playlists: false,
         mcp: false,
         auth: false
@@ -32,7 +33,6 @@ export function createRoonRouter(context: ApiContext): Router {
         "library_browse",
         "music_search",
         "play_by_query",
-        "queue_management",
         "virtual_playlists",
         "mcp_tools",
         "auth",

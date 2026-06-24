@@ -103,7 +103,41 @@ curl -X POST http://localhost:3000/roon/play \
   -d '{"zone_id":"<ZONE_ID>","query":"massive attack mezzanine"}'
 ```
 
-The v0.3 implementation searches Roon, selects the first plausible playable result, then follows Roon browse actions until playback starts or no playback action is found.
+The implementation searches Roon, selects the first plausible playable result, then follows Roon browse actions until playback starts or no playback action is found.
+
+## Queue
+
+Read queue snapshot:
+
+```bash
+curl "http://localhost:3000/roon/queue/<ZONE_ID>?max_item_count=50"
+```
+
+Play from a queue item:
+
+```bash
+curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"action":"play_from_here","queue_item_id":"<QUEUE_ITEM_ID>"}'
+```
+
+Add a query result next:
+
+```bash
+curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"action":"add_next","query":"bad bunny"}'
+```
+
+Add a query result to the queue:
+
+```bash
+curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"action":"add_to_queue","query":"bad bunny"}'
+```
+
+The add actions depend on Roon exposing matching browse actions for the selected result.
 
 ## Zones
 
@@ -150,10 +184,8 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.3:
+These endpoints exist but are not implemented in v0.4:
 
-- `GET /roon/queue/:zone_id`
-- `POST /roon/queue/:zone_id`
 - `GET /playlists`
 - `POST /playlists`
 - `POST /playlists/:playlist_id/play`
@@ -181,6 +213,10 @@ Planned error codes:
 - `INVALID_SEARCH_QUERY`
 - `SEARCH_NO_RESULTS`
 - `PLAYBACK_ACTION_NOT_FOUND`
+- `QUEUE_NOT_READY`
+- `INVALID_QUEUE_ACTION`
+- `INVALID_QUEUE_ITEM_ID`
+- `QUEUE_ACTION_NOT_FOUND`
 - `ZONE_NOT_FOUND`
 - `OUTPUT_NOT_FOUND`
 - `UNSUPPORTED_COMMAND`

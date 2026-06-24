@@ -101,3 +101,23 @@ Validated as working:
 - Roon browse search.
 - Play by query.
 - Search/play against Roon-connected services exposed by Roon, including TIDAL.
+
+## v0.4 Scope
+
+- Implement `GET /roon/queue/:zone_id`.
+- Implement `POST /roon/queue/:zone_id`.
+- Support `play_from_here` for queue items.
+- Support `add_next` and `add_to_queue` from a query when Roon exposes those browse actions.
+- Keep virtual playlists, auth, MCP and OpenAI out of scope.
+
+## Not In Scope For v0.4
+
+- Public internet exposure.
+- Auth.
+- MCP.
+- OpenAI.
+- ChatGPT.
+- Cloudflare Tunnel.
+- Virtual playlists.
+- Advanced queue editing and reordering.
+- Direct TIDAL integration.

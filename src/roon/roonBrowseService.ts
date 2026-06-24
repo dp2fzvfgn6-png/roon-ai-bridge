@@ -67,10 +67,30 @@ export type PlayByQueryRequest = {
   sessionKey?: string;
 };
 
+export type QueueByQueryMode = "add_next" | "add_to_queue";
+
+export type QueueByQueryRequest = {
+  zoneId: string;
+  query: string;
+  mode: QueueByQueryMode;
+  sessionKey?: string;
+};
+
 export type PlayByQueryResponse = {
   ok: boolean;
   zone_id: string;
   query: string;
+  selected: BrowseItem;
+  action: string;
+  message: string | null;
+  is_error: boolean | null;
+};
+
+export type QueueByQueryResponse = {
+  ok: boolean;
+  zone_id: string;
+  query: string;
+  mode: QueueByQueryMode;
   selected: BrowseItem;
   action: string;
   message: string | null;
@@ -140,6 +160,34 @@ function titleLooksPlayable(title: string): boolean {
   ].some((candidate) => normalized === candidate);
 }
 
+function titleLooksLikeQueueAction(title: string, mode: QueueByQueryMode): boolean {
+  const normalized = title.toLowerCase();
+  const compact = normalized.replace(/\s+/g, " ").trim();
+
+  if (mode === "add_next") {
+    return [
+      "add next",
+      "play next",
+      "add to next",
+      "add as next",
+      "anadir siguiente",
+      "añadir siguiente",
+      "reproducir siguiente"
+    ].some((candidate) => compact === candidate || compact.startsWith(`${candidate} `));
+  }
+
+  return [
+    "add to queue",
+    "add queue",
+    "add at end",
+    "add to end",
+    "anadir a cola",
+    "añadir a cola",
+    "anadir a la cola",
+    "añadir a la cola"
+  ].some((candidate) => compact === candidate || compact.startsWith(`${candidate} `));
+}
+
 function choosePlayableItem(items: BrowseItem[]): BrowseItem | null {
   return (
     items.find(
@@ -161,6 +209,17 @@ function chooseSearchResult(items: BrowseItem[]): BrowseItem | null {
         item.item_key &&
         item.hint !== "header" &&
         !titleLooksPlayable(String(item.title || ""))
+    ) || null
+  );
+}
+
+function chooseQueueAction(items: BrowseItem[], mode: QueueByQueryMode): BrowseItem | null {
+  return (
+    items.find(
+      (item) =>
+        item.item_key &&
+        item.hint !== "header" &&
+        titleLooksLikeQueueAction(String(item.title || ""), mode)
     ) || null
   );
 }
@@ -361,6 +420,85 @@ export async function playByQuery(
   throw new ApiError("PLAYBACK_ACTION_NOT_FOUND", "Could not find a playback action for query", {
     query,
     zone_id: request.zoneId,
+    selected
+  });
+}
+
+export async function queueByQuery(
+  roonClient: RoonClient,
+  request: QueueByQueryRequest
+): Promise<QueueByQueryResponse> {
+  const query = normalizeQuery(request.query);
+  if (!query) {
+    throw new ApiError("INVALID_SEARCH_QUERY", "Search query is required");
+  }
+
+  getZoneOrThrow(roonClient, request.zoneId);
+
+  const browse = requireBrowse(roonClient);
+  const sessionKey =
+    request.sessionKey || `roon-ai-bridge-queue-${Date.now().toString(36)}`;
+
+  const searchResult = await searchRoon(roonClient, {
+    query,
+    zoneOrOutputId: request.zoneId,
+    offset: 0,
+    count: 25,
+    sessionKey
+  });
+
+  let selected = chooseSearchResult(searchResult.items);
+  if (!selected?.item_key) {
+    throw new ApiError("SEARCH_NO_RESULTS", "No queueable search results found", {
+      query,
+      candidates: searchResult.items.slice(0, 10)
+    });
+  }
+
+  for (let depth = 0; depth < 4; depth += 1) {
+    const browseResult = await browseCall(browse, {
+      hierarchy: "search",
+      multi_session_key: sessionKey,
+      item_key: selected.item_key,
+      zone_or_output_id: request.zoneId
+    });
+
+    if (browseResult.action !== "list") {
+      return {
+        ok: !browseResult.is_error,
+        zone_id: request.zoneId,
+        query,
+        mode: request.mode,
+        selected,
+        action: browseResult.action,
+        message: browseResult.message || null,
+        is_error:
+          typeof browseResult.is_error === "boolean" ? browseResult.is_error : null
+      };
+    }
+
+    const actionList = await loadCurrentList(
+      browse,
+      "search",
+      sessionKey,
+      0,
+      25
+    );
+    const queueAction = chooseQueueAction(actionList.items, request.mode);
+    if (queueAction?.item_key) {
+      selected = queueAction;
+      continue;
+    }
+
+    const nextSelected = chooseSearchResult(actionList.items);
+    if (!nextSelected?.item_key || nextSelected.item_key === selected.item_key) break;
+    selected = nextSelected;
+  }
+
+  throw new ApiError("QUEUE_ACTION_NOT_FOUND", "Could not find a queue action for query", {
+    query,
+    zone_id: request.zoneId,
+    mode: request.mode,
     selected
   });
 }
