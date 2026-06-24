@@ -24,7 +24,7 @@ export function createPlaybackRouter(context: ApiContext): Router {
 
   router.post("/play", (req, res, next) => {
     context.logger.warn("Play by query endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Play by query is not implemented in v0.1"));
+    next(new ApiError("NOT_IMPLEMENTED", "Play by query is not implemented in v0.2"));
   });
 
   return router;

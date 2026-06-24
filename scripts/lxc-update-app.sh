@@ -17,6 +17,26 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
+ensure_env_value() {
+  local key="$1"
+  local value="$2"
+  local file="${3:-.env}"
+
+  if [[ ! -f "${file}" ]]; then
+    if [[ -f ".env.example" ]]; then
+      cp .env.example "${file}"
+    else
+      touch "${file}"
+    fi
+  fi
+
+  if grep -qE "^${key}=" "${file}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${file}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >>"${file}"
+  fi
+}
+
 main() {
   require_command git
   require_command docker
@@ -29,6 +49,9 @@ main() {
   git fetch origin "${GIT_REF}"
   git checkout "${GIT_REF}"
   git pull --ff-only origin "${GIT_REF}"
+
+  log "Applying v0.2 environment defaults"
+  ensure_env_value ENABLE_BROWSE true .env
 
   log "Rebuilding and restarting Docker Compose service"
   docker compose up -d --build

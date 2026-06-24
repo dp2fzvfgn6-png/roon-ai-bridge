@@ -33,16 +33,16 @@ export function createServer(context: ApiContext): express.Express {
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.1"));
+    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.2"));
   });
 
   app.get("/preferences", (req, res, next) => {
     context.logger.warn("Preferences endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.1"));
+    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.2"));
   });
 
   app.use((req, res, next) => {
-    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.1", {
+    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.2", {
       method: req.method,
       path: req.path
     }));

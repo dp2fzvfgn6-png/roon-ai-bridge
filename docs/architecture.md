@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.1 code is intentionally modular even though the first feature set is small.
+The v0.2 code is intentionally modular even though the current feature set is small.
 
 ```text
 src/
@@ -64,7 +64,8 @@ src/
 4. Express starts on `PORT`.
 5. Roon authorization is completed in the Roon UI.
 6. The transport service subscribes to zones.
-7. API routes use Roon services to list zones, control playback and control volume.
+7. The browse service is available when Roon exposes `RoonApiBrowse`.
+8. API routes use Roon services to list zones, control playback, control volume and browse the library.
 
 ## Persistence Plan
 
@@ -80,4 +81,4 @@ src/
 - `user_preferences`
 - `search_cache`
 
-v0.1 only persists Roon authorization state in `data/roonstate.json`.
+v0.2 only persists Roon authorization state in `data/roonstate.json`.

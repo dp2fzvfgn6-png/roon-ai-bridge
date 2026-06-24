@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ApiContext } from "../server";
+import { browseImplemented } from "../../roon/roonBrowseService";
 
 export function createRoonRouter(context: ApiContext): Router {
   const router = Router();
@@ -9,6 +10,7 @@ export function createRoonRouter(context: ApiContext): Router {
       core_connected: context.roonClient.isCoreConnected(),
       core_name: context.roonClient.getCoreName(),
       transport_ready: context.roonClient.isTransportReady(),
+      browse_ready: context.config.enableBrowse && context.roonClient.isBrowseReady(),
       zones_count: context.roonClient.getZones().length
     });
   });
@@ -19,7 +21,7 @@ export function createRoonRouter(context: ApiContext): Router {
         zones: true,
         transport: true,
         volume: true,
-        browse: false,
+        browse: context.config.enableBrowse && browseImplemented,
         search: false,
         queue: false,
         virtual_playlists: false,

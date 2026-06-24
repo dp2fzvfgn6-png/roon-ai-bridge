@@ -11,7 +11,7 @@ LOG_LEVEL=info
 ROON_EXTENSION_NAME=Roon AI Bridge
 ROON_EXTENSION_ID=com.local.roon-ai-bridge
 DATA_DIR=/app/data
-ENABLE_BROWSE=false
+ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 ```

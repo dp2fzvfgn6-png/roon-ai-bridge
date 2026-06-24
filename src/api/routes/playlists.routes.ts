@@ -8,7 +8,7 @@ export function createPlaylistsRouter(context: ApiContext): Router {
   router.get("/playlists", (req, res, next) => {
     context.logger.warn("Virtual playlists endpoint is not implemented yet");
     next(
-      new ApiError("NOT_IMPLEMENTED", "Virtual playlists are not implemented in v0.1")
+      new ApiError("NOT_IMPLEMENTED", "Virtual playlists are not implemented in v0.2")
     );
   });
 
@@ -17,7 +17,7 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     next(
       new ApiError(
         "NOT_IMPLEMENTED",
-        "Virtual playlist creation is not implemented in v0.1"
+        "Virtual playlist creation is not implemented in v0.2"
       )
     );
   });
@@ -29,7 +29,7 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     next(
       new ApiError(
         "NOT_IMPLEMENTED",
-        "Virtual playlist playback is not implemented in v0.1"
+        "Virtual playlist playback is not implemented in v0.2"
       )
     );
   });

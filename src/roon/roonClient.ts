@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import RoonApi = require("node-roon-api");
+import RoonApiBrowse = require("node-roon-api-browse");
 import RoonApiTransport = require("node-roon-api-transport");
 import { AppConfig } from "../config/env";
 import { Logger } from "../utils/logger";
@@ -11,7 +12,9 @@ export type RoonClient = {
   getCoreName(): string | null;
   isCoreConnected(): boolean;
   isTransportReady(): boolean;
+  isBrowseReady(): boolean;
   getTransport(): any | null;
+  getBrowse(): any | null;
   getZones(): RoonZone[];
   getZone(zoneId: string): RoonZone | null;
 };
@@ -20,7 +23,9 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
   const stateFile = path.join(config.dataDir, "roonstate.json");
   let currentCore: any | null = null;
   let transport: any | null = null;
+  let browse: any | null = null;
   let transportReady = false;
+  let browseReady = false;
   let zonesById = new Map<string, RoonZone>();
 
   function ensureDataDir(): void {
@@ -56,8 +61,8 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
   const roon = new RoonApi({
     extension_id: config.roonExtensionId,
     display_name: config.roonExtensionName,
-    display_version: "0.1.0",
-    publisher: "Line Studio",
+    display_version: "0.2.0",
+    publisher: "Local",
     email: "local@localhost",
     website: "http://localhost",
     log_level: process.env.ROON_LOG_LEVEL || "none",
@@ -72,12 +77,15 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
     core_paired: (core: any) => {
       currentCore = core;
       transport = core.services.RoonApiTransport;
+      browse = core.services.RoonApiBrowse || null;
       transportReady = Boolean(transport);
+      browseReady = Boolean(browse);
 
       logger.info("Authorization completed and core connected", {
         coreId: core.core_id,
         coreName: core.display_name,
-        transportReady
+        transportReady,
+        browseReady
       });
 
       if (!transport) {
@@ -103,13 +111,19 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
       });
       currentCore = null;
       transport = null;
+      browse = null;
       transportReady = false;
+      browseReady = false;
       zonesById = new Map();
     }
   });
 
+  const requiredServices = config.enableBrowse
+    ? [RoonApiTransport, RoonApiBrowse]
+    : [RoonApiTransport];
+
   roon.init_services({
-    required_services: [RoonApiTransport]
+    required_services: requiredServices
   });
 
   return {
@@ -129,8 +143,14 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
     isTransportReady() {
       return transportReady;
     },
+    isBrowseReady() {
+      return browseReady;
+    },
     getTransport() {
       return transport;
+    },
+    getBrowse() {
+      return browse;
     },
     getZones() {
       return Array.from(zonesById.values());

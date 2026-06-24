@@ -38,7 +38,14 @@ Validated as working:
 - Absolute volume.
 - Grouped zone: Salon + 2.
 
-## Not In Scope For v0.1
+## v0.2 Scope
+
+- Add `node-roon-api-browse`.
+- Implement `GET /roon/library`.
+- Support root browse, item drill-down, basic hierarchy selection and pagination.
+- Keep search, queue and playlists out of scope.
+
+## Not In Scope For v0.2
 
 - Public internet exposure.
 - Auth.

@@ -1,12 +1,12 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API in Node.js. v0.1 is intentionally limited to validating that a separate Proxmox LXC, in the same VLAN/subnet as Roon Core, can register and authorize an extension, list zones, read now playing, control playback and control volume when Roon allows it.
+Local Roon extension with a small HTTP API in Node.js. v0.2 keeps the validated v0.1 control surface and adds basic Roon library browse from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
 
-This project does not expose anything to the internet. v0.1 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access, playlists or advanced search.
+This project does not expose anything to the internet. v0.2 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access, playlists or advanced search.
 
 ## Architecture
 
-The project is structured so v0.1 stays small but can grow without a rewrite.
+The project is structured so the current feature set stays small but can grow without a rewrite.
 
 ```text
 src/
@@ -25,9 +25,9 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.1 uses `node-roon-api` and `node-roon-api-transport`. `node-roon-api-browse` is reserved for v0.2.
+v0.2 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
 
-## v0.1 Scope
+## v0.2 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -36,6 +36,7 @@ v0.1 uses `node-roon-api` and `node-roon-api-transport`. `node-roon-api-browse` 
 - Show basic now playing.
 - Control `play`, `pause`, `playpause`, `stop`, `next`, `previous`.
 - Control relative or absolute volume when the output supports it.
+- Browse the Roon library through `GET /roon/library`.
 - Expose a local HTTP API on a configurable port.
 - Return homogeneous API errors.
 - Use centralized logs.
@@ -57,7 +58,7 @@ LOG_LEVEL=info
 ROON_EXTENSION_NAME=Roon AI Bridge
 ROON_EXTENSION_ID=com.local.roon-ai-bridge
 DATA_DIR=/app/data
-ENABLE_BROWSE=false
+ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 ```
@@ -253,6 +254,14 @@ Zones:
 curl http://localhost:3000/roon/zones
 ```
 
+Library browse:
+
+```bash
+curl "http://localhost:3000/roon/library"
+curl "http://localhost:3000/roon/library?hierarchy=albums&count=50"
+curl "http://localhost:3000/roon/library?item_key=<ITEM_KEY>&zone_id=<ZONE_ID>"
+```
+
 Playback control:
 
 ```bash
@@ -279,9 +288,8 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.1:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.2:
 
-- `GET /roon/library`
 - `GET /roon/search?q=...`
 - `POST /roon/play`
 - `GET /roon/queue/:zone_id`
@@ -298,7 +306,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "Search is not implemented in v0.1",
+    "message": "Search is not implemented in v0.2",
     "details": {}
   }
 }
@@ -316,6 +324,8 @@ If Roon does not show the extension:
 - Delete `./data/roonstate.json` only if you want to force a new Roon authorization.
 
 If `/roon/status` says `transport_ready: false`, the extension may still be pending authorization, or Roon has not exposed the transport service yet.
+
+If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the extension after the v0.2 update and confirm `ENABLE_BROWSE=true` in `/opt/roon-ai-bridge/.env`.
 
 ## Roadmap
 

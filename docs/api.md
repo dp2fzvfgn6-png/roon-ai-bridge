@@ -30,6 +30,7 @@ Response:
   "core_connected": true,
   "core_name": "Roon Core",
   "transport_ready": true,
+  "browse_ready": true,
   "zones_count": 2
 }
 ```
@@ -39,6 +40,49 @@ Response:
 ```bash
 curl http://localhost:3000/roon/capabilities
 ```
+
+## Library Browse
+
+Browse root:
+
+```bash
+curl "http://localhost:3000/roon/library"
+```
+
+Browse a specific hierarchy:
+
+```bash
+curl "http://localhost:3000/roon/library?hierarchy=albums&count=50"
+```
+
+Open an item from a previous response:
+
+```bash
+curl "http://localhost:3000/roon/library?item_key=<ITEM_KEY>&zone_id=<ZONE_ID>"
+```
+
+Go back one browse level:
+
+```bash
+curl "http://localhost:3000/roon/library?pop_levels=1"
+```
+
+Reset to browse root:
+
+```bash
+curl "http://localhost:3000/roon/library?pop_all=true"
+```
+
+Supported v0.2 hierarchies:
+
+- `browse`
+- `albums`
+- `artists`
+- `genres`
+- `composers`
+- `internet_radio`
+
+Search hierarchy remains out of scope until v0.3.
 
 ## Zones
 
@@ -85,9 +129,8 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.1:
+These endpoints exist but are not implemented in v0.2:
 
-- `GET /roon/library`
 - `GET /roon/search?q=...`
 - `POST /roon/play`
 - `GET /roon/queue/:zone_id`
@@ -115,6 +158,7 @@ Planned error codes:
 - `ROON_NOT_CONNECTED`
 - `ROON_NOT_AUTHORIZED`
 - `TRANSPORT_NOT_READY`
+- `BROWSE_NOT_READY`
 - `ZONE_NOT_FOUND`
 - `OUTPUT_NOT_FOUND`
 - `UNSUPPORTED_COMMAND`

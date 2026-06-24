@@ -4,6 +4,7 @@ export type ErrorCode =
   | "ROON_NOT_CONNECTED"
   | "ROON_NOT_AUTHORIZED"
   | "TRANSPORT_NOT_READY"
+  | "BROWSE_NOT_READY"
   | "ZONE_NOT_FOUND"
   | "OUTPUT_NOT_FOUND"
   | "UNSUPPORTED_COMMAND"
@@ -17,6 +18,7 @@ const DEFAULT_STATUS: Record<ErrorCode, number> = {
   ROON_NOT_CONNECTED: 503,
   ROON_NOT_AUTHORIZED: 401,
   TRANSPORT_NOT_READY: 503,
+  BROWSE_NOT_READY: 503,
   ZONE_NOT_FOUND: 404,
   OUTPUT_NOT_FOUND: 404,
   UNSUPPORTED_COMMAND: 400,
@@ -56,7 +58,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.1`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.2`, {
     feature
   });
 }

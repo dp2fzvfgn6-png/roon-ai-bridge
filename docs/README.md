@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.1 repository:
+This documentation covers the current v0.2 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
