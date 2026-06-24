@@ -91,3 +91,13 @@ Validated as working:
 - Playlists.
 - TIDAL direct integration.
 - Advanced result ranking.
+
+## v0.3 Validated
+
+See [v0.3 Validation](v0.3-validation.md).
+
+Validated as working:
+
+- Roon browse search.
+- Play by query.
+- Search/play against Roon-connected services exposed by Roon, including TIDAL.
