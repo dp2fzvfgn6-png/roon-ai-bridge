@@ -78,6 +78,7 @@ Full documentation lives in [docs/](docs/README.md):
 - [HTTP API](docs/api.md)
 - [Architecture](docs/architecture.md)
 - [v0.1 validation](docs/v0.1-validation.md)
+- [v0.2 validation](docs/v0.2-validation.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Roadmap](docs/roadmap.md)
 

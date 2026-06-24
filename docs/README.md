@@ -9,6 +9,7 @@ This documentation covers the current v0.2 repository:
 - [HTTP API](api.md)
 - [Architecture](architecture.md)
 - [v0.1 Validation](v0.1-validation.md)
+- [v0.2 Validation](v0.2-validation.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)
 

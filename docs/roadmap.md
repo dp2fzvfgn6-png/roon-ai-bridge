@@ -45,6 +45,18 @@ Validated as working:
 - Support root browse, item drill-down, basic hierarchy selection and pagination.
 - Keep search, queue and playlists out of scope.
 
+## v0.2 Validated
+
+See [v0.2 Validation](v0.2-validation.md).
+
+Validated as working:
+
+- Roon browse service readiness.
+- Root library browse.
+- Album hierarchy browse.
+- Album item drill-down.
+- UTF-8 JSON output.
+
 ## Not In Scope For v0.2
 
 - Public internet exposure.
