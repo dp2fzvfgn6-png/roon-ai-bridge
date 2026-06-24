@@ -73,7 +73,7 @@ Reset to browse root:
 curl "http://localhost:3000/roon/library?pop_all=true"
 ```
 
-Supported v0.2 hierarchies:
+Supported library hierarchies:
 
 - `browse`
 - `albums`
@@ -82,7 +82,28 @@ Supported v0.2 hierarchies:
 - `composers`
 - `internet_radio`
 
-Search hierarchy remains out of scope until v0.3.
+## Search
+
+```bash
+curl "http://localhost:3000/roon/search?q=massive%20attack&count=10"
+```
+
+Optional parameters:
+
+- `zone_id`: includes zone context for playback-capable browse actions.
+- `offset`: defaults to `0`.
+- `count`: defaults to `25`, max `100`.
+- `session_key`: keeps related browse/search calls in the same Roon browse session.
+
+## Play By Query
+
+```bash
+curl -X POST http://localhost:3000/roon/play \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id":"<ZONE_ID>","query":"massive attack mezzanine"}'
+```
+
+The v0.3 implementation searches Roon, selects the first plausible playable result, then follows Roon browse actions until playback starts or no playback action is found.
 
 ## Zones
 
@@ -129,10 +150,8 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.2:
+These endpoints exist but are not implemented in v0.3:
 
-- `GET /roon/search?q=...`
-- `POST /roon/play`
 - `GET /roon/queue/:zone_id`
 - `POST /roon/queue/:zone_id`
 - `GET /playlists`
@@ -159,6 +178,9 @@ Planned error codes:
 - `ROON_NOT_AUTHORIZED`
 - `TRANSPORT_NOT_READY`
 - `BROWSE_NOT_READY`
+- `INVALID_SEARCH_QUERY`
+- `SEARCH_NO_RESULTS`
+- `PLAYBACK_ACTION_NOT_FOUND`
 - `ZONE_NOT_FOUND`
 - `OUTPUT_NOT_FOUND`
 - `UNSUPPORTED_COMMAND`

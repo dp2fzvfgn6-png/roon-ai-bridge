@@ -3,7 +3,8 @@ import { ApiContext } from "../server";
 import { ApiError } from "../../utils/errors";
 import {
   BrowseHierarchy,
-  browseLibrary
+  browseLibrary,
+  searchRoon
 } from "../../roon/roonBrowseService";
 
 const ALLOWED_HIERARCHIES = new Set([
@@ -36,7 +37,7 @@ function intQuery(value: unknown, fallback: number, min: number, max: number): n
 function hierarchyQuery(value: unknown): BrowseHierarchy {
   const hierarchy = stringQuery(value) || "browse";
   if (!ALLOWED_HIERARCHIES.has(hierarchy)) {
-    throw new ApiError("NOT_IMPLEMENTED", "Browse hierarchy is not supported in v0.2", {
+    throw new ApiError("NOT_IMPLEMENTED", "Browse hierarchy is not supported in v0.3", {
       hierarchy,
       allowed: Array.from(ALLOWED_HIERARCHIES)
     });
@@ -81,11 +82,28 @@ export function createLibraryRouter(context: ApiContext): Router {
     }
   });
 
-  router.get("/search", (req, res, next) => {
-    context.logger.warn("Search endpoint is not implemented yet", {
-      q: req.query.q
-    });
-    next(new ApiError("NOT_IMPLEMENTED", "Search is not implemented in v0.2"));
+  router.get("/search", async (req, res, next) => {
+    try {
+      const query = stringQuery(req.query.q);
+      const request = {
+        query: query || "",
+        zoneOrOutputId: stringQuery(req.query.zone_id),
+        offset: intQuery(req.query.offset, 0, 0, 100000),
+        count: intQuery(req.query.count, 25, 1, 100),
+        sessionKey: stringQuery(req.query.session_key) || "roon-ai-bridge-search"
+      };
+
+      context.logger.info("Search request received", {
+        query: request.query,
+        hasZoneId: Boolean(request.zoneOrOutputId),
+        offset: request.offset,
+        count: request.count
+      });
+
+      res.json(await searchRoon(context.roonClient, request));
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

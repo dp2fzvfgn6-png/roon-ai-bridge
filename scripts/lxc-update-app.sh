@@ -50,7 +50,7 @@ main() {
   git checkout "${GIT_REF}"
   git pull --ff-only origin "${GIT_REF}"
 
-  log "Applying v0.2 environment defaults"
+  log "Applying browse environment defaults"
   ensure_env_value ENABLE_BROWSE true .env
 
   log "Rebuilding and restarting Docker Compose service"

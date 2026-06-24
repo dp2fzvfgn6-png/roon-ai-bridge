@@ -22,7 +22,7 @@ export function createRoonRouter(context: ApiContext): Router {
         transport: true,
         volume: true,
         browse: context.config.enableBrowse && browseImplemented,
-        search: false,
+        search: context.config.enableBrowse && browseImplemented,
         queue: false,
         virtual_playlists: false,
         mcp: false,
@@ -31,6 +31,7 @@ export function createRoonRouter(context: ApiContext): Router {
       planned: [
         "library_browse",
         "music_search",
+        "play_by_query",
         "queue_management",
         "virtual_playlists",
         "mcp_tools",

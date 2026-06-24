@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { ApiContext } from "../server";
 import { controlPlayback } from "../../roon/roonPlaybackService";
+import { playByQuery } from "../../roon/roonBrowseService";
 import { parsePlaybackCommand } from "../../utils/validation";
-import { ApiError } from "../../utils/errors";
 
 export function createPlaybackRouter(context: ApiContext): Router {
   const router = Router();
@@ -22,9 +22,28 @@ export function createPlaybackRouter(context: ApiContext): Router {
     }
   });
 
-  router.post("/play", (req, res, next) => {
-    context.logger.warn("Play by query endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Play by query is not implemented in v0.2"));
+  router.post("/play", async (req, res, next) => {
+    try {
+      const zoneId = typeof req.body?.zone_id === "string" ? req.body.zone_id : "";
+      const query = typeof req.body?.query === "string" ? req.body.query : "";
+      const sessionKey =
+        typeof req.body?.session_key === "string" ? req.body.session_key : undefined;
+
+      context.logger.info("Play by query request received", {
+        zoneId,
+        query
+      });
+
+      res.json(
+        await playByQuery(context.roonClient, {
+          zoneId,
+          query,
+          sessionKey
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

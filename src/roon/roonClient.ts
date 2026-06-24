@@ -61,7 +61,7 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
   const roon = new RoonApi({
     extension_id: config.roonExtensionId,
     display_name: config.roonExtensionName,
-    display_version: "0.2.0",
+    display_version: "0.3.0",
     publisher: "Local",
     email: "local@localhost",
     website: "http://localhost",

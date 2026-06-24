@@ -1,6 +1,6 @@
 # Security Notes
 
-v0.2 is LAN-only and intentionally has no authentication.
+v0.3 is LAN-only and intentionally has no authentication.
 
 Do not expose port 3000 to the internet. Do not publish this service through NAT, a public reverse proxy, a tunnel or Cloudflare until authentication and an authorization model exist.
 

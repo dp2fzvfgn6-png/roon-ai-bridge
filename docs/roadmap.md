@@ -69,3 +69,25 @@ Validated as working:
 - Queue management.
 - Playlists.
 - TIDAL direct integration.
+
+## v0.3 Scope
+
+- Implement `GET /roon/search?q=...`.
+- Implement `POST /roon/play`.
+- Use Roon browse search, not OpenAI or external search.
+- Select the first plausible playable result.
+- Return clear errors when the query is empty, produces no result or exposes no playback action.
+- Keep advanced ranking, queue management and playlists out of scope.
+
+## Not In Scope For v0.3
+
+- Public internet exposure.
+- Auth.
+- MCP.
+- OpenAI.
+- ChatGPT.
+- Cloudflare Tunnel.
+- Queue management.
+- Playlists.
+- TIDAL direct integration.
+- Advanced result ranking.
