@@ -22,6 +22,22 @@
 - Proxmox LXC installer.
 - LXC update script.
 
+## v0.1 Validated
+
+See [v0.1 Validation](v0.1-validation.md).
+
+Validated as working:
+
+- List zones.
+- Now playing.
+- Play.
+- Pause.
+- Next.
+- Previous.
+- Relative volume.
+- Absolute volume.
+- Grouped zone: Salon + 2.
+
 ## Not In Scope For v0.1
 
 - Public internet exposure.

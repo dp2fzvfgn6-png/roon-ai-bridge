@@ -8,6 +8,7 @@ This documentation covers the current v0.1 repository:
 - [Configuration](configuration.md)
 - [HTTP API](api.md)
 - [Architecture](architecture.md)
+- [v0.1 Validation](v0.1-validation.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)
 
