@@ -12,7 +12,7 @@ const LEVELS: Record<string, number> = {
   error: 40
 };
 
-export function createLogger(level: string): Logger {
+export function createLogger(level: string, output: "stdout" | "stderr" = "stdout"): Logger {
   const threshold = LEVELS[level] || LEVELS.info;
 
   function write(
@@ -24,6 +24,11 @@ export function createLogger(level: string): Logger {
 
     const suffix = meta ? ` ${JSON.stringify(meta)}` : "";
     const line = `[${new Date().toISOString()}] ${messageLevel.toUpperCase()} ${message}${suffix}`;
+
+    if (output === "stderr") {
+      console.error(line);
+      return;
+    }
 
     if (messageLevel === "error") {
       console.error(line);
@@ -44,4 +49,8 @@ export function createLogger(level: string): Logger {
     warn: (message, meta) => write("warn", message, meta),
     error: (message, meta) => write("error", message, meta)
   };
+}
+
+export function createStderrLogger(level: string): Logger {
+  return createLogger(level, "stderr");
 }

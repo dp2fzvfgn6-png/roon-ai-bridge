@@ -199,6 +199,32 @@ Supported play modes:
 
 Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-playlists.json`. Tracks are stored as stable search queries, not Roon browse `item_key` values.
 
+## MCP Tools
+
+v0.6 also exposes the core local features through an MCP stdio server. It is not hosted over HTTP.
+
+Run from `/opt/roon-ai-bridge` after building:
+
+```bash
+DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
+```
+
+Implemented tools:
+
+- `roon_status`
+- `roon_list_zones`
+- `roon_control_playback`
+- `roon_change_volume`
+- `roon_search`
+- `roon_play_by_query`
+- `roon_get_queue`
+- `roon_queue_by_query`
+- `roon_play_queue_item_from_here`
+- `roon_list_virtual_playlists`
+- `roon_create_virtual_playlist`
+- `roon_add_virtual_playlist_track`
+- `roon_play_virtual_playlist`
+
 ## Zones
 
 ```bash
@@ -244,7 +270,7 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.5:
+These endpoints exist but are not implemented in v0.6:
 
 - `GET /history`
 - `GET /preferences`

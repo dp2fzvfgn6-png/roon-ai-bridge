@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.5 code is intentionally modular even though the current feature set is small.
+The v0.6 code is intentionally modular even though the current feature set is small.
 
 ```text
 src/
@@ -36,6 +36,10 @@ src/
     schema.sql
   mcp/
     README.md
+    index.ts
+    server.ts
+    mcpContext.ts
+    mcpTools.ts
     tools.todo.ts
   security/
     README.md
@@ -52,7 +56,7 @@ src/
 - `api`: Express server and route definitions.
 - `services`: future application services.
 - `db`: future persistence adapter and schema.
-- `mcp`: future MCP notes and tool placeholders.
+- `mcp`: local MCP stdio server and Roon tool definitions.
 - `security`: future auth/security notes.
 - `utils`: common logging, errors and validation.
 
@@ -66,6 +70,7 @@ src/
 6. The transport service subscribes to zones.
 7. The browse service is available when Roon exposes `RoonApiBrowse`.
 8. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
+9. `src/mcp/index.ts` can be launched separately with `npm run mcp` to expose the same core capabilities as MCP stdio tools.
 
 ## Persistence Plan
 
@@ -81,4 +86,4 @@ src/
 - `user_preferences`
 - `search_cache`
 
-v0.5 persists Roon authorization state in `data/roonstate.json` and local virtual playlists in `data/virtual-playlists.json`.
+v0.6 persists Roon authorization state in `data/roonstate.json` and local virtual playlists in `data/virtual-playlists.json`.

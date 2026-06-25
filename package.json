@@ -1,11 +1,12 @@
 {
   "name": "roon-ai-bridge",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local HTTP bridge for controlling Roon zones on a LAN.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "mcp": "node dist/mcp/index.js",
     "dev": "ts-node src/index.ts"
   },
   "keywords": [
@@ -16,10 +17,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^4.19.2",
     "node-roon-api": "github:roonlabs/node-roon-api",
     "node-roon-api-browse": "github:roonlabs/node-roon-api-browse",
-    "node-roon-api-transport": "github:roonlabs/node-roon-api-transport"
+    "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

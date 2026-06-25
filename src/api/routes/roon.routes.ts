@@ -27,17 +27,16 @@ export function createRoonRouter(context: ApiContext): Router {
         search: context.config.enableBrowse && browseImplemented,
         queue: queueImplemented,
         virtual_playlists: playlistServiceImplemented,
-        mcp: false,
+        mcp: true,
         auth: false
       },
       planned: [
-        "library_browse",
-        "music_search",
-        "play_by_query",
-        "mcp_tools",
         "auth",
         "cloudflare_tunnel",
-        "chatgpt_app"
+        "chatgpt_app",
+        "tidal_playlist_sync",
+        "listening_history",
+        "preferences"
       ]
     });
   });

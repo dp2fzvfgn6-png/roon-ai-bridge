@@ -158,3 +158,20 @@ Validated as working:
 ## v0.5 Validated
 
 See [v0.5 Validation](v0.5-validation.md).
+
+## v0.6 Scope
+
+- Add a local MCP stdio server.
+- Keep the HTTP API unchanged.
+- Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
+- Keep MCP local/trusted only.
+- Keep auth, Cloudflare, ChatGPT app packaging and external playlist sync out of scope.
+
+## Not In Scope For v0.6
+
+- Public internet exposure.
+- Cloudflare Tunnel.
+- Auth.
+- ChatGPT App packaging.
+- Direct TIDAL playlist creation or sync.
+- A hosted HTTP MCP endpoint.

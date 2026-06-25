@@ -1,3 +1,5 @@
-// Future v0.6: MCP tool definitions.
-// Do not expose this module until auth and security rules are designed.
-export const mcpToolsImplemented = false;
+// Historical planning note:
+// v0.6 implements the first MCP tool set in `mcpTools.ts`.
+// Future phases can add listening history, preferences, authentication-aware
+// access, and external playlist sync tools.
+export const mcpToolsImplemented = true;

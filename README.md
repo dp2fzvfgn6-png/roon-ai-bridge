@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API in Node.js. v0.5 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, and adds local virtual playlists from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
+Local Roon extension with a small HTTP API and optional MCP stdio server in Node.js. v0.6 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, v0.5 local virtual playlists, and adds local MCP tools from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
 
-This project does not expose anything to the internet. v0.5 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access or advanced search ranking.
+This project does not expose anything to the internet. v0.6 does not implement auth, OpenAI, ChatGPT, Cloudflare, direct TIDAL write access or advanced search ranking.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ src/
   api/             Express server and HTTP routes
   services/        future application services
   db/              future persistence adapter
-  mcp/             future MCP notes and stubs
+  mcp/             local MCP stdio server and tool definitions
   security/        future security notes
   utils/           logger, errors and validation
 db/
@@ -25,9 +25,9 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.5 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
+v0.6 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
 
-## v0.5 Scope
+## v0.6 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -45,6 +45,7 @@ v0.5 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
 - Create local virtual playlists.
 - Add/remove playlist tracks by stable query.
 - Play or enqueue a virtual playlist through Roon.
+- Expose local MCP stdio tools for status, zones, playback, volume, search, queue and virtual playlists.
 - Expose a local HTTP API on a configurable port.
 - Return homogeneous API errors.
 - Use centralized logs.
@@ -70,6 +71,8 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 ```
+
+`ENABLE_MCP` is reserved for runtime signalling. The v0.6 MCP server is launched as a separate stdio process with `npm run mcp`, not as a hosted HTTP endpoint.
 
 ## Proxmox LXC Deployment
 
@@ -352,9 +355,43 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
   -d '{"mode":"absolute","value":35}'
 ```
 
+## MCP Server
+
+v0.6 adds a local MCP stdio server. It is intended for trusted local execution, for example from inside the LXC or through an MCP client that can launch a command on that machine.
+
+Build first:
+
+```bash
+npm run build
+```
+
+Run from `/opt/roon-ai-bridge`:
+
+```bash
+DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
+```
+
+Implemented MCP tools:
+
+- `roon_status`
+- `roon_list_zones`
+- `roon_control_playback`
+- `roon_change_volume`
+- `roon_search`
+- `roon_play_by_query`
+- `roon_get_queue`
+- `roon_queue_by_query`
+- `roon_play_queue_item_from_here`
+- `roon_list_virtual_playlists`
+- `roon_create_virtual_playlist`
+- `roon_add_virtual_playlist_track`
+- `roon_play_virtual_playlist`
+
+Do not expose the MCP process to untrusted clients yet. Auth and remote access are planned for later phases.
+
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.5:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.6:
 
 - `GET /history`
 - `GET /preferences`
@@ -365,7 +402,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "History is not implemented in v0.5",
+    "message": "History is not implemented in v0.6",
     "details": {}
   }
 }

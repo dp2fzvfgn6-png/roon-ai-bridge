@@ -82,7 +82,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.5`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.6`, {
     feature
   });
 }
