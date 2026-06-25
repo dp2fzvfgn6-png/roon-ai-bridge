@@ -299,6 +299,10 @@ curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
 curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
   -H "Content-Type: application/json" \
   -d '{"action":"add_to_queue","query":"bad bunny"}'
+
+curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"action":"inspect_actions","query":"bad bunny"}'
 ```
 
 Playback control:

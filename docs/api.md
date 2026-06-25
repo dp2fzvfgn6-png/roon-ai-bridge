@@ -137,7 +137,15 @@ curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
   -d '{"action":"add_to_queue","query":"bad bunny"}'
 ```
 
-The add actions depend on Roon exposing matching browse actions for the selected result.
+Inspect queue/play actions exposed by Roon for a query:
+
+```bash
+curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"action":"inspect_actions","query":"bad bunny"}'
+```
+
+The add actions depend on Roon exposing matching browse actions for the selected result. `add_to_queue` only executes an explicit end-of-queue action; if Roon only exposes an ambiguous `Add to Queue` action that behaves like add-next, the API returns `QUEUE_ACTION_NOT_FOUND` with `available_actions`.
 
 ## Zones
 

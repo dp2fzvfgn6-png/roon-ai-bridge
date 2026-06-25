@@ -6,7 +6,9 @@ import {
   playQueueItemFromHere,
   QueueAction
 } from "../../roon/roonQueueService";
-import { queueByQuery } from "../../roon/roonBrowseService";
+import { inspectQueueActions, queueByQuery } from "../../roon/roonBrowseService";
+
+type HttpQueueAction = QueueAction | "inspect_actions";
 
 function stringBody(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
@@ -19,17 +21,18 @@ function intQuery(value: unknown, fallback: number, min: number, max: number): n
   return Math.max(min, Math.min(max, parsed));
 }
 
-function parseQueueAction(value: unknown): QueueAction {
+function parseQueueAction(value: unknown): HttpQueueAction {
   if (
     value === "play_from_here" ||
     value === "add_next" ||
-    value === "add_to_queue"
+    value === "add_to_queue" ||
+    value === "inspect_actions"
   ) {
     return value;
   }
 
   throw new ApiError("INVALID_QUEUE_ACTION", "Unsupported queue action", {
-    allowed: ["play_from_here", "add_next", "add_to_queue"]
+    allowed: ["play_from_here", "add_next", "add_to_queue", "inspect_actions"]
   });
 }
 
@@ -73,6 +76,17 @@ export function createQueueRouter(context: ApiContext): Router {
             req.params.zone_id,
             req.body?.queue_item_id
           )
+        );
+        return;
+      }
+
+      if (action === "inspect_actions") {
+        res.json(
+          await inspectQueueActions(context.roonClient, {
+            zoneId: req.params.zone_id,
+            query: stringBody(req.body?.query) || "",
+            sessionKey: stringBody(req.body?.session_key)
+          })
         );
         return;
       }
