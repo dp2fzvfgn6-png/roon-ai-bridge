@@ -428,14 +428,32 @@ export async function playByQuery(
       25
     );
     const playable = choosePlayableItem(actionList.items);
+    if (playable?.item_key) {
+      const actionResult = await browseCall(browse, {
+        hierarchy: "search",
+        multi_session_key: sessionKey,
+        item_key: playable.item_key,
+        zone_or_output_id: request.zoneId
+      });
+
+      return {
+        ok: !actionResult.is_error,
+        zone_id: request.zoneId,
+        query,
+        selected: playable,
+        action: actionResult.action || "play_action",
+        message: actionResult.message || null,
+        is_error:
+          typeof actionResult.is_error === "boolean" ? actionResult.is_error : null
+      };
+    }
+
     if (!playable?.item_key) {
       const nextSelected = chooseSearchResult(actionList.items);
       if (!nextSelected?.item_key || nextSelected.item_key === selected.item_key) break;
       selected = nextSelected;
       continue;
     }
-
-    selected = playable;
   }
 
   throw new ApiError("PLAYBACK_ACTION_NOT_FOUND", "Could not find a playback action for query", {
