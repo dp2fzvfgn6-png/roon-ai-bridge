@@ -13,7 +13,8 @@ logger.info("Configuration loaded", {
   dataDir: config.dataDir,
   browseEnabled: config.enableBrowse,
   mcpEnabled: config.enableMcp,
-  authEnabled: config.enableAuth
+  authEnabled: config.enableAuth,
+  apiTokenConfigured: Boolean(config.apiToken)
 });
 
 const roonClient = createRoonClient(config, logger);

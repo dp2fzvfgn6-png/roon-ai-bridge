@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and optional MCP stdio server in Node.js. v0.6 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, v0.5 local virtual playlists, and adds local MCP tools from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
+Local Roon extension with a small HTTP API and optional MCP stdio server in Node.js. v0.7 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, v0.5 local virtual playlists, v0.6 local MCP tools, and adds optional Bearer-token authentication for exposing the HTTP API through a reverse proxy.
 
-This project does not expose anything to the internet. v0.6 does not implement auth, OpenAI, ChatGPT, Cloudflare, direct TIDAL write access or advanced search ranking.
+This project does not expose anything to the internet by itself. v0.7 does not implement OpenAI, ChatGPT, Cloudflare automation, direct TIDAL write access or advanced search ranking.
 
 ## Architecture
 
@@ -25,9 +25,9 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.6 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
+v0.7 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
 
-## v0.6 Scope
+## v0.7 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -46,6 +46,7 @@ v0.6 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and
 - Add/remove playlist tracks by stable query.
 - Play or enqueue a virtual playlist through Roon.
 - Expose local MCP stdio tools for status, zones, playback, volume, search, queue and virtual playlists.
+- Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose a local HTTP API on a configurable port.
 - Return homogeneous API errors.
 - Use centralized logs.
@@ -70,9 +71,30 @@ DATA_DIR=/app/data
 ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
+API_TOKEN=
 ```
 
-`ENABLE_MCP` is reserved for runtime signalling. The v0.6 MCP server is launched as a separate stdio process with `npm run mcp`, not as a hosted HTTP endpoint.
+`ENABLE_MCP` is reserved for runtime signalling. The v0.7 MCP server is launched as a separate stdio process with `npm run mcp`, not as a hosted HTTP endpoint.
+
+For Nginx Proxy Manager or any other reverse proxy, enable HTTP auth first:
+
+```bash
+openssl rand -hex 32
+```
+
+Then set:
+
+```env
+ENABLE_AUTH=true
+API_TOKEN=<generated-token>
+```
+
+Use the token in API calls:
+
+```bash
+curl https://roon.example.com/roon/status \
+  -H "Authorization: Bearer <generated-token>"
+```
 
 ## Proxmox LXC Deployment
 
@@ -358,7 +380,7 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
 
 ## MCP Server
 
-v0.6 adds a local MCP stdio server. It is intended for trusted local execution, for example from inside the LXC or through an MCP client that can launch a command on that machine.
+v0.6 added a local MCP stdio server. It is intended for trusted local execution, for example from inside the LXC or through an MCP client that can launch a command on that machine.
 
 Build first:
 
@@ -392,7 +414,7 @@ Do not expose the MCP process to untrusted clients yet. Auth and remote access a
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.6:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.7:
 
 - `GET /history`
 - `GET /preferences`
@@ -403,7 +425,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "History is not implemented in v0.6",
+    "message": "History is not implemented in v0.7",
     "details": {}
   }
 }
@@ -432,9 +454,9 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.4: queue management.
 - v0.5: virtual playlists.
 - v0.6: MCP server.
-- v0.7: auth + Cloudflare Tunnel.
+- v0.7: HTTP API key auth for reverse proxy use.
 - v0.8: ChatGPT App / final integration.
 
 ## Security
 
-This phase is LAN-only. Do not publish port `3000` to the internet and do not put it behind tunnels, public proxies or NAT rules. Authentication is planned for a later phase.
+Do not publish port `3000` directly to the internet. If you expose the HTTP API through Nginx Proxy Manager, enable `ENABLE_AUTH=true`, set a long `API_TOKEN`, use HTTPS, and keep MCP stdio local-only.

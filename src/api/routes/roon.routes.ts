@@ -28,10 +28,9 @@ export function createRoonRouter(context: ApiContext): Router {
         queue: queueImplemented,
         virtual_playlists: playlistServiceImplemented,
         mcp: true,
-        auth: false
+        auth: context.config.enableAuth
       },
       planned: [
-        "auth",
         "cloudflare_tunnel",
         "chatgpt_app",
         "tidal_playlist_sync",

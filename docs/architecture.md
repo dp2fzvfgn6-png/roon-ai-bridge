@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.6 code is intentionally modular even though the current feature set is small.
+The v0.7 code is intentionally modular even though the current feature set is small.
 
 ```text
 src/
@@ -64,13 +64,16 @@ src/
 
 1. `src/index.ts` loads config.
 2. Logger is created.
-3. Roon client starts discovery.
-4. Express starts on `PORT`.
-5. Roon authorization is completed in the Roon UI.
-6. The transport service subscribes to zones.
-7. The browse service is available when Roon exposes `RoonApiBrowse`.
-8. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
-9. `src/mcp/index.ts` can be launched separately with `npm run mcp` to expose the same core capabilities as MCP stdio tools.
+3. If `ENABLE_AUTH=true`, `API_TOKEN` is required before startup continues.
+4. Roon client starts discovery.
+5. Express starts on `PORT`.
+6. `/health` stays public.
+7. Other HTTP API routes pass through Bearer-token auth when enabled.
+8. Roon authorization is completed in the Roon UI.
+9. The transport service subscribes to zones.
+10. The browse service is available when Roon exposes `RoonApiBrowse`.
+11. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
+12. `src/mcp/index.ts` can be launched separately with `npm run mcp` to expose the same core capabilities as MCP stdio tools.
 
 ## Persistence Plan
 
@@ -86,4 +89,4 @@ src/
 - `user_preferences`
 - `search_cache`
 
-v0.6 persists Roon authorization state in `data/roonstate.json` and local virtual playlists in `data/virtual-playlists.json`.
+v0.7 persists Roon authorization state in `data/roonstate.json` and local virtual playlists in `data/virtual-playlists.json`.

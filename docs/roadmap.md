@@ -6,7 +6,7 @@
 - v0.4: queue management.
 - v0.5: virtual playlists.
 - v0.6: MCP server.
-- v0.7: auth + Cloudflare Tunnel.
+- v0.7: HTTP API key auth for reverse proxy use.
 - v0.8: ChatGPT App / final integration.
 
 ## v0.1 Implemented
@@ -179,3 +179,20 @@ See [v0.5 Validation](v0.5-validation.md).
 ## v0.6 Validated
 
 See [v0.6 Validation](v0.6-validation.md).
+
+## v0.7 Scope
+
+- Add optional Bearer-token authentication for the HTTP API.
+- Keep `/health` public for proxy health checks.
+- Protect `/roon/*`, `/playlists`, `/history`, `/preferences` and fallback routes when auth is enabled.
+- Fail startup if `ENABLE_AUTH=true` and `API_TOKEN` is empty.
+- Document use behind Nginx Proxy Manager.
+- Keep MCP stdio local-only.
+
+## Not In Scope For v0.7
+
+- Nginx Proxy Manager automation.
+- Cloudflare Tunnel.
+- ChatGPT Actions schema.
+- Remote/hosted MCP.
+- Per-user permissions or scoped tokens.

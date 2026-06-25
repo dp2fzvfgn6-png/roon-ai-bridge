@@ -2,6 +2,24 @@
 
 Default port: `3000`.
 
+## Authentication
+
+Authentication is optional and controlled by `.env`:
+
+```env
+ENABLE_AUTH=true
+API_TOKEN=<long random token>
+```
+
+When enabled, `/health` is public and every other endpoint requires:
+
+```bash
+curl http://localhost:3000/roon/status \
+  -H "Authorization: Bearer <API_TOKEN>"
+```
+
+Missing or invalid tokens return `401` with the standard error format.
+
 ## Health
 
 ```bash
@@ -201,7 +219,7 @@ Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-pl
 
 ## MCP Tools
 
-v0.6 also exposes the core local features through an MCP stdio server. It is not hosted over HTTP.
+v0.6 added core local features through an MCP stdio server. It is not hosted over HTTP.
 
 Run from `/opt/roon-ai-bridge` after building:
 
@@ -270,7 +288,7 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.6:
+These endpoints exist but are not implemented in v0.7:
 
 - `GET /history`
 - `GET /preferences`
@@ -291,6 +309,8 @@ Planned error codes:
 
 - `ROON_NOT_CONNECTED`
 - `ROON_NOT_AUTHORIZED`
+- `AUTH_REQUIRED`
+- `AUTH_INVALID`
 - `TRANSPORT_NOT_READY`
 - `BROWSE_NOT_READY`
 - `INVALID_SEARCH_QUERY`

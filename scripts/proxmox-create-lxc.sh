@@ -441,6 +441,7 @@ DATA_DIR=/app/data
 ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
+API_TOKEN=
 EOF
     docker compose up -d --build
   "

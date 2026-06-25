@@ -10,6 +10,7 @@ export type AppConfig = {
   enableBrowse: boolean;
   enableMcp: boolean;
   enableAuth: boolean;
+  apiToken: string | null;
 };
 
 function boolFromEnv(value: string | undefined, fallback = false): boolean {
@@ -23,6 +24,16 @@ function intFromEnv(value: string | undefined, fallback: number): number {
 }
 
 export function loadConfig(): AppConfig {
+  const enableAuth = boolFromEnv(process.env.ENABLE_AUTH);
+  const apiToken =
+    typeof process.env.API_TOKEN === "string" && process.env.API_TOKEN.trim() !== ""
+      ? process.env.API_TOKEN.trim()
+      : null;
+
+  if (enableAuth && !apiToken) {
+    throw new Error("ENABLE_AUTH=true requires API_TOKEN to be set");
+  }
+
   return {
     port: intFromEnv(process.env.PORT, 3000),
     nodeEnv: process.env.NODE_ENV || "production",
@@ -33,6 +44,7 @@ export function loadConfig(): AppConfig {
     dataDir: process.env.DATA_DIR || path.join(process.cwd(), "data"),
     enableBrowse: boolFromEnv(process.env.ENABLE_BROWSE),
     enableMcp: boolFromEnv(process.env.ENABLE_MCP),
-    enableAuth: boolFromEnv(process.env.ENABLE_AUTH)
+    enableAuth,
+    apiToken
   };
 }

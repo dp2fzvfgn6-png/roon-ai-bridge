@@ -14,7 +14,37 @@ DATA_DIR=/app/data
 ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
+API_TOKEN=
 ```
+
+## HTTP API Authentication
+
+Authentication is disabled by default for LAN-only use:
+
+```env
+ENABLE_AUTH=false
+```
+
+Before exposing the API through Nginx Proxy Manager or any reverse proxy, enable it and set a long random token:
+
+```bash
+openssl rand -hex 32
+```
+
+Then put the generated value in `.env`:
+
+```env
+ENABLE_AUTH=true
+API_TOKEN=<PASTE_GENERATED_TOKEN_HERE>
+```
+
+When auth is enabled, `/health` remains public. All other HTTP endpoints require:
+
+```http
+Authorization: Bearer <API_TOKEN>
+```
+
+The app refuses to start if `ENABLE_AUTH=true` and `API_TOKEN` is empty.
 
 ## Docker Compose
 

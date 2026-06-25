@@ -12,6 +12,7 @@ import { createVolumeRouter } from "./routes/volume.routes";
 import { createLibraryRouter } from "./routes/library.routes";
 import { createQueueRouter } from "./routes/queue.routes";
 import { createPlaylistsRouter } from "./routes/playlists.routes";
+import { createAuthMiddleware } from "./middleware/auth";
 
 export type ApiContext = {
   config: AppConfig;
@@ -25,6 +26,7 @@ export function createServer(context: ApiContext): express.Express {
 
   app.use(express.json());
   app.use(createHealthRouter());
+  app.use(createAuthMiddleware(context));
   app.use("/roon", createRoonRouter(context));
   app.use("/roon", createZonesRouter(context));
   app.use("/roon", createPlaybackRouter(context));
@@ -35,16 +37,16 @@ export function createServer(context: ApiContext): express.Express {
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.6"));
+    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.7"));
   });
 
   app.get("/preferences", (req, res, next) => {
     context.logger.warn("Preferences endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.6"));
+    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.7"));
   });
 
   app.use((req, res, next) => {
-    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.6", {
+    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.7", {
       method: req.method,
       path: req.path
     }));

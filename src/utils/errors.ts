@@ -3,6 +3,8 @@ import { Response } from "express";
 export type ErrorCode =
   | "ROON_NOT_CONNECTED"
   | "ROON_NOT_AUTHORIZED"
+  | "AUTH_REQUIRED"
+  | "AUTH_INVALID"
   | "TRANSPORT_NOT_READY"
   | "BROWSE_NOT_READY"
   | "INVALID_SEARCH_QUERY"
@@ -29,6 +31,8 @@ export type ErrorCode =
 const DEFAULT_STATUS: Record<ErrorCode, number> = {
   ROON_NOT_CONNECTED: 503,
   ROON_NOT_AUTHORIZED: 401,
+  AUTH_REQUIRED: 401,
+  AUTH_INVALID: 401,
   TRANSPORT_NOT_READY: 503,
   BROWSE_NOT_READY: 503,
   INVALID_SEARCH_QUERY: 400,
@@ -82,7 +86,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.6`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.7`, {
     feature
   });
 }

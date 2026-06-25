@@ -1,8 +1,8 @@
 # Overview
 
-Roon AI Bridge is a local Roon extension with a small HTTP API.
+Roon AI Bridge is a local Roon extension with a small HTTP API and optional MCP stdio server.
 
-The current v0.6 goal is intentionally narrow:
+The current v0.7 goal is intentionally narrow:
 
 - Run in a dedicated Proxmox LXC.
 - Use the same VLAN/subnet as Roon Core.
@@ -17,17 +17,17 @@ The current v0.6 goal is intentionally narrow:
 - Start playback from a simple query.
 - Read queue snapshots and perform basic queue actions.
 - Store and play local virtual playlists.
+- Expose local MCP stdio tools for trusted local clients.
+- Optionally protect the HTTP API with a Bearer API token.
 
-v0.6 deliberately does not implement:
+v0.7 deliberately does not implement:
 
 - OpenAI
 - ChatGPT
 - hosted or remote MCP
 - Cloudflare Tunnel
-- Authentication
-- Search
 - TIDAL direct integration
-- Queue management
-- Playlists
+- direct Roon or TIDAL playlist creation
+- scoped per-user authorization
 
 The project is still structured for those future phases so it does not need to be rewritten later.
