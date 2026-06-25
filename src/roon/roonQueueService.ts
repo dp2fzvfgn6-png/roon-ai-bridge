@@ -122,6 +122,18 @@ export async function playQueueItemFromHere(
   }
 
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback();
+    };
+
+    const timer = setTimeout(() => {
+      finish(resolve);
+    }, 1500);
+
     transport.play_from_here(zone, queueItemId, (msg: unknown, body: unknown) => {
       const name =
         msg && typeof msg === "object" && "name" in msg
@@ -129,11 +141,13 @@ export async function playQueueItemFromHere(
           : null;
 
       if (name && name !== "Success") {
-        reject(new ApiError("INTERNAL_ERROR", name, { zone_id: zoneId, body }));
+        finish(() =>
+          reject(new ApiError("INTERNAL_ERROR", name, { zone_id: zoneId, body }))
+        );
         return;
       }
 
-      resolve();
+      finish(resolve);
     });
   });
 
