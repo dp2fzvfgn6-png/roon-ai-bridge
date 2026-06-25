@@ -184,6 +184,7 @@ function titleLooksLikeQueueAction(title: string, mode: QueueByQueryMode): boole
   }
 
   return [
+    "queue",
     "add at end",
     "add to end",
     "add to end of queue",
@@ -508,8 +509,24 @@ export async function queueByQuery(
     lastActions = actionItems(actionList.items);
     const queueAction = chooseQueueAction(actionList.items, request.mode);
     if (queueAction?.item_key) {
-      selected = queueAction;
-      continue;
+      const actionResult = await browseCall(browse, {
+        hierarchy: "search",
+        multi_session_key: sessionKey,
+        item_key: queueAction.item_key,
+        zone_or_output_id: request.zoneId
+      });
+
+      return {
+        ok: !actionResult.is_error,
+        zone_id: request.zoneId,
+        query,
+        mode: request.mode,
+        selected: queueAction,
+        action: actionResult.action || "queue_action",
+        message: actionResult.message || null,
+        is_error:
+          typeof actionResult.is_error === "boolean" ? actionResult.is_error : null
+      };
     }
 
     const nextSelected = chooseSearchResult(actionList.items);
