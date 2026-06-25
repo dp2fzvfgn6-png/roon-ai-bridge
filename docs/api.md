@@ -20,6 +20,37 @@ curl http://localhost:3000/roon/status \
 
 Missing or invalid tokens return `401` with the standard error format.
 
+## OAuth For ChatGPT Apps
+
+OAuth metadata:
+
+```bash
+curl http://localhost:3000/.well-known/oauth-protected-resource
+curl http://localhost:3000/.well-known/oauth-authorization-server
+```
+
+Dynamic client registration:
+
+```bash
+curl -X POST http://localhost:3000/oauth/register \
+  -H "Content-Type: application/json" \
+  -d '{"client_name":"ChatGPT","redirect_uris":["https://chatgpt.com/connector/oauth/example"]}'
+```
+
+Authorization endpoint:
+
+```text
+http://localhost:3000/oauth/authorize
+```
+
+Token endpoint:
+
+```text
+http://localhost:3000/oauth/token
+```
+
+The approval page asks for `OAUTH_APPROVAL_PIN`. If that variable is empty, it falls back to `API_TOKEN`.
+
 ## Health
 
 ```bash

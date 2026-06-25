@@ -5,6 +5,7 @@ export type ErrorCode =
   | "ROON_NOT_AUTHORIZED"
   | "AUTH_REQUIRED"
   | "AUTH_INVALID"
+  | "INVALID_AUTH_REQUEST"
   | "TRANSPORT_NOT_READY"
   | "BROWSE_NOT_READY"
   | "INVALID_SEARCH_QUERY"
@@ -33,6 +34,7 @@ const DEFAULT_STATUS: Record<ErrorCode, number> = {
   ROON_NOT_AUTHORIZED: 401,
   AUTH_REQUIRED: 401,
   AUTH_INVALID: 401,
+  INVALID_AUTH_REQUEST: 400,
   TRANSPORT_NOT_READY: 503,
   BROWSE_NOT_READY: 503,
   INVALID_SEARCH_QUERY: 400,
@@ -86,7 +88,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.8`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.8.1`, {
     feature
   });
 }

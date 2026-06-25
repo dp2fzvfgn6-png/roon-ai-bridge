@@ -1,6 +1,6 @@
 # ChatGPT App
 
-v0.8 prepares Roon AI Bridge as a ChatGPT app using the Apps SDK pattern: a remote MCP endpoint plus an optional widget resource.
+v0.8.1 prepares Roon AI Bridge as a ChatGPT app using the Apps SDK pattern: a remote MCP endpoint, OAuth, and an optional widget resource.
 
 ## Public URLs
 
@@ -8,10 +8,10 @@ v0.8 prepares Roon AI Bridge as a ChatGPT app using the Apps SDK pattern: a remo
 - Health check: `https://roonia.ipchome.com/health`
 - Privacy notice: `https://roonia.ipchome.com/privacy`
 
-`/health` and `/privacy` are public. `/mcp` requires:
+`/health`, `/privacy`, `/.well-known/*` and `/oauth/*` are public. `/mcp` requires an OAuth access token or the admin API token:
 
 ```text
-Authorization: Bearer <API_TOKEN>
+Authorization: Bearer <access_token>
 ```
 
 ## Architecture
@@ -42,17 +42,45 @@ ui://roon-ai-bridge/control-v1.html
 
 Use the Apps SDK / MCP app flow, not Custom GPT Actions.
 
-Recommended connector URL:
+Application fields:
 
 ```text
-https://roonia.ipchome.com/mcp
+Name: RoonIA
+Description: Control privado de Roon desde ChatGPT: zonas, reproducción, volumen, búsqueda, cola y playlists virtuales.
+Connection: URL del servidor
+Server URL: https://roonia.ipchome.com/mcp
+Authentication: OAuth
 ```
 
-Authentication:
+OAuth should be auto-detected from:
 
 ```text
-Bearer token
-API_TOKEN from /opt/roon-ai-bridge/.env
+https://roonia.ipchome.com/.well-known/oauth-protected-resource
+https://roonia.ipchome.com/.well-known/oauth-authorization-server
+```
+
+Dynamic client registration endpoint:
+
+```text
+https://roonia.ipchome.com/oauth/register
+```
+
+Authorization endpoint:
+
+```text
+https://roonia.ipchome.com/oauth/authorize
+```
+
+Token endpoint:
+
+```text
+https://roonia.ipchome.com/oauth/token
+```
+
+If ChatGPT asks for scopes, use:
+
+```text
+roon:control
 ```
 
 If the setup asks for a privacy URL:
@@ -60,6 +88,11 @@ If the setup asks for a privacy URL:
 ```text
 https://roonia.ipchome.com/privacy
 ```
+
+During authorization, RoonIA asks for an approval PIN. The PIN is:
+
+- `OAUTH_APPROVAL_PIN` if configured in `/opt/roon-ai-bridge/.env`.
+- Otherwise the existing `API_TOKEN`.
 
 ## First Prompts
 
@@ -97,6 +130,6 @@ Expected tool: `roon_play_by_query`.
 
 - Keep `ENABLE_AUTH=true` before exposing `/mcp`.
 - Use HTTPS through Nginx Proxy Manager.
-- Keep the token private.
+- Keep the API token and OAuth approval PIN private.
 - For volume, queue and playback changes, the app should confirm the zone when the target is ambiguous.
-- v0.8 uses a shared API token. OAuth and per-user authorization are left for a later phase.
+- v0.8.1 uses a private OAuth flow with one local approval PIN. Per-user authorization and refresh tokens are left for a later phase.

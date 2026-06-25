@@ -31,6 +31,11 @@ export function createAuthMiddleware(context: ApiContext) {
       return;
     }
 
+    if (req.path === "/privacy" || req.path.startsWith("/oauth/") || req.path.startsWith("/.well-known/")) {
+      next();
+      return;
+    }
+
     const expected = context.config.apiToken;
     if (!expected) {
       next(new ApiError("AUTH_REQUIRED", "API authentication is enabled but API_TOKEN is not configured"));
@@ -39,11 +44,23 @@ export function createAuthMiddleware(context: ApiContext) {
 
     const provided = getBearerToken(req);
     if (!provided) {
+      if (req.path === "/mcp") {
+        _res.setHeader(
+          "WWW-Authenticate",
+          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource"`
+        );
+      }
       next(new ApiError("AUTH_REQUIRED", "Missing bearer token"));
       return;
     }
 
-    if (!tokenMatches(provided, expected)) {
+    if (!tokenMatches(provided, expected) && !context.oauthService.tokenIsValid(provided)) {
+      if (req.path === "/mcp") {
+        _res.setHeader(
+          "WWW-Authenticate",
+          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource"`
+        );
+      }
       next(new ApiError("AUTH_INVALID", "Invalid bearer token"));
       return;
     }

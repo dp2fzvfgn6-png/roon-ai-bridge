@@ -11,6 +11,9 @@ export type AppConfig = {
   enableMcp: boolean;
   enableAuth: boolean;
   apiToken: string | null;
+  publicBaseUrl: string;
+  oauthIssuer: string;
+  oauthApprovalPin: string | null;
 };
 
 function boolFromEnv(value: string | undefined, fallback = false): boolean {
@@ -34,6 +37,13 @@ export function loadConfig(): AppConfig {
     throw new Error("ENABLE_AUTH=true requires API_TOKEN to be set");
   }
 
+  const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://roonia.ipchome.com").replace(/\/+$/, "");
+  const oauthIssuer = (process.env.OAUTH_ISSUER || publicBaseUrl).replace(/\/+$/, "");
+  const oauthApprovalPin =
+    typeof process.env.OAUTH_APPROVAL_PIN === "string" && process.env.OAUTH_APPROVAL_PIN.trim() !== ""
+      ? process.env.OAUTH_APPROVAL_PIN.trim()
+      : apiToken;
+
   return {
     port: intFromEnv(process.env.PORT, 3000),
     nodeEnv: process.env.NODE_ENV || "production",
@@ -45,6 +55,9 @@ export function loadConfig(): AppConfig {
     enableBrowse: boolFromEnv(process.env.ENABLE_BROWSE),
     enableMcp: boolFromEnv(process.env.ENABLE_MCP),
     enableAuth,
-    apiToken
+    apiToken,
+    publicBaseUrl,
+    oauthIssuer,
+    oauthApprovalPin
   };
 }

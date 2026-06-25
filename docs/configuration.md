@@ -15,6 +15,9 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 API_TOKEN=
+PUBLIC_BASE_URL=https://roonia.ipchome.com
+OAUTH_ISSUER=https://roonia.ipchome.com
+OAUTH_APPROVAL_PIN=
 ```
 
 ## HTTP API Authentication
@@ -45,6 +48,18 @@ Authorization: Bearer <API_TOKEN>
 ```
 
 The app refuses to start if `ENABLE_AUTH=true` and `API_TOKEN` is empty.
+
+## ChatGPT App OAuth
+
+For ChatGPT app setup, set:
+
+```env
+PUBLIC_BASE_URL=https://roonia.ipchome.com
+OAUTH_ISSUER=https://roonia.ipchome.com
+OAUTH_APPROVAL_PIN=<PRIVATE_PIN_FOR_APPROVING_CHATGPT>
+```
+
+If `OAUTH_APPROVAL_PIN` is empty, the authorization page accepts `API_TOKEN`.
 
 ## Docker Compose
 

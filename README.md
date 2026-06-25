@@ -75,9 +75,14 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 API_TOKEN=
+PUBLIC_BASE_URL=https://roonia.ipchome.com
+OAUTH_ISSUER=https://roonia.ipchome.com
+OAUTH_APPROVAL_PIN=
 ```
 
 `ENABLE_MCP` is reserved for runtime signalling. v0.8 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
+
+`OAUTH_APPROVAL_PIN` is used when authorizing ChatGPT. If it is empty, the authorization page accepts `API_TOKEN`.
 
 For Nginx Proxy Manager or any other reverse proxy, enable HTTP auth first:
 

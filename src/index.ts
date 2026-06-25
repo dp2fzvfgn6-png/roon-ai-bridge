@@ -2,6 +2,7 @@ import { loadConfig } from "./config/env";
 import { createServer } from "./api/server";
 import { createRoonClient } from "./roon/roonClient";
 import { PlaylistService } from "./services/playlistService";
+import { OAuthService } from "./services/oauthService";
 import { createLogger } from "./utils/logger";
 
 const config = loadConfig();
@@ -19,11 +20,13 @@ logger.info("Configuration loaded", {
 
 const roonClient = createRoonClient(config, logger);
 const playlistService = new PlaylistService(config);
+const oauthService = new OAuthService(config);
 const app = createServer({
   config,
   logger,
   roonClient,
-  playlistService
+  playlistService,
+  oauthService
 });
 
 logger.info("Starting service", {
