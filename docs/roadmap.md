@@ -196,3 +196,7 @@ See [v0.6 Validation](v0.6-validation.md).
 - ChatGPT Actions schema.
 - Remote/hosted MCP.
 - Per-user permissions or scoped tokens.
+
+## v0.7 Validated
+
+See [v0.7 Validation](v0.7-validation.md).

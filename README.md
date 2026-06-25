@@ -116,6 +116,7 @@ Full documentation lives in [docs/](docs/README.md):
 - [v0.4 validation](docs/v0.4-validation.md)
 - [v0.5 validation](docs/v0.5-validation.md)
 - [v0.6 validation](docs/v0.6-validation.md)
+- [v0.7 validation](docs/v0.7-validation.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Roadmap](docs/roadmap.md)
 
