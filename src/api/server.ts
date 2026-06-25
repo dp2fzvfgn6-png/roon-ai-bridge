@@ -1,9 +1,11 @@
 import express, { NextFunction, Request, Response } from "express";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AppConfig } from "../config/env";
 import { RoonClient } from "../roon/roonClient";
 import { Logger } from "../utils/logger";
 import { ApiError, sendError } from "../utils/errors";
 import { PlaylistService } from "../services/playlistService";
+import { createRoonMcpServer } from "../mcp/server";
 import { createHealthRouter } from "./routes/health.routes";
 import { createRoonRouter } from "./routes/roon.routes";
 import { createZonesRouter } from "./routes/zones.routes";
@@ -26,7 +28,49 @@ export function createServer(context: ApiContext): express.Express {
 
   app.use(express.json());
   app.use(createHealthRouter());
+  app.get("/privacy", (req, res) => {
+    res
+      .type("text/plain")
+      .send([
+        "Roon AI Bridge privacy notice",
+        "",
+        "This is a self-hosted local bridge for a private Roon installation.",
+        "The service does not collect analytics, does not sell data, and does not send data to third parties by itself.",
+        "When used from a ChatGPT app, ChatGPT may send only the tool request needed to call this service.",
+        "Roon playback, queue, search and playlist requests are processed by this self-hosted service.",
+        "Keep your API token private."
+      ].join("\n"));
+  });
   app.use(createAuthMiddleware(context));
+
+  app.all("/mcp", async (req, res, next) => {
+    try {
+      context.logger.info("MCP HTTP request received", {
+        method: req.method,
+        path: req.path
+      });
+      const server = createRoonMcpServer(context);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined
+      });
+      await server.connect(transport);
+      res.on("close", () => {
+        server.close().catch((error) => {
+          context.logger.warn("MCP HTTP server close failed", {
+            message: error instanceof Error ? error.message : String(error)
+          });
+        });
+      });
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      context.logger.error("MCP HTTP request failed", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      next(new ApiError("INTERNAL_ERROR", "MCP request failed"));
+    }
+  });
+
   app.use("/roon", createRoonRouter(context));
   app.use("/roon", createZonesRouter(context));
   app.use("/roon", createPlaybackRouter(context));
@@ -37,16 +81,16 @@ export function createServer(context: ApiContext): express.Express {
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.7"));
+    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.8"));
   });
 
   app.get("/preferences", (req, res, next) => {
     context.logger.warn("Preferences endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.7"));
+    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.8"));
   });
 
   app.use((req, res, next) => {
-    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.7", {
+    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.8", {
       method: req.method,
       path: req.path
     }));

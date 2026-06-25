@@ -1,8 +1,8 @@
 # MCP Server
 
-v0.6 adds a local MCP stdio server.
+v0.6 adds a local MCP stdio server. v0.8 adds a remote Streamable HTTP MCP endpoint for ChatGPT app development.
 
-It is intentionally not exposed as a public HTTP endpoint. A local MCP client can launch it as a command from the LXC or another trusted shell that has access to the project.
+A local MCP client can launch stdio as a command from the LXC or another trusted shell that has access to the project.
 
 Build first:
 
@@ -15,6 +15,14 @@ Run from the project directory:
 ```bash
 DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
 ```
+
+Remote MCP endpoint:
+
+```text
+https://roonia.ipchome.com/mcp
+```
+
+The remote endpoint is protected by the same Bearer token middleware as the HTTP API.
 
 Implemented tools:
 
@@ -32,4 +40,4 @@ Implemented tools:
 - `roon_add_virtual_playlist_track`
 - `roon_play_virtual_playlist`
 
-Future phases still need an authorization policy before exposing MCP beyond trusted local execution.
+Future phases still need OAuth and per-user authorization before broader app distribution.

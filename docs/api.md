@@ -11,7 +11,7 @@ ENABLE_AUTH=true
 API_TOKEN=<long random token>
 ```
 
-When enabled, `/health` is public and every other endpoint requires:
+When enabled, `/health` and `/privacy` are public. Every Roon, playlist, history, preferences and MCP endpoint requires:
 
 ```bash
 curl http://localhost:3000/roon/status \
@@ -34,6 +34,14 @@ Response:
   "service": "roon-ai-bridge"
 }
 ```
+
+## Privacy Notice
+
+```bash
+curl http://localhost:3000/privacy
+```
+
+This endpoint is public and can be used as the privacy policy URL when configuring a ChatGPT app.
 
 ## Roon Status
 
@@ -219,7 +227,15 @@ Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-pl
 
 ## MCP Tools
 
-v0.6 added core local features through an MCP stdio server. It is not hosted over HTTP.
+v0.6 added core local features through an MCP stdio server. v0.8 exposes the same MCP server over HTTP at `/mcp` for ChatGPT app development.
+
+Remote MCP endpoint:
+
+```text
+https://roonia.ipchome.com/mcp
+```
+
+It requires the same Bearer token as the HTTP API.
 
 Run from `/opt/roon-ai-bridge` after building:
 
@@ -288,7 +304,7 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.7:
+These endpoints exist but are not implemented in v0.8:
 
 - `GET /history`
 - `GET /preferences`

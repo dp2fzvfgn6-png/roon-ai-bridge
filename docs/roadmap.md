@@ -7,7 +7,8 @@
 - v0.5: virtual playlists.
 - v0.6: MCP server.
 - v0.7: HTTP API key auth for reverse proxy use.
-- v0.8: ChatGPT App / final integration.
+- v0.8: ChatGPT App remote MCP endpoint and minimal widget.
+- v0.9: ChatGPT App polish, OAuth and submission readiness.
 
 ## v0.1 Implemented
 
@@ -200,3 +201,24 @@ See [v0.6 Validation](v0.6-validation.md).
 ## v0.7 Validated
 
 See [v0.7 Validation](v0.7-validation.md).
+
+## v0.8 Scope
+
+- Add a remote MCP endpoint at `/mcp`.
+- Reuse the existing Roon MCP tools over HTTP.
+- Keep Roon control endpoints protected by Bearer API key authentication.
+- Add a minimal Apps SDK widget resource.
+- Add `GET /privacy` for ChatGPT app privacy URL configuration.
+- Document ChatGPT app setup and MCP validation.
+
+## Not In Scope For v0.8
+
+- OpenAI API calls from the bridge.
+- OAuth.
+- Cloudflare Tunnel automation.
+- Direct TIDAL playlist writes.
+- Public unauthenticated Roon control.
+
+## v0.8 Validated
+
+See [v0.8 Validation](v0.8-validation.md).

@@ -1,6 +1,6 @@
 # Security Notes
 
-v0.7 supports optional Bearer-token authentication for the HTTP API.
+v0.8 supports optional Bearer-token authentication for the HTTP API and remote MCP endpoint.
 
 For LAN-only use, authentication can stay disabled. Before exposing the service through Nginx Proxy Manager or any public reverse proxy, set:
 
@@ -9,13 +9,13 @@ ENABLE_AUTH=true
 API_TOKEN=<long random token>
 ```
 
-`/health` remains public. All other HTTP endpoints require:
+`/health` and `/privacy` remain public. Roon, playlist, history, preferences and MCP endpoints require:
 
 ```http
 Authorization: Bearer <API_TOKEN>
 ```
 
-Do not expose the MCP stdio process remotely. v0.7 only protects the HTTP API.
+Do not expose port `3000` directly. Publish only the HTTPS reverse-proxied domain and keep `ENABLE_AUTH=true`.
 
 Future phases should define:
 

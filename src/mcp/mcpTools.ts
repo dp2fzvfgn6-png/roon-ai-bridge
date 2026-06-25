@@ -7,6 +7,7 @@ import { listZones } from "../roon/roonZoneService";
 import { changeZoneVolume } from "../roon/roonVolumeService";
 import { ApiError } from "../utils/errors";
 import { parsePlaybackCommand, parseVolumeMode, parseVolumeValue } from "../utils/validation";
+import { roonControlWidgetUri } from "./appResources";
 import { McpContext } from "./mcpContext";
 
 type ToolResult = {
@@ -66,12 +67,33 @@ function statusPayload(context: McpContext): Record<string, unknown> {
   };
 }
 
+const readOnlyAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: false
+};
+
+const writeAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: false,
+  destructiveHint: false
+};
+
+const widgetMeta = {
+  ui: {
+    resourceUri: roonControlWidgetUri,
+    visibility: ["model", "app"]
+  },
+  "openai/outputTemplate": roonControlWidgetUri
+};
+
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
   server.registerTool(
     "roon_status",
     {
       title: "Roon Status",
-      description: "Return Roon Core connection status and service readiness."
+      description: "Return Roon Core connection status and service readiness.",
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
     },
     async () => runTool(context, "roon_status", () => statusPayload(context))
   );
@@ -80,7 +102,9 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_list_zones",
     {
       title: "List Roon Zones",
-      description: "List available Roon zones, now playing metadata and outputs."
+      description: "List available Roon zones, now playing metadata and outputs.",
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
     },
     async () => runTool(context, "roon_list_zones", () => listZones(context.roonClient))
   );
@@ -90,6 +114,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Control Roon Playback",
       description: "Send play, pause, playpause, stop, next or previous to a Roon zone.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         command: z.enum(["play", "pause", "playpause", "stop", "next", "previous"])
@@ -108,6 +134,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Change Roon Volume",
       description: "Change Roon zone volume using relative or absolute mode when supported.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         mode: z.enum(["relative", "absolute"]),
@@ -137,6 +165,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Search Roon",
       description: "Search the Roon library and Roon-connected services exposed by Roon browse.",
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         query: z.string().min(1),
         zone_id: z.string().optional(),
@@ -162,6 +192,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Roon Query",
       description: "Start playback in a zone from a Roon search query.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         query: z.string().min(1),
@@ -179,6 +211,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Get Roon Queue",
       description: "Read a Roon queue snapshot for a zone.",
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         max_item_count: z.number().int().min(1).max(500).default(50)
@@ -195,6 +229,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Queue Roon Query",
       description: "Add a Roon search query next or to the end of the queue.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         query: z.string().min(1),
@@ -213,6 +249,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Roon Queue Item",
       description: "Start playback from a queue item ID in a Roon zone.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         queue_item_id: z.union([z.string().min(1), z.number()])
@@ -228,7 +266,9 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_list_virtual_playlists",
     {
       title: "List Virtual Playlists",
-      description: "List local virtual playlists stored by Roon AI Bridge."
+      description: "List local virtual playlists stored by Roon AI Bridge.",
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
     },
     async () =>
       runTool(context, "roon_list_virtual_playlists", () =>
@@ -241,6 +281,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Create Virtual Playlist",
       description: "Create a local virtual playlist made of Roon search-query tracks.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         playlist_id: z.string().optional(),
         name: z.string().min(1),
@@ -268,6 +310,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Add Virtual Playlist Track",
       description: "Add one search-query track to a local virtual playlist.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         playlist_id: z.string().min(1),
         query: z.string().min(1),
@@ -287,6 +331,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Virtual Playlist",
       description: "Play or enqueue a local virtual playlist in a Roon zone.",
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
       inputSchema: {
         playlist_id: z.string().min(1),
         zone_id: z.string().min(1),
