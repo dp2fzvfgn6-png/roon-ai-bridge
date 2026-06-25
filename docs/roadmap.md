@@ -121,3 +121,15 @@ Validated as working:
 - Virtual playlists.
 - Advanced queue editing and reordering.
 - Direct TIDAL integration.
+
+## v0.4 Validated
+
+See [v0.4 Validation](v0.4-validation.md).
+
+Validated as working:
+
+- Queue snapshots.
+- Queue action inspection.
+- Add next from query.
+- Add to end of queue from query.
+- Play from queue item.
