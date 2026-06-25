@@ -12,6 +12,7 @@ This documentation covers the current v0.5 repository:
 - [v0.2 Validation](v0.2-validation.md)
 - [v0.3 Validation](v0.3-validation.md)
 - [v0.4 Validation](v0.4-validation.md)
+- [v0.5 Validation](v0.5-validation.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)
 

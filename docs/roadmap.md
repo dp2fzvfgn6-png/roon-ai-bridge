@@ -154,3 +154,7 @@ Validated as working:
 - Direct TIDAL integration.
 - Creating real Roon playlists.
 - Creating or syncing TIDAL playlists.
+
+## v0.5 Validated
+
+See [v0.5 Validation](v0.5-validation.md).
