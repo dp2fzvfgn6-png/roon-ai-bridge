@@ -13,6 +13,7 @@ This documentation covers the current v0.6 repository:
 - [v0.3 Validation](v0.3-validation.md)
 - [v0.4 Validation](v0.4-validation.md)
 - [v0.5 Validation](v0.5-validation.md)
+- [v0.6 Validation](v0.6-validation.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)
 

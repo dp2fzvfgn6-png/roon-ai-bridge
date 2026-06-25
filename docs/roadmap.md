@@ -175,3 +175,7 @@ See [v0.5 Validation](v0.5-validation.md).
 - ChatGPT App packaging.
 - Direct TIDAL playlist creation or sync.
 - A hosted HTTP MCP endpoint.
+
+## v0.6 Validated
+
+See [v0.6 Validation](v0.6-validation.md).
