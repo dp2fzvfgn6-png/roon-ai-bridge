@@ -1,6 +1,6 @@
 # MCP Future Module
 
-MCP is intentionally not implemented in v0.4.
+MCP is intentionally not implemented in v0.5.
 
 This folder is reserved for a future local MCP server that may expose controlled Roon actions as tools, after the HTTP bridge has proven stable on the LAN.
 

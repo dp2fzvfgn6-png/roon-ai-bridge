@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API in Node.js. v0.4 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, and adds basic queue management from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
+Local Roon extension with a small HTTP API in Node.js. v0.5 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, and adds local virtual playlists from a separate Proxmox LXC in the same VLAN/subnet as Roon Core.
 
-This project does not expose anything to the internet. v0.4 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access, playlists or advanced search ranking.
+This project does not expose anything to the internet. v0.5 does not implement auth, MCP, OpenAI, ChatGPT, Cloudflare, direct TIDAL access or advanced search ranking.
 
 ## Architecture
 
@@ -25,9 +25,9 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.4 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
+v0.5 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
 
-## v0.4 Scope
+## v0.5 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -42,6 +42,9 @@ v0.4 uses `node-roon-api`, `node-roon-api-transport` and `node-roon-api-browse`.
 - Read queue snapshots through `GET /roon/queue/:zone_id`.
 - Start playback from a queue item with `play_from_here`.
 - Add a query result next or to the queue when Roon exposes that browse action.
+- Create local virtual playlists.
+- Add/remove playlist tracks by stable query.
+- Play or enqueue a virtual playlist through Roon.
 - Expose a local HTTP API on a configurable port.
 - Return homogeneous API errors.
 - Use centralized logs.
@@ -306,6 +309,24 @@ curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
   -d '{"action":"inspect_actions","query":"bad bunny"}'
 ```
 
+Virtual playlists:
+
+```bash
+curl -X POST http://localhost:3000/playlists \
+  -H "Content-Type: application/json" \
+  -d '{"playlist_id":"bad-bunny-test","name":"Bad Bunny Test","tracks":[{"query":"bad bunny dakiti"},{"query":"bad bunny neverita"}]}'
+
+curl http://localhost:3000/playlists | python3 -m json.tool
+
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks \
+  -H "Content-Type: application/json" \
+  -d '{"query":"bad bunny monaco"}'
+
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/play \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id":"<ZONE_ID>","mode":"add_to_queue"}'
+```
+
 Playback control:
 
 ```bash
@@ -332,11 +353,8 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.4:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.5:
 
-- `GET /playlists`
-- `POST /playlists`
-- `POST /playlists/:playlist_id/play`
 - `GET /history`
 - `GET /preferences`
 
@@ -346,7 +364,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "Virtual playlists are not implemented in v0.4",
+    "message": "History is not implemented in v0.5",
     "details": {}
   }
 }

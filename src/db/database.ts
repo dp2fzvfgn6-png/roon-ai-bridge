@@ -1,3 +1,3 @@
 // Future persistence adapter.
-// v0.4 only persists Roon authorization state through node-roon-api in data/roonstate.json.
+// v0.5 uses JSON persistence for runtime state; this SQLite adapter remains reserved.
 export const databaseImplemented = false;

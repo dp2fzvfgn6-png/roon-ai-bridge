@@ -12,6 +12,11 @@ export type ErrorCode =
   | "INVALID_QUEUE_ACTION"
   | "INVALID_QUEUE_ITEM_ID"
   | "QUEUE_ACTION_NOT_FOUND"
+  | "PLAYLIST_NOT_FOUND"
+  | "PLAYLIST_TRACK_NOT_FOUND"
+  | "INVALID_PLAYLIST"
+  | "INVALID_PLAYLIST_TRACK"
+  | "INVALID_PLAYLIST_PLAY_MODE"
   | "ZONE_NOT_FOUND"
   | "OUTPUT_NOT_FOUND"
   | "UNSUPPORTED_COMMAND"
@@ -33,6 +38,11 @@ const DEFAULT_STATUS: Record<ErrorCode, number> = {
   INVALID_QUEUE_ACTION: 400,
   INVALID_QUEUE_ITEM_ID: 400,
   QUEUE_ACTION_NOT_FOUND: 422,
+  PLAYLIST_NOT_FOUND: 404,
+  PLAYLIST_TRACK_NOT_FOUND: 404,
+  INVALID_PLAYLIST: 400,
+  INVALID_PLAYLIST_TRACK: 400,
+  INVALID_PLAYLIST_PLAY_MODE: 400,
   ZONE_NOT_FOUND: 404,
   OUTPUT_NOT_FOUND: 404,
   UNSUPPORTED_COMMAND: 400,
@@ -72,7 +82,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.4`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.5`, {
     feature
   });
 }

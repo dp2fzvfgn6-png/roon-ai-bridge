@@ -3,6 +3,7 @@ import { AppConfig } from "../config/env";
 import { RoonClient } from "../roon/roonClient";
 import { Logger } from "../utils/logger";
 import { ApiError, sendError } from "../utils/errors";
+import { PlaylistService } from "../services/playlistService";
 import { createHealthRouter } from "./routes/health.routes";
 import { createRoonRouter } from "./routes/roon.routes";
 import { createZonesRouter } from "./routes/zones.routes";
@@ -16,6 +17,7 @@ export type ApiContext = {
   config: AppConfig;
   logger: Logger;
   roonClient: RoonClient;
+  playlistService: PlaylistService;
 };
 
 export function createServer(context: ApiContext): express.Express {
@@ -33,16 +35,16 @@ export function createServer(context: ApiContext): express.Express {
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.4"));
+    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.5"));
   });
 
   app.get("/preferences", (req, res, next) => {
     context.logger.warn("Preferences endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.4"));
+    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.5"));
   });
 
   app.use((req, res, next) => {
-    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.4", {
+    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.5", {
       method: req.method,
       path: req.path
     }));

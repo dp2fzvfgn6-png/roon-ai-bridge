@@ -147,6 +147,58 @@ curl -X POST http://localhost:3000/roon/queue/<ZONE_ID> \
 
 The add actions depend on Roon exposing matching browse actions for the selected result. `add_to_queue` only executes an explicit end-of-queue action; if Roon only exposes an ambiguous `Add to Queue` action that behaves like add-next, the API returns `QUEUE_ACTION_NOT_FOUND` with `available_actions`.
 
+## Virtual Playlists
+
+List virtual playlists:
+
+```bash
+curl http://localhost:3000/playlists
+```
+
+Create a virtual playlist:
+
+```bash
+curl -X POST http://localhost:3000/playlists \
+  -H "Content-Type: application/json" \
+  -d '{"playlist_id":"bad-bunny-test","name":"Bad Bunny Test","tracks":[{"query":"bad bunny dakiti"},{"query":"bad bunny neverita"}]}'
+```
+
+Get one virtual playlist:
+
+```bash
+curl http://localhost:3000/playlists/bad-bunny-test
+```
+
+Add a track:
+
+```bash
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks \
+  -H "Content-Type: application/json" \
+  -d '{"query":"bad bunny monaco","title":"MONACO","artist":"Bad Bunny"}'
+```
+
+Remove a track:
+
+```bash
+curl -X DELETE http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID>
+```
+
+Play or enqueue a virtual playlist:
+
+```bash
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/play \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id":"<ZONE_ID>","mode":"add_to_queue"}'
+```
+
+Supported play modes:
+
+- `add_to_queue`
+- `add_next`
+- `play_now`
+
+Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-playlists.json`. Tracks are stored as stable search queries, not Roon browse `item_key` values.
+
 ## Zones
 
 ```bash
@@ -192,11 +244,8 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.4:
+These endpoints exist but are not implemented in v0.5:
 
-- `GET /playlists`
-- `POST /playlists`
-- `POST /playlists/:playlist_id/play`
 - `GET /history`
 - `GET /preferences`
 
@@ -225,6 +274,11 @@ Planned error codes:
 - `INVALID_QUEUE_ACTION`
 - `INVALID_QUEUE_ITEM_ID`
 - `QUEUE_ACTION_NOT_FOUND`
+- `PLAYLIST_NOT_FOUND`
+- `PLAYLIST_TRACK_NOT_FOUND`
+- `INVALID_PLAYLIST`
+- `INVALID_PLAYLIST_TRACK`
+- `INVALID_PLAYLIST_PLAY_MODE`
 - `ZONE_NOT_FOUND`
 - `OUTPUT_NOT_FOUND`
 - `UNSUPPORTED_COMMAND`

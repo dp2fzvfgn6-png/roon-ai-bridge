@@ -133,3 +133,24 @@ Validated as working:
 - Add next from query.
 - Add to end of queue from query.
 - Play from queue item.
+
+## v0.5 Scope
+
+- Implement local virtual playlists.
+- Store playlists in `data/virtual-playlists.json`.
+- Store tracks as stable Roon search queries.
+- Add and remove playlist tracks.
+- Play or enqueue playlists with `add_to_queue`, `add_next` or `play_now`.
+- Keep real Roon playlist editing, TIDAL playlist sync, auth, MCP and OpenAI out of scope.
+
+## Not In Scope For v0.5
+
+- Public internet exposure.
+- Auth.
+- MCP.
+- OpenAI.
+- ChatGPT.
+- Cloudflare Tunnel.
+- Direct TIDAL integration.
+- Creating real Roon playlists.
+- Creating or syncing TIDAL playlists.

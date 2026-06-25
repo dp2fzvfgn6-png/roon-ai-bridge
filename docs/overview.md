@@ -2,7 +2,7 @@
 
 Roon AI Bridge is a local Roon extension with a small HTTP API.
 
-The current v0.4 goal is intentionally narrow:
+The current v0.5 goal is intentionally narrow:
 
 - Run in a dedicated Proxmox LXC.
 - Use the same VLAN/subnet as Roon Core.
@@ -16,8 +16,9 @@ The current v0.4 goal is intentionally narrow:
 - Search Roon through the browse service.
 - Start playback from a simple query.
 - Read queue snapshots and perform basic queue actions.
+- Store and play local virtual playlists.
 
-v0.4 deliberately does not implement:
+v0.5 deliberately does not implement:
 
 - OpenAI
 - ChatGPT

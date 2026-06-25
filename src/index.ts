@@ -1,6 +1,7 @@
 import { loadConfig } from "./config/env";
 import { createServer } from "./api/server";
 import { createRoonClient } from "./roon/roonClient";
+import { PlaylistService } from "./services/playlistService";
 import { createLogger } from "./utils/logger";
 
 const config = loadConfig();
@@ -16,10 +17,12 @@ logger.info("Configuration loaded", {
 });
 
 const roonClient = createRoonClient(config, logger);
+const playlistService = new PlaylistService(config);
 const app = createServer({
   config,
   logger,
-  roonClient
+  roonClient,
+  playlistService
 });
 
 logger.info("Starting service", {
