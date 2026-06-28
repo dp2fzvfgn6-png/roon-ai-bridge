@@ -2,6 +2,7 @@ import { loadConfig } from "../config/env";
 import { createRoonClient } from "../roon/roonClient";
 import { PlaylistService } from "../services/playlistService";
 import { OAuthService } from "../services/oauthService";
+import { RoonMediaService } from "../roon/roonMediaService";
 import { createStderrLogger } from "../utils/logger";
 import { startMcpServer } from "./server";
 
@@ -21,6 +22,7 @@ logger.info("MCP configuration loaded", {
 const roonClient = createRoonClient(config, logger);
 const playlistService = new PlaylistService(config);
 const oauthService = new OAuthService(config);
+const mediaService = new RoonMediaService(roonClient);
 
 roonClient.start();
 
@@ -29,7 +31,8 @@ startMcpServer({
   logger,
   roonClient,
   playlistService,
-  oauthService
+  oauthService,
+  mediaService
 }).catch((error) => {
   logger.error("MCP server failed", {
     message: error instanceof Error ? error.message : String(error),

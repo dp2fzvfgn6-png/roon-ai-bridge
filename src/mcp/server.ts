@@ -3,12 +3,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { McpContext } from "./mcpContext";
 import { registerRoonAppResources } from "./appResources";
 import { registerRoonMcpTools } from "./mcpTools";
+import { APP_VERSION } from "../config/version";
 
 export function createRoonMcpServer(context: McpContext): McpServer {
   const server = new McpServer(
     {
       name: "roon-ai-bridge",
-      version: "0.8.1"
+      version: APP_VERSION
     },
     {
       instructions:

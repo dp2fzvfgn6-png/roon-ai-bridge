@@ -17,6 +17,8 @@ type OAuthCode = {
   redirect_uri: string;
   code_challenge: string | null;
   code_challenge_method: string | null;
+  resource: string;
+  scope: string;
   expires_at: number;
 };
 
@@ -24,6 +26,8 @@ type OAuthToken = {
   access_token: string;
   client_id: string;
   created_at: string;
+  resource: string;
+  scope: string;
   expires_at: number;
 };
 
@@ -71,7 +75,7 @@ export class OAuthService {
       registration_endpoint: `${this.config.publicBaseUrl}/oauth/register`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code"],
-      code_challenge_methods_supported: ["S256", "plain"],
+      code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
       scopes_supported: ["roon:control"]
     };
@@ -117,6 +121,8 @@ export class OAuthService {
     redirect_uri: string;
     code_challenge?: string;
     code_challenge_method?: string;
+    resource: string;
+    scope: string;
   }): string {
     const store = this.readStore();
     const client = store.clients.find((item) => item.client_id === params.client_id);
@@ -129,8 +135,20 @@ export class OAuthService {
       throw new ApiError("AUTH_INVALID", "Invalid redirect_uri for OAuth client", {}, 400);
     }
 
-    if (params.code_challenge_method && !["S256", "plain"].includes(params.code_challenge_method)) {
-      throw new ApiError("AUTH_INVALID", "Unsupported code_challenge_method", {}, 400);
+    if (!params.code_challenge || params.code_challenge_method !== "S256") {
+      throw new ApiError("AUTH_INVALID", "PKCE with S256 is required", {}, 400);
+    }
+
+    if (params.resource !== this.getExpectedResource()) {
+      throw new ApiError("AUTH_INVALID", "Invalid OAuth resource", {
+        expected: this.getExpectedResource()
+      }, 400);
+    }
+
+    if (!this.scopeIsSupported(params.scope)) {
+      throw new ApiError("AUTH_INVALID", "Unsupported OAuth scope", {
+        supported: ["roon:control"]
+      }, 400);
     }
 
     const code = randomToken(32);
@@ -141,6 +159,8 @@ export class OAuthService {
       redirect_uri: params.redirect_uri,
       code_challenge: params.code_challenge || null,
       code_challenge_method: params.code_challenge_method || null,
+      resource: params.resource,
+      scope: params.scope,
       expires_at: Date.now() + 5 * 60 * 1000
     });
     this.writeStore(store);
@@ -152,6 +172,7 @@ export class OAuthService {
     client_id: string;
     redirect_uri: string;
     code_verifier?: string;
+    resource: string;
   }): OAuthToken {
     const store = this.readStore();
     const codeIndex = store.codes.findIndex((item) => item.code === params.code);
@@ -163,6 +184,10 @@ export class OAuthService {
 
     if (code.client_id !== params.client_id || code.redirect_uri !== params.redirect_uri) {
       throw new ApiError("AUTH_INVALID", "OAuth code does not match client or redirect_uri", {}, 400);
+    }
+
+    if (params.resource !== code.resource || params.resource !== this.getExpectedResource()) {
+      throw new ApiError("AUTH_INVALID", "OAuth resource does not match authorization code", {}, 400);
     }
 
     if (code.code_challenge) {
@@ -181,6 +206,8 @@ export class OAuthService {
       access_token: randomToken(32),
       client_id: params.client_id,
       created_at: new Date().toISOString(),
+      resource: code.resource,
+      scope: code.scope,
       expires_at: Date.now() + 180 * 24 * 60 * 60 * 1000
     };
 
@@ -190,9 +217,23 @@ export class OAuthService {
     return token;
   }
 
-  tokenIsValid(accessToken: string): boolean {
+  tokenIsValid(
+    accessToken: string,
+    resource = this.getExpectedResource(),
+    requiredScope = "roon:control"
+  ): boolean {
     const store = this.readStore();
-    return store.tokens.some((token) => token.access_token === accessToken && !isExpired(token.expires_at));
+    return store.tokens.some(
+      (token) =>
+        token.access_token === accessToken &&
+        !isExpired(token.expires_at) &&
+        token.resource === resource &&
+        token.scope.split(/\s+/).includes(requiredScope)
+    );
+  }
+
+  getExpectedResource(): string {
+    return `${this.config.publicBaseUrl}/mcp`;
   }
 
   approvalPinMatches(value: string): boolean {
@@ -211,8 +252,20 @@ export class OAuthService {
       const parsed = JSON.parse(fs.readFileSync(this.storePath, "utf8")) as Partial<OAuthStore>;
       return {
         clients: Array.isArray(parsed.clients) ? parsed.clients : [],
-        codes: Array.isArray(parsed.codes) ? parsed.codes : [],
-        tokens: Array.isArray(parsed.tokens) ? parsed.tokens : []
+        codes: Array.isArray(parsed.codes)
+          ? parsed.codes.map((code) => ({
+              ...code,
+              resource: code.resource || this.getExpectedResource(),
+              scope: code.scope || "roon:control"
+            }))
+          : [],
+        tokens: Array.isArray(parsed.tokens)
+          ? parsed.tokens.map((token) => ({
+              ...token,
+              resource: token.resource || this.getExpectedResource(),
+              scope: token.scope || "roon:control"
+            }))
+          : []
       };
     } catch {
       return emptyStore();
@@ -222,5 +275,10 @@ export class OAuthService {
   private writeStore(store: OAuthStore): void {
     fs.mkdirSync(path.dirname(this.storePath), { recursive: true });
     fs.writeFileSync(this.storePath, JSON.stringify(store, null, 2));
+  }
+
+  private scopeIsSupported(scope: string): boolean {
+    const scopes = scope.split(/\s+/).filter(Boolean);
+    return scopes.length > 0 && scopes.every((item) => item === "roon:control");
   }
 }

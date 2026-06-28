@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { APP_VERSION } from "../config/version";
 
 export type ErrorCode =
   | "ROON_NOT_CONNECTED"
@@ -88,7 +89,7 @@ export function sendError(res: Response, error: ApiError): void {
 }
 
 export function notImplemented(feature: string): ApiError {
-  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v0.8.1`, {
+  return new ApiError("NOT_IMPLEMENTED", `${feature} is not implemented in v${APP_VERSION}`, {
     feature
   });
 }

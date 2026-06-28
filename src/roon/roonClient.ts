@@ -4,6 +4,7 @@ import RoonApi = require("node-roon-api");
 import RoonApiBrowse = require("node-roon-api-browse");
 import RoonApiTransport = require("node-roon-api-transport");
 import { AppConfig } from "../config/env";
+import { APP_VERSION } from "../config/version";
 import { Logger } from "../utils/logger";
 import { RoonZone } from "./roonTypes";
 
@@ -61,7 +62,7 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
   const roon = new RoonApi({
     extension_id: config.roonExtensionId,
     display_name: config.roonExtensionName,
-    display_version: "0.8.1",
+    display_version: APP_VERSION,
     publisher: "Local",
     email: "local@localhost",
     website: "http://localhost",

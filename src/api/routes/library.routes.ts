@@ -13,7 +13,8 @@ const ALLOWED_HIERARCHIES = new Set([
   "albums",
   "artists",
   "genres",
-  "composers"
+  "composers",
+  "playlists"
 ]);
 
 function stringQuery(value: unknown): string | undefined {

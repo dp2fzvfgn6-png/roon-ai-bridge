@@ -55,6 +55,7 @@ export function createOAuthRouter(context: ApiContext): Router {
     const codeChallenge = readString(req.query.code_challenge);
     const codeChallengeMethod = readString(req.query.code_challenge_method);
     const scope = readString(req.query.scope) || "roon:control";
+    const resource = readString(req.query.resource) || context.oauthService.getExpectedResource();
     const client = context.oauthService.getClient(clientId);
 
     if (responseType !== "code") {
@@ -97,6 +98,7 @@ export function createOAuthRouter(context: ApiContext): Router {
         <input type="hidden" name="scope" value="${htmlEscape(scope)}">
         <input type="hidden" name="code_challenge" value="${htmlEscape(codeChallenge)}">
         <input type="hidden" name="code_challenge_method" value="${htmlEscape(codeChallengeMethod)}">
+        <input type="hidden" name="resource" value="${htmlEscape(resource)}">
         <label for="pin">PIN de aprobación</label>
         <input id="pin" name="pin" type="password" autocomplete="one-time-code" autofocus required>
         <button type="submit">Autorizar ${htmlEscape(client.client_name)}</button>
@@ -120,7 +122,9 @@ export function createOAuthRouter(context: ApiContext): Router {
         client_id: readString(req.body.client_id),
         redirect_uri: redirectUri,
         code_challenge: readString(req.body.code_challenge) || undefined,
-        code_challenge_method: readString(req.body.code_challenge_method) || undefined
+        code_challenge_method: readString(req.body.code_challenge_method) || undefined,
+        resource: readString(req.body.resource) || context.oauthService.getExpectedResource(),
+        scope: readString(req.body.scope) || "roon:control"
       });
 
       const redirect = new URL(redirectUri);
@@ -147,7 +151,8 @@ export function createOAuthRouter(context: ApiContext): Router {
         code: readString(req.body.code),
         client_id: readString(req.body.client_id),
         redirect_uri: readString(req.body.redirect_uri),
-        code_verifier: readString(req.body.code_verifier) || undefined
+        code_verifier: readString(req.body.code_verifier) || undefined,
+        resource: readString(req.body.resource) || context.oauthService.getExpectedResource()
       });
 
       context.logger.info("OAuth token issued", {
@@ -157,7 +162,7 @@ export function createOAuthRouter(context: ApiContext): Router {
         access_token: token.access_token,
         token_type: "Bearer",
         expires_in: Math.max(1, Math.floor((token.expires_at - Date.now()) / 1000)),
-        scope: "roon:control"
+        scope: token.scope
       });
     } catch (error) {
       next(error);

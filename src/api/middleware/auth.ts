@@ -47,18 +47,25 @@ export function createAuthMiddleware(context: ApiContext) {
       if (req.path === "/mcp") {
         _res.setHeader(
           "WWW-Authenticate",
-          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource"`
+          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource", scope="roon:control"`
         );
       }
       next(new ApiError("AUTH_REQUIRED", "Missing bearer token"));
       return;
     }
 
-    if (!tokenMatches(provided, expected) && !context.oauthService.tokenIsValid(provided)) {
+    if (
+      !tokenMatches(provided, expected) &&
+      !context.oauthService.tokenIsValid(
+        provided,
+        context.oauthService.getExpectedResource(),
+        "roon:control"
+      )
+    ) {
       if (req.path === "/mcp") {
         _res.setHeader(
           "WWW-Authenticate",
-          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource"`
+          `Bearer resource_metadata="${context.config.publicBaseUrl}/.well-known/oauth-protected-resource", scope="roon:control"`
         );
       }
       next(new ApiError("AUTH_INVALID", "Invalid bearer token"));

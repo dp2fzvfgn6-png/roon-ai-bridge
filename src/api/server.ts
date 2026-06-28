@@ -6,6 +6,7 @@ import { Logger } from "../utils/logger";
 import { ApiError, sendError } from "../utils/errors";
 import { PlaylistService } from "../services/playlistService";
 import { OAuthService } from "../services/oauthService";
+import { RoonMediaService } from "../roon/roonMediaService";
 import { createRoonMcpServer } from "../mcp/server";
 import { createHealthRouter } from "./routes/health.routes";
 import { createRoonRouter } from "./routes/roon.routes";
@@ -16,7 +17,9 @@ import { createLibraryRouter } from "./routes/library.routes";
 import { createQueueRouter } from "./routes/queue.routes";
 import { createPlaylistsRouter } from "./routes/playlists.routes";
 import { createOAuthRouter } from "./routes/oauth.routes";
+import { createMediaRouter } from "./routes/media.routes";
 import { createAuthMiddleware } from "./middleware/auth";
+import { APP_VERSION } from "../config/version";
 
 export type ApiContext = {
   config: AppConfig;
@@ -24,6 +27,7 @@ export type ApiContext = {
   roonClient: RoonClient;
   playlistService: PlaylistService;
   oauthService: OAuthService;
+  mediaService: RoonMediaService;
 };
 
 export function createServer(context: ApiContext): express.Express {
@@ -80,21 +84,22 @@ export function createServer(context: ApiContext): express.Express {
   app.use("/roon", createPlaybackRouter(context));
   app.use("/roon", createVolumeRouter(context));
   app.use("/roon", createLibraryRouter(context));
+  app.use("/roon", createMediaRouter(context));
   app.use("/roon", createQueueRouter(context));
   app.use("/", createPlaylistsRouter(context));
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "History is not implemented in v0.8.1"));
+    next(new ApiError("NOT_IMPLEMENTED", `History is not implemented in v${APP_VERSION}`));
   });
 
   app.get("/preferences", (req, res, next) => {
     context.logger.warn("Preferences endpoint is not implemented yet");
-    next(new ApiError("NOT_IMPLEMENTED", "Preferences are not implemented in v0.8.1"));
+    next(new ApiError("NOT_IMPLEMENTED", `Preferences are not implemented in v${APP_VERSION}`));
   });
 
   app.use((req, res, next) => {
-    next(new ApiError("NOT_IMPLEMENTED", "Endpoint is not implemented in v0.8.1", {
+    next(new ApiError("NOT_IMPLEMENTED", `Endpoint is not implemented in v${APP_VERSION}`, {
       method: req.method,
       path: req.path
     }));

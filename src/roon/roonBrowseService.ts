@@ -8,7 +8,8 @@ export type BrowseHierarchy =
   | "albums"
   | "artists"
   | "genres"
-  | "composers";
+  | "composers"
+  | "playlists";
 
 export type BrowseItem = {
   title: string;
@@ -106,7 +107,7 @@ export type QueueActionInspection = {
 
 export const browseImplemented = true;
 
-function requireBrowse(roonClient: RoonClient): any {
+export function requireBrowse(roonClient: RoonClient): any {
   if (!roonClient.isCoreConnected()) {
     throw new ApiError("ROON_NOT_CONNECTED", "Roon Core is not connected");
   }
@@ -118,7 +119,7 @@ function requireBrowse(roonClient: RoonClient): any {
   return roonClient.getBrowse();
 }
 
-function browseCall(browse: any, opts: Record<string, unknown>): Promise<any> {
+export function browseCall(browse: any, opts: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
     browse.browse(opts, (error: string | false, body: any) => {
       if (error) {
@@ -130,7 +131,7 @@ function browseCall(browse: any, opts: Record<string, unknown>): Promise<any> {
   });
 }
 
-function loadCall(browse: any, opts: Record<string, unknown>): Promise<any> {
+export function loadCall(browse: any, opts: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
     browse.load(opts, (error: string | false, body: any) => {
       if (error) {
@@ -245,7 +246,7 @@ function actionItems(items: BrowseItem[]): BrowseItem[] {
   );
 }
 
-async function loadCurrentList(
+export async function loadCurrentList(
   browse: any,
   hierarchy: BrowseHierarchy | "search",
   sessionKey: string | undefined,

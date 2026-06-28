@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v1.html";
+const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v2.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const controlWidgetHtml = `
@@ -11,7 +11,8 @@ const controlWidgetHtml = `
     <p id="summary">Ask ChatGPT to list zones, search music, change playback, adjust volume, manage queue, or play a virtual playlist.</p>
   </section>
   <section class="panel">
-    <h2>Latest Tool Result</h2>
+    <h2 id="result-title">Latest Tool Result</h2>
+    <div id="cards"></div>
     <pre id="result">Waiting for a Roon action...</pre>
   </section>
 </main>
@@ -62,15 +63,153 @@ const controlWidgetHtml = `
     margin: 10px 0 0;
     font-size: 12px;
   }
+  .cards {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    border-top: 1px solid #e7ebf2;
+    padding-top: 10px;
+  }
+  .card:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .title {
+    margin: 0;
+    font-weight: 700;
+  }
+  .meta {
+    margin: 3px 0 0;
+    color: #5d687a;
+    font-size: 12px;
+  }
+  button {
+    border: 0;
+    border-radius: 7px;
+    padding: 8px 11px;
+    background: #172033;
+    color: white;
+    cursor: pointer;
+    font-weight: 700;
+  }
 </style>
 <script type="module">
   const result = document.getElementById("result");
+  const cards = document.getElementById("cards");
+  const resultTitle = document.getElementById("result-title");
+  let latestInput = {};
+  let requestId = 1;
+
+  function text(value) {
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  function callTool(name, args) {
+    window.parent.postMessage({
+      jsonrpc: "2.0",
+      id: requestId++,
+      method: "tools/call",
+      params: { name, arguments: args }
+    }, "*");
+  }
+
+  function renderMediaSearch(payload) {
+    if (!payload || !Array.isArray(payload.results)) return false;
+    resultTitle.textContent = "Roon Search Results";
+    cards.className = "cards";
+    cards.replaceChildren();
+    const zoneId = latestInput.zone_id;
+
+    for (const media of payload.results) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const copy = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "title";
+      title.textContent = text(media.title);
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = [
+        media.media_type,
+        media.subtitle,
+        media.source && media.source !== "unknown" ? media.source : null,
+        media.quality?.label
+      ].filter(Boolean).join(" · ");
+      copy.append(title, meta);
+      card.append(copy);
+
+      if (zoneId && media.result_id) {
+        const play = document.createElement("button");
+        play.type = "button";
+        play.textContent = "Play";
+        play.addEventListener("click", () => {
+          callTool("roon_play_media", {
+            result_id: media.result_id,
+            zone_id: zoneId
+          });
+        });
+        card.append(play);
+      }
+      cards.append(card);
+    }
+    result.hidden = true;
+    return true;
+  }
+
+  function renderZones(payload) {
+    if (!Array.isArray(payload)) return false;
+    if (!payload.every((item) => item && typeof item.zone_id === "string")) return false;
+    resultTitle.textContent = "Roon Zones";
+    cards.className = "cards";
+    cards.replaceChildren();
+    for (const zone of payload) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const copy = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "title";
+      title.textContent = text(zone.display_name);
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = [
+        zone.state,
+        zone.now_playing?.line1,
+        zone.now_playing?.line2
+      ].filter(Boolean).join(" · ");
+      copy.append(title, meta);
+      card.append(copy);
+      cards.append(card);
+    }
+    result.hidden = true;
+    return true;
+  }
+
+  function render(payload) {
+    cards.replaceChildren();
+    cards.className = "";
+    result.hidden = false;
+    resultTitle.textContent = "Latest Tool Result";
+    if (renderMediaSearch(payload) || renderZones(payload)) return;
+    result.textContent = JSON.stringify(payload, null, 2);
+  }
+
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const message = event.data;
     if (!message || message.jsonrpc !== "2.0") return;
+    if (message.method === "ui/notifications/tool-input") {
+      latestInput = message.params?.arguments ?? message.params ?? {};
+      return;
+    }
     if (message.method !== "ui/notifications/tool-result") return;
-    result.textContent = JSON.stringify(message.params?.structuredContent ?? message.params, null, 2);
+    const structured = message.params?.structuredContent ?? {};
+    render(structured.result ?? structured);
   }, { passive: true });
 </script>
 `.trim();
@@ -81,7 +220,7 @@ export function registerRoonAppResources(server: McpServer): void {
     ROON_CONTROL_WIDGET_URI,
     {
       title: "Roon Control",
-      description: "Minimal ChatGPT App widget for Roon AI Bridge."
+      description: "Interactive ChatGPT App widget for Roon AI Bridge."
     },
     async () => ({
       contents: [

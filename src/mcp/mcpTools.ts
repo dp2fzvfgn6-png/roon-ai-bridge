@@ -11,12 +11,14 @@ import { roonControlWidgetUri } from "./appResources";
 import { McpContext } from "./mcpContext";
 
 type ToolResult = {
+  structuredContent: Record<string, unknown>;
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 };
 
 function jsonToolResult(value: unknown, isError = false): ToolResult {
   return {
+    structuredContent: { result: value },
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
     isError
   };
@@ -78,6 +80,18 @@ const writeAnnotations = {
   destructiveHint: false
 };
 
+const destructiveAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: false,
+  destructiveHint: true
+};
+
+const structuredOutputSchema = {
+  outputSchema: {
+    result: z.unknown()
+  }
+};
+
 const widgetMeta = {
   ui: {
     resourceUri: roonControlWidgetUri,
@@ -92,6 +106,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Roon Status",
       description: "Return Roon Core connection status and service readiness.",
+      ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta
     },
@@ -103,6 +118,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "List Roon Zones",
       description: "List available Roon zones, now playing metadata and outputs.",
+      ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta
     },
@@ -114,6 +130,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Control Roon Playback",
       description: "Send play, pause, playpause, stop, next or previous to a Roon zone.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -134,6 +151,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Change Roon Volume",
       description: "Change Roon zone volume using relative or absolute mode when supported.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -164,7 +182,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_search",
     {
       title: "Search Roon",
-      description: "Search the Roon library and Roon-connected services exposed by Roon browse.",
+      description: "Legacy untyped Roon search. Prefer roon_search_media for new requests.",
+      ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -191,7 +210,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_play_by_query",
     {
       title: "Play Roon Query",
-      description: "Start playback in a zone from a Roon search query.",
+      description: "Legacy play-by-query tool. Prefer roon_search_media followed by roon_play_media.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -211,6 +231,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Get Roon Queue",
       description: "Read a Roon queue snapshot for a zone.",
+      ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -228,7 +249,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_queue_by_query",
     {
       title: "Queue Roon Query",
-      description: "Add a Roon search query next or to the end of the queue.",
+      description: "Legacy queue-by-query tool. Prefer roon_search_media followed by roon_add_media_to_queue.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -249,6 +271,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Roon Queue Item",
       description: "Start playback from a queue item ID in a Roon zone.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -267,6 +290,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "List Virtual Playlists",
       description: "List local virtual playlists stored by Roon AI Bridge.",
+      ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta
     },
@@ -281,6 +305,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Create Virtual Playlist",
       description: "Create a local virtual playlist made of Roon search-query tracks.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -310,6 +335,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Add Virtual Playlist Track",
       description: "Add one search-query track to a local virtual playlist.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -331,6 +357,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Virtual Playlist",
       description: "Play or enqueue a local virtual playlist in a Roon zone.",
+      ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
@@ -349,6 +376,124 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
           limit,
           session_key
         })
+      )
+  );
+
+  server.registerTool(
+    "roon_search_media",
+    {
+      title: "Search Roon Media",
+      description:
+        "Search Roon by media type and return temporary result_id references. Use this before playing or queueing a specific track, album, artist or playlist. Results include best-effort source and quality metadata.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        query: z.string().min(1),
+        types: z
+          .array(z.enum(["track", "album", "artist", "playlist"]))
+          .optional(),
+        zone_id: z.string().optional(),
+        count: z.number().int().min(1).max(25).default(10),
+        source_preference: z
+          .enum(["highest_quality", "streaming_first", "library_first"])
+          .default("highest_quality")
+      }
+    },
+    async ({ query, types, zone_id, count, source_preference }) =>
+      runTool(context, "roon_search_media", () =>
+        context.mediaService.search({
+          query,
+          types,
+          zoneId: zone_id,
+          count,
+          sourcePreference: source_preference
+        })
+      )
+  );
+
+  server.registerTool(
+    "roon_get_media_details",
+    {
+      title: "Get Roon Media Details",
+      description:
+        "Read the type, title, source, quality and expiry of a result_id returned by roon_search_media.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        result_id: z.string().min(1)
+      }
+    },
+    async ({ result_id }) =>
+      runTool(context, "roon_get_media_details", () =>
+        context.mediaService.get(result_id)
+      )
+  );
+
+  server.registerTool(
+    "roon_list_artist_releases",
+    {
+      title: "List Roon Artist Releases",
+      description:
+        "List album releases for an artist result_id. Use this to resolve requests such as the latest album or early albums before choosing a release to play.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        result_id: z.string().min(1),
+        zone_id: z.string().optional(),
+        count: z.number().int().min(1).max(100).default(50)
+      }
+    },
+    async ({ result_id, zone_id, count }) =>
+      runTool(context, "roon_list_artist_releases", () =>
+        context.mediaService.listArtistReleases(result_id, zone_id, count)
+      )
+  );
+
+  server.registerTool(
+    "roon_play_media",
+    {
+      title: "Play Selected Roon Media",
+      description:
+        "Start a new playback from an exact result_id in a Roon zone. This uses Roon Play Now and replaces the existing queue.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        result_id: z.string().min(1),
+        zone_id: z.string().min(1)
+      }
+    },
+    async ({ result_id, zone_id }) =>
+      runTool(context, "roon_play_media", () =>
+        context.mediaService.play(result_id, zone_id, "replace_queue")
+      )
+  );
+
+  server.registerTool(
+    "roon_add_media_to_queue",
+    {
+      title: "Add Selected Roon Media To Queue",
+      description:
+        "Add an exact result_id next or at the end of a Roon zone queue without replacing current playback.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        result_id: z.string().min(1),
+        zone_id: z.string().min(1),
+        position: z.enum(["next", "end"]).default("end")
+      }
+    },
+    async ({ result_id, zone_id, position }) =>
+      runTool(context, "roon_add_media_to_queue", () =>
+        context.mediaService.play(
+          result_id,
+          zone_id,
+          position === "next" ? "play_next" : "append"
+        )
       )
   );
 }
