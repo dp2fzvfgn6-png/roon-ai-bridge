@@ -69,7 +69,11 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "reproducir álbum",
     "reproducir artista",
     "reproducir canción",
-    "reproducir lista"
+    "reproducir lista",
+    "start radio",
+    "iniciar radio",
+    "shuffle",
+    "mezclar"
   ],
   play_next: [
     "add next",
@@ -177,12 +181,19 @@ function titleMatchesCategory(title: string, type: MediaType): boolean {
   return CATEGORY_TITLE[type].some((candidate) => normalize(candidate) === normalized);
 }
 
-function titleMatchesAction(title: string, mode: MediaActionMode): boolean {
-  const normalized = normalize(title);
-  return ACTION_TITLES[mode].some((candidate) => {
+function chooseAction(items: BrowseItem[], mode: MediaActionMode): BrowseItem | undefined {
+  for (const candidate of ACTION_TITLES[mode]) {
     const normalizedCandidate = normalize(candidate);
-    return normalized === normalizedCandidate || normalized.startsWith(`${normalizedCandidate} `);
-  });
+    const match = items.find((item) => {
+      const title = normalize(String(item.title || ""));
+      return (
+        item.item_key &&
+        (title === normalizedCandidate || title.startsWith(`${normalizedCandidate} `))
+      );
+    });
+    if (match) return match;
+  }
+  return undefined;
 }
 
 function selectableItems(items: BrowseItem[]): BrowseItem[] {
@@ -539,9 +550,7 @@ export class RoonMediaService {
         100
       );
       lastItems = loaded.items;
-      const action = loaded.items.find(
-        (item) => item.item_key && titleMatchesAction(String(item.title || ""), mode)
-      );
+      const action = chooseAction(loaded.items, mode);
       if (action?.item_key) {
         if (action.hint === "action") {
           return browseCall(browse, {
