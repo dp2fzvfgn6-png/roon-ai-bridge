@@ -554,10 +554,23 @@ export class RoonMediaService {
       const actionLists = loaded.items.filter(
         (item) => item.item_key && item.hint === "action_list"
       );
+      const sameTitleList = loaded.items.find(
+        (item) =>
+          item.item_key &&
+          item.hint === "list" &&
+          normalize(String(item.title || "")) === normalize(reference.title)
+      );
+      const soleNestedItem =
+        selectableItems(loaded.items).length === 1
+          ? selectableItems(loaded.items)[0]
+          : undefined;
       const actionList =
         actionLists.find((item) =>
           normalize(String(item.title || "")).startsWith("play")
-        ) || actionLists[0];
+        ) ||
+        actionLists[0] ||
+        sameTitleList ||
+        soleNestedItem;
       if (!actionList?.item_key) break;
       selected = actionList;
     }
