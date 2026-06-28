@@ -543,12 +543,16 @@ export class RoonMediaService {
         (item) => item.item_key && titleMatchesAction(String(item.title || ""), mode)
       );
       if (action?.item_key) {
-        return browseCall(browse, {
-          hierarchy: "search",
-          multi_session_key: sessionKey,
-          item_key: action.item_key,
-          zone_or_output_id: zoneId
-        });
+        if (action.hint === "action") {
+          return browseCall(browse, {
+            hierarchy: "search",
+            multi_session_key: sessionKey,
+            item_key: action.item_key,
+            zone_or_output_id: zoneId
+          });
+        }
+        selected = action;
+        continue;
       }
 
       const actionLists = loaded.items.filter(
