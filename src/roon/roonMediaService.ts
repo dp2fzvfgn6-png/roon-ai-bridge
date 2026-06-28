@@ -69,11 +69,7 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "reproducir álbum",
     "reproducir artista",
     "reproducir canción",
-    "reproducir lista",
-    "start radio",
-    "iniciar radio",
-    "shuffle",
-    "mezclar"
+    "reproducir lista"
   ],
   play_next: [
     "add next",
@@ -96,6 +92,18 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "añadir al final de la cola"
   ]
 };
+
+const ARTIST_CATALOG_ACTION_TITLES = [
+  "shuffle",
+  "mezclar",
+  "play artist",
+  "reproducir artista"
+];
+
+const RADIO_ACTION_TITLES = [
+  "start radio",
+  "iniciar radio"
+];
 
 const DEFAULT_TYPES: MediaType[] = ["track", "album", "artist", "playlist"];
 const REFERENCE_TTL_MS = 20 * 60 * 1000;
@@ -181,8 +189,8 @@ function titleMatchesCategory(title: string, type: MediaType): boolean {
   return CATEGORY_TITLE[type].some((candidate) => normalize(candidate) === normalized);
 }
 
-function chooseAction(items: BrowseItem[], mode: MediaActionMode): BrowseItem | undefined {
-  for (const candidate of ACTION_TITLES[mode]) {
+function chooseAction(items: BrowseItem[], candidates: string[]): BrowseItem | undefined {
+  for (const candidate of candidates) {
     const normalizedCandidate = normalize(candidate);
     const match = items.find((item) => {
       const title = normalize(String(item.title || ""));
@@ -284,21 +292,34 @@ export class RoonMediaService {
   async play(
     resultId: string,
     zoneId: string,
-    mode: MediaActionMode
+    mode: MediaActionMode,
+    artistMode: "catalog" | "radio" = "catalog"
   ): Promise<Record<string, unknown>> {
     getZoneOrThrow(this.roonClient, zoneId);
     const reference = this.getReference(resultId);
-    const result = await this.resolveAndRunAction(reference, zoneId, mode);
+    const result = await this.resolveAndRunAction(reference, zoneId, mode, artistMode);
 
     return {
       ok: !result.is_error,
       zone_id: zoneId,
       mode,
+      artist_mode: reference.media_type === "artist" ? artistMode : null,
       media: this.publicReference(reference),
       action: result.action || "none",
       message: result.message || null,
       is_error: typeof result.is_error === "boolean" ? result.is_error : null
     };
+  }
+
+  async startRadio(resultId: string, zoneId: string): Promise<Record<string, unknown>> {
+    const reference = this.getReference(resultId);
+    if (reference.media_type !== "artist") {
+      throw new ApiError("INVALID_SEARCH_QUERY", "Radio currently requires an artist result_id", {
+        result_id: resultId,
+        media_type: reference.media_type
+      });
+    }
+    return this.play(resultId, zoneId, "replace_queue", "radio");
   }
 
   async listArtistReleases(
@@ -526,7 +547,8 @@ export class RoonMediaService {
   private async resolveAndRunAction(
     reference: MediaReference,
     zoneId: string,
-    mode: MediaActionMode
+    mode: MediaActionMode,
+    artistMode: "catalog" | "radio"
   ): Promise<any> {
     const browse = requireBrowse(this.roonClient);
     const sessionKey = this.sessionKey(`action-${mode}`);
@@ -550,7 +572,13 @@ export class RoonMediaService {
         100
       );
       lastItems = loaded.items;
-      const action = chooseAction(loaded.items, mode);
+      const candidates =
+        mode === "replace_queue" && reference.media_type === "artist"
+          ? artistMode === "radio"
+            ? RADIO_ACTION_TITLES
+            : ARTIST_CATALOG_ACTION_TITLES
+          : ACTION_TITLES[mode];
+      const action = chooseAction(loaded.items, candidates);
       if (action?.item_key) {
         if (action.hint === "action") {
           return browseCall(browse, {

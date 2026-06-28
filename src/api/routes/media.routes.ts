@@ -122,7 +122,28 @@ export function createMediaRouter(context: ApiContext): Router {
         zoneId,
         mode
       });
-      res.json(await context.mediaService.play(req.params.result_id, zoneId, mode));
+      const artistMode = req.body?.artist_mode === "radio" ? "radio" : "catalog";
+      res.json(
+        await context.mediaService.play(
+          req.params.result_id,
+          zoneId,
+          mode,
+          artistMode
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/media/:result_id/radio", async (req, res, next) => {
+    try {
+      const zoneId = optionalString(req.body?.zone_id) || "";
+      context.logger.info("Artist radio request received", {
+        resultId: req.params.result_id,
+        zoneId
+      });
+      res.json(await context.mediaService.startRadio(req.params.result_id, zoneId));
     } catch (error) {
       next(error);
     }

@@ -457,7 +457,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Play Selected Roon Media",
       description:
-        "Start a new playback from an exact result_id in a Roon zone. This uses Roon Play Now and replaces the existing queue.",
+        "Start a new playback from an exact result_id in a Roon zone and replace the existing queue. For an artist, play only that artist's catalog using Roon Shuffle; use roon_start_radio for similar music.",
       ...structuredOutputSchema,
       annotations: destructiveAnnotations,
       _meta: widgetMeta,
@@ -469,6 +469,26 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     async ({ result_id, zone_id }) =>
       runTool(context, "roon_play_media", () =>
         context.mediaService.play(result_id, zone_id, "replace_queue")
+      )
+  );
+
+  server.registerTool(
+    "roon_start_radio",
+    {
+      title: "Start Roon Artist Radio",
+      description:
+        "Start Roon Radio from an artist result_id. This intentionally includes similar artists; use roon_play_media to play only the selected artist.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        result_id: z.string().min(1),
+        zone_id: z.string().min(1)
+      }
+    },
+    async ({ result_id, zone_id }) =>
+      runTool(context, "roon_start_radio", () =>
+        context.mediaService.startRadio(result_id, zone_id)
       )
   );
 
