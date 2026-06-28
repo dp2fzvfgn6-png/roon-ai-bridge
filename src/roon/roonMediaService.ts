@@ -189,6 +189,31 @@ function selectableItems(items: BrowseItem[]): BrowseItem[] {
   return items.filter((item) => item.item_key && item.hint !== "header");
 }
 
+function itemsWithSourceContext(items: BrowseItem[]): BrowseItem[] {
+  let currentSource: MediaSource = "unknown";
+  return items.map((item) => {
+    const explicit = inferMediaSource(item);
+    if (explicit.source !== "unknown") currentSource = explicit.source;
+
+    const normalizedTitle = normalize(String(item.title || ""));
+    if (normalizedTitle === "library" || normalizedTitle === "biblioteca") {
+      currentSource = "library";
+    } else if (normalizedTitle.includes("tidal")) {
+      currentSource = "tidal";
+    } else if (normalizedTitle.includes("qobuz")) {
+      currentSource = "qobuz";
+    }
+
+    if (!item.item_key || explicit.source !== "unknown" || currentSource === "unknown") {
+      return item;
+    }
+    return {
+      ...item,
+      source_context: currentSource
+    };
+  });
+}
+
 export class RoonMediaService {
   private readonly references = new Map<string, MediaReference>();
 
@@ -346,7 +371,7 @@ export class RoonMediaService {
         sessionKey: this.sessionKey("playlists")
       });
       const normalizedQuery = normalize(query);
-      return selectableItems(playlistBrowse.items)
+      return selectableItems(itemsWithSourceContext(playlistBrowse.items))
         .filter((item) => normalize(`${item.title} ${item.subtitle || ""}`).includes(normalizedQuery))
         .slice(0, count);
     }
@@ -381,7 +406,7 @@ export class RoonMediaService {
     if (selected.action !== "list") return [];
 
     const loaded = await loadCurrentList(browse, "search", sessionKey, 0, count);
-    return selectableItems(loaded.items);
+    return selectableItems(itemsWithSourceContext(loaded.items));
   }
 
   private registerReference(
@@ -459,13 +484,22 @@ export class RoonMediaService {
     const loaded = await loadCurrentList(browse, "search", sessionKey, 0, 100);
     const title = normalize(reference.title);
     const subtitle = normalize(reference.subtitle || "");
-    const candidates = selectableItems(loaded.items);
+    const candidates = selectableItems(itemsWithSourceContext(loaded.items));
+    const sourceMatches = (item: BrowseItem): boolean => {
+      if (reference.source === "unknown") return true;
+      return inferMediaSource(item).source === reference.source;
+    };
     const exact = candidates.find(
       (item) =>
         normalize(String(item.title || "")) === title &&
-        (!subtitle || normalize(String(item.subtitle || "")) === subtitle)
+        (!subtitle || normalize(String(item.subtitle || "")) === subtitle) &&
+        sourceMatches(item)
     );
-    const titleOnly = candidates.find((item) => normalize(String(item.title || "")) === title);
+    const titleOnly = candidates.find(
+      (item) =>
+        normalize(String(item.title || "")) === title &&
+        sourceMatches(item)
+    );
     const ordinal = candidates[reference.ordinal];
     const resolved = exact || titleOnly || ordinal;
 

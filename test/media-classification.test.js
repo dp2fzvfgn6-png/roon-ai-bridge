@@ -35,3 +35,17 @@ test("keeps unknown source and quality explicit", () => {
   });
   assert.equal(inferMediaQuality(item), null);
 });
+
+test("uses inherited browse section source context", () => {
+  assert.deepEqual(
+    inferMediaSource({
+      title: "Example Track",
+      subtitle: "Example Artist",
+      source_context: "tidal"
+    }),
+    {
+      source: "tidal",
+      confidence: "high"
+    }
+  );
+});
