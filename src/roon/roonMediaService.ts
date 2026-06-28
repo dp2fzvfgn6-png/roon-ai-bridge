@@ -551,12 +551,13 @@ export class RoonMediaService {
         });
       }
 
-      const actionList = loaded.items.find(
-        (item) =>
-          item.item_key &&
-          item.hint === "action_list" &&
-          normalize(String(item.title || "")).startsWith("play")
+      const actionLists = loaded.items.filter(
+        (item) => item.item_key && item.hint === "action_list"
       );
+      const actionList =
+        actionLists.find((item) =>
+          normalize(String(item.title || "")).startsWith("play")
+        ) || actionLists[0];
       if (!actionList?.item_key) break;
       selected = actionList;
     }
