@@ -258,7 +258,7 @@ Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-pl
 
 ## MCP Tools
 
-v0.6 added core local features through an MCP stdio server. v0.8 exposes the same MCP server over HTTP at `/mcp` for ChatGPT app development.
+v0.6 added core local features through an MCP stdio server. v0.8 exposes the same MCP server over HTTP at `/mcp`, and v0.8.1 adds OAuth for a private ChatGPT app.
 
 Remote MCP endpoint:
 
@@ -266,7 +266,7 @@ Remote MCP endpoint:
 https://roonia.ipchome.com/mcp
 ```
 
-It requires the same Bearer token as the HTTP API.
+ChatGPT uses an OAuth access token. Direct administrative tests can use the static `API_TOKEN`.
 
 Run from `/opt/roon-ai-bridge` after building:
 
@@ -335,7 +335,7 @@ The API checks whether the zone has outputs with Roon volume control.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist but are not implemented in v0.8:
+These endpoints exist but are not implemented in v0.8.1:
 
 - `GET /history`
 - `GET /preferences`

@@ -8,7 +8,8 @@
 - v0.6: MCP server.
 - v0.7: HTTP API key auth for reverse proxy use.
 - v0.8: ChatGPT App remote MCP endpoint and minimal widget.
-- v0.9: ChatGPT App polish, OAuth and submission readiness.
+- v0.8.1: private ChatGPT App OAuth flow.
+- v0.9: ChatGPT App behavior, OAuth hardening and submission readiness.
 
 ## v0.1 Implemented
 
@@ -221,4 +222,23 @@ See [v0.7 Validation](v0.7-validation.md).
 
 ## v0.8 Validated
 
-See [v0.8 Validation](v0.8-validation.md).
+See the historical [v0.8 Validation](https://github.com/dp2fzvfgn6-png/roon-ai-bridge/blob/v0.8.0/docs/v0.8-validation.md) document in the `v0.8.0` tag.
+
+## v0.8.1 Scope
+
+- Add OAuth discovery metadata for the MCP resource and authorization server.
+- Support dynamic client registration for ChatGPT.
+- Implement authorization code with PKCE.
+- Protect authorization with a private local approval PIN.
+- Persist OAuth clients, short-lived codes and access tokens in `data/oauth-store.json`.
+
+## v0.8.1 Validated
+
+The private app was connected and authorized from ChatGPT Apps successfully. See [v0.8.1 Validation](v0.8.1-validation.md).
+
+## Known v0.8.1 Limitations
+
+- Tokens are not yet bound to the OAuth `resource` value.
+- Scope and audience are not yet enforced when an MCP request is authorized.
+- Refresh tokens, revocation and per-user identities are not implemented.
+- Tool selection, result quality and widget behavior still need app-level iteration.

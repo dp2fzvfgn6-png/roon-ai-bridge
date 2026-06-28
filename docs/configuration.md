@@ -41,7 +41,7 @@ ENABLE_AUTH=true
 API_TOKEN=<PASTE_GENERATED_TOKEN_HERE>
 ```
 
-When auth is enabled, `/health` remains public. All other HTTP endpoints require:
+When auth is enabled, `/health`, `/privacy`, `/.well-known/*` and `/oauth/*` remain public. Roon, playlist and MCP endpoints require:
 
 ```http
 Authorization: Bearer <API_TOKEN>
@@ -60,6 +60,8 @@ OAUTH_APPROVAL_PIN=<PRIVATE_PIN_FOR_APPROVING_CHATGPT>
 ```
 
 If `OAUTH_APPROVAL_PIN` is empty, the authorization page accepts `API_TOKEN`.
+
+OAuth clients, authorization codes and access tokens are persisted in `data/oauth-store.json`. v0.8.1 is intended for one private installation; it does not yet provide per-user accounts, refresh tokens or token revocation.
 
 ## Docker Compose
 

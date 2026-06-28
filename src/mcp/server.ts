@@ -8,7 +8,7 @@ export function createRoonMcpServer(context: McpContext): McpServer {
   const server = new McpServer(
     {
       name: "roon-ai-bridge",
-      version: "0.8.0"
+      version: "0.8.1"
     },
     {
       instructions:

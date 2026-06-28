@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.8 keeps the validated v0.1 control surface, v0.2 library browse, v0.3 search/play-by-query, v0.4 queue management, v0.5 local virtual playlists, v0.6 local MCP tools, v0.7 Bearer-token authentication, and adds a remote MCP endpoint plus a minimal Apps SDK widget for a ChatGPT app.
+Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.8.1 keeps the validated Roon features from v0.1 through v0.7, adds the v0.8 remote MCP endpoint and Apps SDK widget, and adds OAuth authorization for a private ChatGPT app.
 
-This project does not expose anything to the internet by itself. v0.8 does not implement OpenAI API calls, OAuth, Cloudflare automation, direct TIDAL write access or advanced search ranking.
+This project does not expose anything to the internet by itself. v0.8.1 does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts, refresh tokens or advanced search ranking.
 
 ## Architecture
 
@@ -25,9 +25,9 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.8 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
+v0.8.1 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
 
-## v0.8 Scope
+## v0.8.1 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -49,6 +49,8 @@ v0.8 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
 - Register a minimal Apps SDK widget resource at `ui://roon-ai-bridge/control-v1.html`.
+- Publish OAuth discovery metadata and support dynamic client registration.
+- Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Expose `GET /privacy` as a plain text privacy notice for app setup.
 - Expose a local HTTP API on a configurable port.
 - Return homogeneous API errors.
@@ -80,7 +82,7 @@ OAUTH_ISSUER=https://roonia.ipchome.com
 OAUTH_APPROVAL_PIN=
 ```
 
-`ENABLE_MCP` is reserved for runtime signalling. v0.8 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
+`ENABLE_MCP` is reserved for runtime signalling. v0.8.1 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
 
 `OAUTH_APPROVAL_PIN` is used when authorizing ChatGPT. If it is empty, the authorization page accepts `API_TOKEN`.
 
@@ -125,7 +127,7 @@ Full documentation lives in [docs/](docs/README.md):
 - [v0.5 validation](docs/v0.5-validation.md)
 - [v0.6 validation](docs/v0.6-validation.md)
 - [v0.7 validation](docs/v0.7-validation.md)
-- [v0.8 validation](docs/v0.8-validation.md)
+- [v0.8.1 validation](docs/v0.8.1-validation.md)
 - [ChatGPT App](docs/chatgpt-app.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Roadmap](docs/roadmap.md)
@@ -397,7 +399,7 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
 
 ## MCP Server And ChatGPT App
 
-v0.6 added a local MCP stdio server. v0.8 adds a remote MCP endpoint at `/mcp` for ChatGPT app development.
+v0.6 added a local MCP stdio server. v0.8 added remote MCP at `/mcp`; v0.8.1 adds OAuth for ChatGPT Apps.
 
 Build first:
 
@@ -427,7 +429,7 @@ Implemented MCP tools:
 - `roon_add_virtual_playlist_track`
 - `roon_play_virtual_playlist`
 
-Do not expose the MCP process to untrusted clients yet. Auth and remote access are planned for later phases.
+Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
 
 Remote MCP endpoint:
 
@@ -435,17 +437,17 @@ Remote MCP endpoint:
 https://roonia.ipchome.com/mcp
 ```
 
-It requires the same Bearer token as the HTTP API:
+ChatGPT uses an OAuth access token. Administrative API calls may still use `API_TOKEN`:
 
 ```http
-Authorization: Bearer <API_TOKEN>
+Authorization: Bearer <access_token-or-API_TOKEN>
 ```
 
 See [ChatGPT App](docs/chatgpt-app.md) for setup notes.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.8:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.8.1:
 
 - `GET /history`
 - `GET /preferences`
@@ -456,7 +458,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "History is not implemented in v0.8",
+    "message": "History is not implemented in v0.8.1",
     "details": {}
   }
 }
@@ -487,7 +489,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.6: MCP server.
 - v0.7: HTTP API key auth for reverse proxy use.
 - v0.8: ChatGPT App remote MCP endpoint and minimal widget.
-- v0.9: ChatGPT App polish, OAuth and submission readiness.
+- v0.8.1: private ChatGPT App OAuth flow.
+- v0.9: ChatGPT App behavior, OAuth hardening and submission readiness.
 
 ## Security
 

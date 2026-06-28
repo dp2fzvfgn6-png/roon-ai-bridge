@@ -1,6 +1,6 @@
 # MCP Server
 
-v0.6 adds a local MCP stdio server. v0.8 adds a remote Streamable HTTP MCP endpoint for ChatGPT app development.
+v0.6 adds a local MCP stdio server. v0.8 adds remote Streamable HTTP MCP, and v0.8.1 adds OAuth for a private ChatGPT app.
 
 A local MCP client can launch stdio as a command from the LXC or another trusted shell that has access to the project.
 
@@ -22,7 +22,7 @@ Remote MCP endpoint:
 https://roonia.ipchome.com/mcp
 ```
 
-The remote endpoint is protected by the same Bearer token middleware as the HTTP API.
+The remote endpoint accepts OAuth access tokens issued to ChatGPT. The administrative `API_TOKEN` remains valid for direct testing.
 
 Implemented tools:
 
@@ -40,4 +40,4 @@ Implemented tools:
 - `roon_add_virtual_playlist_track`
 - `roon_play_virtual_playlist`
 
-Future phases still need OAuth and per-user authorization before broader app distribution.
+Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.
