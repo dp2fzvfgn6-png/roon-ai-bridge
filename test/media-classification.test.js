@@ -4,7 +4,8 @@ const {
   chooseMediaAction,
   inferConfiguredStreamingSource,
   inferMediaQuality,
-  inferMediaSource
+  inferMediaSource,
+  mediaRelevanceScore
 } = require("../dist/roon/roonMediaService");
 
 test("classifies TIDAL and high-resolution quality metadata", () => {
@@ -54,6 +55,32 @@ test("keeps artist catalog playback separate from artist radio", () => {
   assert.equal(
     chooseMediaAction(actions, "artist", "replace_queue", "radio").title,
     "Start Radio"
+  );
+});
+
+test("ranks matching artist metadata above an unrelated exact album title", () => {
+  const unrelatedAlbum = {
+    result_id: "one",
+    media_type: "album",
+    title: "Bad Bunny",
+    subtitle: "[[30115166|Maleigh Zan]]",
+    image_key: null,
+    source: "tidal",
+    source_confidence: "medium",
+    quality: null,
+    playable: true,
+    expires_at: new Date().toISOString()
+  };
+  const artistAlbum = {
+    ...unrelatedAlbum,
+    result_id: "two",
+    title: "YHLQMDLG",
+    subtitle: "[[9936250|Bad Bunny]]"
+  };
+
+  assert.ok(
+    mediaRelevanceScore(artistAlbum, "Bad Bunny") >
+      mediaRelevanceScore(unrelatedAlbum, "Bad Bunny")
   );
 });
 

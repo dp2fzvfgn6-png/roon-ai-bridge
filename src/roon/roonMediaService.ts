@@ -112,6 +112,7 @@ const MAX_REFERENCES = 2000;
 
 function normalize(value: string): string {
   return value
+    .replace(/\[\[\d+\|([^\]]+)\]\]/g, "$1")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -190,7 +191,7 @@ export function inferMediaQuality(item: BrowseItem): MediaQuality | null {
 
 function qualityScore(quality: MediaQuality | null): number {
   if (!quality) return 0;
-  return (quality.bit_depth || 0) * 1000000 + (quality.sample_rate_hz || 0);
+  return (quality.bit_depth || 0) * 100 + (quality.sample_rate_hz || 0) / 1000;
 }
 
 function sourceScore(source: MediaSource, preference: SourcePreference): number {
@@ -201,8 +202,37 @@ function sourceScore(source: MediaSource, preference: SourcePreference): number 
   return source === "tidal" ? 20 : source === "qobuz" ? 15 : source === "library" ? 10 : 0;
 }
 
-function mediaResultScore(result: MediaResult, preference: SourcePreference): number {
-  return qualityScore(result.quality) + sourceScore(result.source, preference);
+export function mediaRelevanceScore(result: MediaResult, query: string): number {
+  const normalizedQuery = normalize(query);
+  const title = normalize(result.title);
+  const subtitle = normalize(result.subtitle || "");
+  const queryTokens = normalizedQuery.split(" ").filter(Boolean);
+  let score = 0;
+
+  if (result.media_type === "artist" && title === normalizedQuery) score += 2500;
+  if (subtitle === normalizedQuery) score += 1800;
+  if (title === normalizedQuery) score += 1600;
+  if (subtitle.startsWith(`${normalizedQuery},`) || subtitle.startsWith(`${normalizedQuery} /`)) {
+    score += 1300;
+  } else if (subtitle.includes(normalizedQuery)) {
+    score += 900;
+  }
+  if (title.includes(normalizedQuery) && title !== normalizedQuery) score += 700;
+  score += queryTokens.filter((token) => title.includes(token)).length * 80;
+  score += queryTokens.filter((token) => subtitle.includes(token)).length * 100;
+  return score;
+}
+
+function mediaResultScore(
+  result: MediaResult,
+  preference: SourcePreference,
+  query: string
+): number {
+  return (
+    mediaRelevanceScore(result, query) * 1000000 +
+    qualityScore(result.quality) * 100 +
+    sourceScore(result.source, preference)
+  );
 }
 
 function titleMatchesCategory(title: string, type: MediaType): boolean {
@@ -315,7 +345,11 @@ export class RoonMediaService {
       }
     }
 
-    results.sort((a, b) => mediaResultScore(b, preference) - mediaResultScore(a, preference));
+    results.sort(
+      (a, b) =>
+        mediaResultScore(b, preference, query) -
+        mediaResultScore(a, preference, query)
+    );
 
     return {
       query,
