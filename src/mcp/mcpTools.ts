@@ -5,6 +5,7 @@ import { controlPlayback } from "../roon/roonPlaybackService";
 import { getQueueSnapshot, playQueueItemFromHere } from "../roon/roonQueueService";
 import { listZones } from "../roon/roonZoneService";
 import { changeZoneVolume } from "../roon/roonVolumeService";
+import { transferZonePlayback } from "../roon/roonTransferService";
 import { ApiError } from "../utils/errors";
 import { parsePlaybackCommand, parseVolumeMode, parseVolumeValue } from "../utils/validation";
 import { roonControlWidgetUri } from "./appResources";
@@ -184,6 +185,32 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
           }))
         };
       })
+  );
+
+  server.registerTool(
+    "roon_transfer_playback",
+    {
+      title: "Transfer Roon Playback",
+      description:
+        "Use this when the user asks to move, transfer, pass or continue what is currently playing from one Roon zone to another. This natively transfers the current queue and playback state; do not search for the music or rebuild the queue.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        source_zone_id: z
+          .string()
+          .min(1)
+          .describe("Zone ID currently owning the playback and queue."),
+        target_zone_id: z
+          .string()
+          .min(1)
+          .describe("Different zone ID that should receive the playback and queue.")
+      }
+    },
+    async ({ source_zone_id, target_zone_id }) =>
+      runTool(context, "roon_transfer_playback", () =>
+        transferZonePlayback(context.roonClient, source_zone_id, target_zone_id)
+      )
   );
 
   server.registerTool(

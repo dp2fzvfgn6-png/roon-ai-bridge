@@ -275,3 +275,13 @@ See [v0.9 Validation](v0.9-validation.md).
 
 - Improve source and quality inspection beyond heuristic catalog markers.
 - Refresh the ChatGPT app connector and test the new model-visible tool selection.
+
+## v0.9.1
+
+- Expose Roon's native zone playback transfer through HTTP and MCP.
+- Add `roon_transfer_playback` as the single tool for moving current playback
+  and its queue between zones.
+- Instruct ChatGPT never to search for media or rebuild a queue when the user
+  requests a zone transfer.
+
+See [v0.9.1 Validation](v0.9.1-validation.md).

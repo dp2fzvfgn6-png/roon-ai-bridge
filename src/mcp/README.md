@@ -30,6 +30,7 @@ Implemented tools:
 - `roon_list_zones`
 - `roon_control_playback`
 - `roon_change_volume`
+- `roon_transfer_playback`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`

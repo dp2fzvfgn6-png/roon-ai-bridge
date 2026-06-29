@@ -328,6 +328,7 @@ Implemented tools:
 - `roon_list_zones`
 - `roon_control_playback`
 - `roon_change_volume`
+- `roon_transfer_playback`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`
@@ -337,6 +338,12 @@ Implemented tools:
 - `roon_create_virtual_playlist`
 - `roon_add_virtual_playlist_track`
 - `roon_play_virtual_playlist`
+- `roon_search_media`
+- `roon_get_media_details`
+- `roon_list_artist_releases`
+- `roon_play_media`
+- `roon_start_radio`
+- `roon_add_media_to_queue`
 
 ## Zones
 
@@ -358,6 +365,17 @@ Supported commands:
 - `pause`
 - `playpause`
 - `stop`
+
+## Zone Playback Transfer
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/transfer \
+  -H "Content-Type: application/json" \
+  -d '{"source_zone_id":"<SOURCE_ZONE_ID>","target_zone_id":"<TARGET_ZONE_ID>"}'
+```
+
+The endpoint uses Roon's native `transfer_zone` command to move the current
+queue and playback state. It does not reconstruct the queue from metadata.
 - `next`
 - `previous`
 

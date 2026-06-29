@@ -115,6 +115,14 @@ Pausa la zona Despacho.
 Expected tool: `roon_control_playback`.
 
 ```text
+Traslada lo que esta sonando en el Despacho a la Cocina.
+```
+
+Expected flow: `roon_list_zones` if IDs are not already known, followed by one
+`roon_transfer_playback` call. The app must not search for the current music or
+rebuild the destination queue.
+
+```text
 Busca Bad Bunny en Roon.
 ```
 

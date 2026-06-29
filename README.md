@@ -1,6 +1,6 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.9 adds typed media search, temporary `result_id` references, deterministic track/album/artist playback, explicit artist radio, structured MCP results and an interactive ChatGPT widget.
+Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.9.1 adds native zone playback transfer to the v0.9 typed media, structured MCP and ChatGPT widget foundation.
 
 This project does not expose anything to the internet by itself. v0.9 does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts, refresh tokens or direct Roon queue editing.
 
@@ -392,6 +392,17 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/control \
   -d '{"command":"playpause"}'
 ```
 
+Transfer the current queue and playback to another zone:
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/transfer \
+  -H "Content-Type: application/json" \
+  -d '{"source_zone_id":"<SOURCE_ZONE_ID>","target_zone_id":"<TARGET_ZONE_ID>"}'
+```
+
+This calls Roon's native `transfer_zone` operation. It does not search for the
+current track or rebuild the destination queue.
+
 Relative volume:
 
 ```bash
@@ -430,6 +441,7 @@ Implemented MCP tools:
 - `roon_list_zones`
 - `roon_control_playback`
 - `roon_change_volume`
+- `roon_transfer_playback`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`
@@ -447,6 +459,10 @@ Implemented MCP tools:
 - `roon_add_media_to_queue`
 
 Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
+
+For requests such as "move what is playing in the office to the kitchen",
+ChatGPT must call `roon_transfer_playback` once. The MCP server instructions
+explicitly prohibit rebuilding the queue for a zone-transfer request.
 
 Remote MCP endpoint:
 

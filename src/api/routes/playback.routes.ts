@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ApiContext } from "../server";
 import { controlPlayback } from "../../roon/roonPlaybackService";
 import { playByQuery } from "../../roon/roonBrowseService";
+import { transferZonePlayback } from "../../roon/roonTransferService";
 import { parsePlaybackCommand } from "../../utils/validation";
 
 export function createPlaybackRouter(context: ApiContext): Router {
@@ -40,6 +41,26 @@ export function createPlaybackRouter(context: ApiContext): Router {
           query,
           sessionKey
         })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/zones/transfer", async (req, res, next) => {
+    try {
+      const sourceZoneId =
+        typeof req.body?.source_zone_id === "string" ? req.body.source_zone_id : "";
+      const targetZoneId =
+        typeof req.body?.target_zone_id === "string" ? req.body.target_zone_id : "";
+
+      context.logger.info("Zone playback transfer received", {
+        sourceZoneId,
+        targetZoneId
+      });
+
+      res.json(
+        await transferZonePlayback(context.roonClient, sourceZoneId, targetZoneId)
       );
     } catch (error) {
       next(error);

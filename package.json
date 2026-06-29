@@ -1,6 +1,6 @@
 {
   "name": "roon-ai-bridge",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Local HTTP bridge for controlling Roon zones on a LAN.",
   "main": "dist/index.js",
   "scripts": {
