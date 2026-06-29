@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.8.1 code is intentionally modular even though the current feature set is small.
+The v0.9 code is intentionally modular even though the current feature set is small.
 
 ```text
 src/
@@ -16,6 +16,7 @@ src/
     roonPlaybackService.ts
     roonVolumeService.ts
     roonTypes.ts
+    roonMediaService.ts
   api/
     server.ts
     routes/
@@ -28,6 +29,7 @@ src/
       queue.routes.ts
       playlists.routes.ts
       oauth.routes.ts
+      media.routes.ts
   services/
     oauthService.ts
     playlistService.ts
@@ -55,6 +57,7 @@ src/
 
 - `config`: environment parsing and runtime settings.
 - `roon`: Roon Core discovery, transport service, zone mapping, playback and volume.
+- `roonMediaService`: typed search, temporary media references and deterministic Browse actions.
 - `api`: Express server and route definitions.
 - `services`: OAuth persistence and application services such as virtual playlists.
 - `db`: future persistence adapter and schema.
@@ -77,7 +80,8 @@ src/
 11. The browse service is available when Roon exposes `RoonApiBrowse`.
 12. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
 13. `src/mcp/index.ts` can be launched separately with `npm run mcp` to expose the same core capabilities as MCP stdio tools.
-14. `POST /mcp` and `GET /mcp` expose the same MCP tool set over Streamable HTTP for ChatGPT app development.
+14. Typed search creates short-lived `result_id` references and re-resolves selected media in a fresh Roon Browse session before acting.
+15. `POST /mcp` and `GET /mcp` expose the same MCP tool set over Streamable HTTP for ChatGPT app development.
 
 ## Persistence Plan
 

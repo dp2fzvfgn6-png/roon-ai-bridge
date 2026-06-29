@@ -22,7 +22,7 @@ logger.info("MCP configuration loaded", {
 const roonClient = createRoonClient(config, logger);
 const playlistService = new PlaylistService(config);
 const oauthService = new OAuthService(config);
-const mediaService = new RoonMediaService(roonClient);
+const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 
 roonClient.start();
 

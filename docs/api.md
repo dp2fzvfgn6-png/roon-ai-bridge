@@ -138,8 +138,56 @@ Supported library hierarchies:
 - `genres`
 - `composers`
 - `internet_radio`
+- `playlists`
 
-## Search
+## Typed Media Search
+
+```bash
+curl -G "http://localhost:3000/roon/media/search" \
+  --data-urlencode "q=Bad Bunny" \
+  --data-urlencode "types=track,album,artist" \
+  --data-urlencode "zone_id=<ZONE_ID>" \
+  --data-urlencode "source_preference=streaming_first"
+```
+
+Supported types:
+
+- `track`
+- `album`
+- `artist`
+- `playlist`
+
+Every result includes a temporary `result_id`. Use it within 20 minutes:
+
+```bash
+curl "http://localhost:3000/roon/media/<RESULT_ID>"
+
+curl -X POST "http://localhost:3000/roon/media/<RESULT_ID>/play" \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id":"<ZONE_ID>","mode":"replace_queue"}'
+```
+
+Playback modes:
+
+- `replace_queue`
+- `play_next`
+- `append`
+
+For artist results, normal playback uses the artist catalog. Similar-music radio is explicit:
+
+```bash
+curl -X POST "http://localhost:3000/roon/media/<RESULT_ID>/radio" \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id":"<ZONE_ID>"}'
+```
+
+Artist releases:
+
+```bash
+curl "http://localhost:3000/roon/media/<ARTIST_RESULT_ID>/releases?zone_id=<ZONE_ID>"
+```
+
+## Legacy Search
 
 ```bash
 curl "http://localhost:3000/roon/search?q=massive%20attack&count=10"
@@ -152,7 +200,7 @@ Optional parameters:
 - `count`: defaults to `25`, max `100`.
 - `session_key`: keeps related browse/search calls in the same Roon browse session.
 
-## Play By Query
+## Legacy Play By Query
 
 ```bash
 curl -X POST http://localhost:3000/roon/play \

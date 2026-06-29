@@ -13,7 +13,7 @@ export function createRoonMcpServer(context: McpContext): McpServer {
     },
     {
       instructions:
-        "Use Roon AI Bridge to control the user's private Roon system. Always list zones or confirm the target zone when ambiguous. Be conservative with volume and queue-changing actions."
+        "Use roon_search_media before playing or queueing music, then pass its exact result_id to roon_play_media or roon_add_media_to_queue. roon_play_media on an artist plays only that artist's catalog; roon_start_radio intentionally includes similar artists. Always list or confirm the target zone when ambiguous. Be conservative with volume and queue-changing actions."
     }
   );
 

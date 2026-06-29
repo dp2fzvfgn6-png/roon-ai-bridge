@@ -9,7 +9,8 @@
 - v0.7: HTTP API key auth for reverse proxy use.
 - v0.8: ChatGPT App remote MCP endpoint and minimal widget.
 - v0.8.1: private ChatGPT App OAuth flow.
-- v0.9: ChatGPT App behavior, OAuth hardening and submission readiness.
+- v0.9: typed media tools, deterministic playback, structured widget results and OAuth hardening.
+- v0.10: zone grouping, transfer and normalized volume.
 
 ## v0.1 Implemented
 
@@ -242,3 +243,33 @@ The private app was connected and authorized from ChatGPT Apps successfully. See
 - Scope and audience are not yet enforced when an MCP request is authorized.
 - Refresh tokens, revocation and per-user identities are not implemented.
 - Tool selection, result quality and widget behavior still need app-level iteration.
+
+## v0.9 Scope
+
+- Search tracks, albums, artists and playlists separately.
+- Return temporary `result_id` references.
+- Re-resolve selected media before playback or queue actions.
+- Replace the current queue when playing selected media.
+- Separate artist-catalog playback from artist radio.
+- Return structured MCP results and output schemas.
+- Render typed search and zone results in widget v2.
+- Bind OAuth codes and tokens to the MCP resource and scope.
+
+## v0.9 Validated So Far
+
+See [v0.9 Validation](v0.9-validation.md).
+
+- Typed track, album and artist search.
+- Exact track playback with queue replacement.
+- Complete album playback with queue replacement.
+- Artist radio as an explicit similar-music action.
+- Exact append-to-queue.
+- MCP `0.9.0`, output schemas and widget v2 discovery.
+- OAuth metadata advertising PKCE `S256`.
+
+## v0.9 Remaining
+
+- Validate artist-only Shuffle after separating it from artist radio.
+- Improve source and quality inspection beyond heuristic catalog markers.
+- Validate playlist search and playback against real Roon Browse responses.
+- Refresh the ChatGPT app connector and test the new model-visible tool selection.

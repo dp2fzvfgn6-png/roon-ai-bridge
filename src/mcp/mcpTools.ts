@@ -100,6 +100,14 @@ const widgetMeta = {
   "openai/outputTemplate": roonControlWidgetUri
 };
 
+const legacyWidgetMeta = {
+  ui: {
+    resourceUri: roonControlWidgetUri,
+    visibility: ["app"]
+  },
+  "openai/outputTemplate": roonControlWidgetUri
+};
+
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
   server.registerTool(
     "roon_status",
@@ -185,7 +193,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       description: "Legacy untyped Roon search. Prefer roon_search_media for new requests.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
-      _meta: widgetMeta,
+      _meta: legacyWidgetMeta,
       inputSchema: {
         query: z.string().min(1),
         zone_id: z.string().optional(),
@@ -213,7 +221,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       description: "Legacy play-by-query tool. Prefer roon_search_media followed by roon_play_media.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
-      _meta: widgetMeta,
+      _meta: legacyWidgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         query: z.string().min(1),
@@ -252,7 +260,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       description: "Legacy queue-by-query tool. Prefer roon_search_media followed by roon_add_media_to_queue.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
-      _meta: widgetMeta,
+      _meta: legacyWidgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
         query: z.string().min(1),

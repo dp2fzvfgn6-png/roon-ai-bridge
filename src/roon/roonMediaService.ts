@@ -40,6 +40,7 @@ export type MediaResult = {
 type MediaReference = MediaResult & {
   query: string;
   ordinal: number;
+  hierarchy: "search" | "playlists";
 };
 
 export type SearchMediaRequest = {
@@ -140,6 +141,26 @@ export function inferMediaSource(item: BrowseItem): {
   return { source: "unknown", confidence: "low" };
 }
 
+export function inferConfiguredStreamingSource(
+  item: BrowseItem,
+  configuredSource: "tidal" | "qobuz" | null
+): {
+  source: MediaSource;
+  confidence: "high" | "medium" | "low";
+} {
+  const explicit = inferMediaSource(item);
+  if (explicit.source !== "unknown" || !configuredSource) return explicit;
+
+  const subtitle = typeof item.subtitle === "string" ? item.subtitle : "";
+  if (/\[\[\d+\|.+?\]\]/.test(subtitle)) {
+    return {
+      source: configuredSource,
+      confidence: "medium"
+    };
+  }
+  return explicit;
+}
+
 export function inferMediaQuality(item: BrowseItem): MediaQuality | null {
   const text = itemText(item);
   const bitDepthMatch = text.match(/(\d{2})\s*[- ]?bit/);
@@ -204,6 +225,21 @@ function chooseAction(items: BrowseItem[], candidates: string[]): BrowseItem | u
   return undefined;
 }
 
+export function chooseMediaAction(
+  items: BrowseItem[],
+  mediaType: MediaType,
+  mode: MediaActionMode,
+  artistMode: "catalog" | "radio" = "catalog"
+): BrowseItem | undefined {
+  const candidates =
+    mode === "replace_queue" && mediaType === "artist"
+      ? artistMode === "radio"
+        ? RADIO_ACTION_TITLES
+        : ARTIST_CATALOG_ACTION_TITLES
+      : ACTION_TITLES[mode];
+  return chooseAction(items, candidates);
+}
+
 function selectableItems(items: BrowseItem[]): BrowseItem[] {
   return items.filter((item) => item.item_key && item.hint !== "header");
 }
@@ -236,7 +272,10 @@ function itemsWithSourceContext(items: BrowseItem[]): BrowseItem[] {
 export class RoonMediaService {
   private readonly references = new Map<string, MediaReference>();
 
-  constructor(private readonly roonClient: RoonClient) {}
+  constructor(
+    private readonly roonClient: RoonClient,
+    private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null
+  ) {}
 
   async search(request: SearchMediaRequest): Promise<{
     query: string;
@@ -259,7 +298,15 @@ export class RoonMediaService {
       try {
         const items = await this.searchType(query, type, request.zoneId, count);
         for (const [ordinal, item] of items.entries()) {
-          results.push(this.registerReference(query, type, item, ordinal));
+          results.push(
+            this.registerReference(
+              query,
+              type,
+              item,
+              ordinal,
+              item.result_hierarchy === "playlists" ? "playlists" : "search"
+            )
+          );
         }
       } catch (error) {
         warnings.push(
@@ -405,6 +452,7 @@ export class RoonMediaService {
       const normalizedQuery = normalize(query);
       return selectableItems(itemsWithSourceContext(playlistBrowse.items))
         .filter((item) => normalize(`${item.title} ${item.subtitle || ""}`).includes(normalizedQuery))
+        .map((item) => ({ ...item, result_hierarchy: "playlists" }))
         .slice(0, count);
     }
 
@@ -445,11 +493,12 @@ export class RoonMediaService {
     query: string,
     type: MediaType,
     item: BrowseItem,
-    ordinal: number
+    ordinal: number,
+    hierarchy: "search" | "playlists" = "search"
   ): MediaResult {
     const resultId = `media_${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + REFERENCE_TTL_MS).toISOString();
-    const source = inferMediaSource(item);
+    const source = inferConfiguredStreamingSource(item, this.configuredStreamingSource);
     const reference: MediaReference = {
       result_id: resultId,
       media_type: type,
@@ -462,7 +511,8 @@ export class RoonMediaService {
       playable: Boolean(item.item_key),
       expires_at: expiresAt,
       query,
-      ordinal
+      ordinal,
+      hierarchy
     };
     this.references.set(resultId, reference);
     return this.publicReference(reference);
@@ -474,7 +524,12 @@ export class RoonMediaService {
   }
 
   private publicReference(reference: MediaReference): MediaResult {
-    const { query: _query, ordinal: _ordinal, ...result } = reference;
+    const {
+      query: _query,
+      ordinal: _ordinal,
+      hierarchy: _hierarchy,
+      ...result
+    } = reference;
     return result;
   }
 
@@ -483,6 +538,39 @@ export class RoonMediaService {
     zoneId: string | undefined,
     sessionKey: string
   ): Promise<BrowseItem> {
+    if (reference.hierarchy === "playlists") {
+      const playlistBrowse = await browseLibrary(this.roonClient, {
+        hierarchy: "playlists",
+        zoneOrOutputId: zoneId,
+        offset: 0,
+        count: 500,
+        popAll: true,
+        refreshList: false,
+        sessionKey
+      });
+      const title = normalize(reference.title);
+      const subtitle = normalize(reference.subtitle || "");
+      const candidates = selectableItems(
+        itemsWithSourceContext(playlistBrowse.items)
+      );
+      const exact = candidates.find(
+        (item) =>
+          normalize(String(item.title || "")) === title &&
+          (!subtitle || normalize(String(item.subtitle || "")) === subtitle)
+      );
+      const titleOnly = candidates.find(
+        (item) => normalize(String(item.title || "")) === title
+      );
+      const resolved = exact || titleOnly || candidates[reference.ordinal];
+      if (!resolved?.item_key) {
+        throw new ApiError("SEARCH_NO_RESULTS", "Playlist result could not be resolved again", {
+          result_id: reference.result_id,
+          title: reference.title
+        });
+      }
+      return resolved;
+    }
+
     const browse = requireBrowse(this.roonClient);
     const root = await searchRoon(this.roonClient, {
       query: reference.query,
@@ -519,7 +607,7 @@ export class RoonMediaService {
     const candidates = selectableItems(itemsWithSourceContext(loaded.items));
     const sourceMatches = (item: BrowseItem): boolean => {
       if (reference.source === "unknown") return true;
-      return inferMediaSource(item).source === reference.source;
+      return inferConfiguredStreamingSource(item, this.configuredStreamingSource).source === reference.source;
     };
     const exact = candidates.find(
       (item) =>
@@ -552,12 +640,13 @@ export class RoonMediaService {
   ): Promise<any> {
     const browse = requireBrowse(this.roonClient);
     const sessionKey = this.sessionKey(`action-${mode}`);
+    const hierarchy = reference.hierarchy;
     let selected = await this.resolveItem(reference, zoneId, sessionKey);
     let lastItems: BrowseItem[] = [];
 
     for (let depth = 0; depth < 5; depth += 1) {
       const response = await browseCall(browse, {
-        hierarchy: "search",
+        hierarchy,
         multi_session_key: sessionKey,
         item_key: selected.item_key,
         zone_or_output_id: zoneId
@@ -566,23 +655,22 @@ export class RoonMediaService {
 
       const loaded: BrowseResponse = await loadCurrentList(
         browse,
-        "search",
+        hierarchy,
         sessionKey,
         0,
         100
       );
       lastItems = loaded.items;
-      const candidates =
-        mode === "replace_queue" && reference.media_type === "artist"
-          ? artistMode === "radio"
-            ? RADIO_ACTION_TITLES
-            : ARTIST_CATALOG_ACTION_TITLES
-          : ACTION_TITLES[mode];
-      const action = chooseAction(loaded.items, candidates);
+      const action = chooseMediaAction(
+        loaded.items,
+        reference.media_type,
+        mode,
+        artistMode
+      );
       if (action?.item_key) {
         if (action.hint === "action") {
           return browseCall(browse, {
-            hierarchy: "search",
+            hierarchy,
             multi_session_key: sessionKey,
             item_key: action.item_key,
             zone_or_output_id: zoneId

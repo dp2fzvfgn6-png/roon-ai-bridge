@@ -18,6 +18,7 @@ API_TOKEN=
 PUBLIC_BASE_URL=https://roonia.ipchome.com
 OAUTH_ISSUER=https://roonia.ipchome.com
 OAUTH_APPROVAL_PIN=
+ROON_STREAMING_SOURCE=TIDAL
 ```
 
 ## HTTP API Authentication
@@ -62,6 +63,8 @@ OAUTH_APPROVAL_PIN=<PRIVATE_PIN_FOR_APPROVING_CHATGPT>
 If `OAUTH_APPROVAL_PIN` is empty, the authorization page accepts `API_TOKEN`.
 
 OAuth clients, authorization codes and access tokens are persisted in `data/oauth-store.json`. v0.8.1 is intended for one private installation; it does not yet provide per-user accounts, refresh tokens or token revocation.
+
+`ROON_STREAMING_SOURCE` can be `TIDAL`, `QOBUZ` or empty. Roon Browse does not always include an explicit source in search rows, so v0.9 uses this value only for linked catalog entries and reports a confidence level.
 
 ## Docker Compose
 

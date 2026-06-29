@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  chooseMediaAction,
+  inferConfiguredStreamingSource,
   inferMediaQuality,
   inferMediaSource
 } = require("../dist/roon/roonMediaService");
@@ -21,6 +23,38 @@ test("classifies TIDAL and high-resolution quality metadata", () => {
     sample_rate_hz: 96000,
     format: "FLAC"
   });
+});
+
+test("classifies Roon linked catalog results using configured streaming source", () => {
+  assert.deepEqual(
+    inferConfiguredStreamingSource(
+      {
+        title: "YHLQMDLG",
+        subtitle: "[[9936250|Bad Bunny]]"
+      },
+      "tidal"
+    ),
+    {
+      source: "tidal",
+      confidence: "medium"
+    }
+  );
+});
+
+test("keeps artist catalog playback separate from artist radio", () => {
+  const actions = [
+    { title: "Shuffle", item_key: "1:0", hint: "action" },
+    { title: "Start Radio", item_key: "1:1", hint: "action" }
+  ];
+
+  assert.equal(
+    chooseMediaAction(actions, "artist", "replace_queue", "catalog").title,
+    "Shuffle"
+  );
+  assert.equal(
+    chooseMediaAction(actions, "artist", "replace_queue", "radio").title,
+    "Start Radio"
+  );
 });
 
 test("keeps unknown source and quality explicit", () => {

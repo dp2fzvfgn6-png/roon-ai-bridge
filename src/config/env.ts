@@ -14,6 +14,7 @@ export type AppConfig = {
   publicBaseUrl: string;
   oauthIssuer: string;
   oauthApprovalPin: string | null;
+  roonStreamingSource: "tidal" | "qobuz" | null;
 };
 
 function boolFromEnv(value: string | undefined, fallback = false): boolean {
@@ -43,6 +44,13 @@ export function loadConfig(): AppConfig {
     typeof process.env.OAUTH_APPROVAL_PIN === "string" && process.env.OAUTH_APPROVAL_PIN.trim() !== ""
       ? process.env.OAUTH_APPROVAL_PIN.trim()
       : apiToken;
+  const streamingSourceValue = (process.env.ROON_STREAMING_SOURCE || "tidal")
+    .trim()
+    .toLowerCase();
+  const roonStreamingSource =
+    streamingSourceValue === "tidal" || streamingSourceValue === "qobuz"
+      ? streamingSourceValue
+      : null;
 
   return {
     port: intFromEnv(process.env.PORT, 3000),
@@ -58,6 +66,7 @@ export function loadConfig(): AppConfig {
     apiToken,
     publicBaseUrl,
     oauthIssuer,
-    oauthApprovalPin
+    oauthApprovalPin,
+    roonStreamingSource
   };
 }

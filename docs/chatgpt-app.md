@@ -1,6 +1,6 @@
 # ChatGPT App
 
-v0.8.1 prepares Roon AI Bridge as a ChatGPT app using the Apps SDK pattern: a remote MCP endpoint, OAuth, and an optional widget resource.
+v0.9 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth and an interactive widget resource.
 
 ## Public URLs
 
@@ -35,7 +35,7 @@ The MCP server exposes tools for:
 The server also registers a minimal Apps SDK widget resource:
 
 ```text
-ui://roon-ai-bridge/control-v1.html
+ui://roon-ai-bridge/control-v2.html
 ```
 
 ## ChatGPT Developer Setup
@@ -118,13 +118,18 @@ Expected tool: `roon_control_playback`.
 Busca Bad Bunny en Roon.
 ```
 
-Expected tool: `roon_search`.
+Expected tool: `roon_search_media`.
 
 ```text
 Reproduce Bad Bunny en Despacho.
 ```
 
-Expected tool: `roon_play_by_query`.
+Expected flow: `roon_search_media` followed by `roon_play_media`.
+
+For artist requests:
+
+- `roon_play_media` plays only the selected artist catalog using Roon Shuffle.
+- `roon_start_radio` starts Roon Radio and intentionally includes similar artists.
 
 ## Safety Notes
 

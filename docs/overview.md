@@ -2,7 +2,7 @@
 
 Roon AI Bridge is a local Roon extension with a small HTTP API and MCP tools.
 
-The current v0.8.1 goal is intentionally narrow:
+The current v0.9 goal is intentionally narrow:
 
 - Run in a dedicated Proxmox LXC.
 - Use the same VLAN/subnet as Roon Core.
@@ -22,8 +22,12 @@ The current v0.8.1 goal is intentionally narrow:
 - Optionally protect the HTTP API with a Bearer API token.
 - Authorize a private ChatGPT app with OAuth authorization code and PKCE.
 - Publish a simple privacy notice for app setup.
+- Search media by track, album, artist or playlist.
+- Use temporary references for deterministic playback and queue actions.
+- Keep artist-catalog playback distinct from similar-music radio.
+- Return structured MCP results to an interactive ChatGPT widget.
 
-v0.8.1 deliberately does not implement:
+v0.9 deliberately does not implement:
 
 - OpenAI API calls from the bridge
 - public app-directory submission

@@ -1,6 +1,6 @@
 # Security Notes
 
-v0.8.1 supports optional API-token authentication and OAuth access tokens for the remote MCP endpoint.
+v0.9 supports optional API-token authentication and OAuth access tokens bound to the remote MCP resource and `roon:control` scope.
 
 For LAN-only use, authentication can stay disabled. Before exposing the service through Nginx Proxy Manager or any public reverse proxy, set:
 
@@ -21,7 +21,6 @@ Do not expose port `3000` directly. Publish only the HTTPS reverse-proxied domai
 
 Future phases should define:
 
-- resource-bound tokens and enforced scopes
 - refresh/revocation support
 - per-user identities
 - Cloudflare Tunnel policy

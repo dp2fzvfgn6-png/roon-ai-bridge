@@ -1,6 +1,6 @@
 # MCP Server
 
-v0.6 adds a local MCP stdio server. v0.8 adds remote Streamable HTTP MCP, and v0.8.1 adds OAuth for a private ChatGPT app.
+v0.9 adds typed media tools, structured results and an interactive widget to the existing local/remote MCP server.
 
 A local MCP client can launch stdio as a command from the LXC or another trusted shell that has access to the project.
 
@@ -39,5 +39,11 @@ Implemented tools:
 - `roon_create_virtual_playlist`
 - `roon_add_virtual_playlist_track`
 - `roon_play_virtual_playlist`
+- `roon_search_media`
+- `roon_get_media_details`
+- `roon_list_artist_releases`
+- `roon_play_media`
+- `roon_start_radio`
+- `roon_add_media_to_queue`
 
 Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.

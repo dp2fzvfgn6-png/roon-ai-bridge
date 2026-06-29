@@ -16,13 +16,14 @@ logger.info("Configuration loaded", {
   browseEnabled: config.enableBrowse,
   mcpEnabled: config.enableMcp,
   authEnabled: config.enableAuth,
-  apiTokenConfigured: Boolean(config.apiToken)
+  apiTokenConfigured: Boolean(config.apiToken),
+  roonStreamingSource: config.roonStreamingSource
 });
 
 const roonClient = createRoonClient(config, logger);
 const playlistService = new PlaylistService(config);
 const oauthService = new OAuthService(config);
-const mediaService = new RoonMediaService(roonClient);
+const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 const app = createServer({
   config,
   logger,
