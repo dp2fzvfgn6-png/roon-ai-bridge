@@ -16,8 +16,7 @@ export function createPlaybackRouter(context: ApiContext): Router {
         command
       });
 
-      await controlPlayback(context.roonClient, req.params.zone_id, command);
-      res.json({ ok: true, zone_id: req.params.zone_id, command });
+      res.json(await controlPlayback(context.roonClient, req.params.zone_id, command));
     } catch (error) {
       next(error);
     }

@@ -1,6 +1,6 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.9.1 adds native zone playback transfer to the v0.9 typed media, structured MCP and ChatGPT widget foundation.
+Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.9.2 fixes ChatGPT widget hydration and verifies playback state changes before reporting success.
 
 This project does not expose anything to the internet by itself. v0.9 does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts, refresh tokens or direct Roon queue editing.
 
@@ -48,7 +48,7 @@ v0.9 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and
 - Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v2.html`.
+- Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v3.html`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -524,6 +524,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.8: ChatGPT App remote MCP endpoint and minimal widget.
 - v0.8.1: private ChatGPT App OAuth flow.
 - v0.9: typed media tools, deterministic playback, structured widget results and OAuth hardening.
+- v0.9.1: native playback transfer between Roon zones.
+- v0.9.2: reliable widget hydration and verified playback control results.
 - v0.10: zone grouping, transfer and normalized volume.
 
 ## Security

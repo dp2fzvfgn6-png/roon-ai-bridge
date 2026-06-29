@@ -1,6 +1,6 @@
 # ChatGPT App
 
-v0.9 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth and an interactive widget resource.
+v0.9.2 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth, verified playback results and an interactive widget resource.
 
 ## Public URLs
 
@@ -35,7 +35,7 @@ The MCP server exposes tools for:
 The server also registers a minimal Apps SDK widget resource:
 
 ```text
-ui://roon-ai-bridge/control-v2.html
+ui://roon-ai-bridge/control-v3.html
 ```
 
 ## ChatGPT Developer Setup
@@ -113,6 +113,9 @@ Pausa la zona Despacho.
 ```
 
 Expected tool: `roon_control_playback`.
+
+For `play`, `pause`, `playpause` and `stop`, the tool returns the final zone
+state and `state_verified: true`. ChatGPT must not claim success otherwise.
 
 ```text
 Traslada lo que esta sonando en el Despacho a la Cocina.

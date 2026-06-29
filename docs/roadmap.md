@@ -285,3 +285,14 @@ See [v0.9 Validation](v0.9-validation.md).
   requests a zone transfer.
 
 See [v0.9.1 Validation](v0.9.1-validation.md).
+
+## v0.9.2
+
+- Hydrate the widget from both the MCP Apps bridge and ChatGPT
+  `window.openai.toolOutput`.
+- Cache-bust the widget as `ui://roon-ai-bridge/control-v3.html`.
+- Verify the final Roon state after play, pause, playpause and stop.
+- Include zone name, previous state and verified final state in playback results.
+- Log MCP playback arguments for operational diagnosis.
+
+See [v0.9.2 Validation](v0.9.2-validation.md).

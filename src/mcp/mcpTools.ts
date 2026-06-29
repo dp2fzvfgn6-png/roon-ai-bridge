@@ -138,7 +138,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_control_playback",
     {
       title: "Control Roon Playback",
-      description: "Send play, pause, playpause, stop, next or previous to a Roon zone.",
+      description:
+        "Use this when the user asks to play, resume, pause, stop, skip or go back in an existing Roon zone queue. For play, pause, playpause and stop, only report success when state_verified is true.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -150,8 +151,11 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     async ({ zone_id, command }) =>
       runTool(context, "roon_control_playback", async () => {
         const parsed = parsePlaybackCommand(command);
-        await controlPlayback(context.roonClient, zone_id, parsed);
-        return { ok: true, zone_id, command: parsed };
+        context.logger.info("MCP playback arguments", {
+          zoneId: zone_id,
+          command: parsed
+        });
+        return controlPlayback(context.roonClient, zone_id, parsed);
       })
   );
 

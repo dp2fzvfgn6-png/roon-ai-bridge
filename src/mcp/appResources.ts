@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v2.html";
+const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v3.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const controlWidgetHtml = `
@@ -8,7 +8,7 @@ const controlWidgetHtml = `
   <section>
     <p class="eyebrow">Roon AI Bridge</p>
     <h1>Roon Control</h1>
-    <p id="summary">Ask ChatGPT to list zones, search music, change playback, adjust volume, manage queue, or play a virtual playlist.</p>
+    <p id="summary">Control de zonas, reproduccion, volumen, busqueda, cola y playlists de Roon.</p>
   </section>
   <section class="panel">
     <h2 id="result-title">Latest Tool Result</h2>
@@ -111,6 +111,10 @@ const controlWidgetHtml = `
   }
 
   function callTool(name, args) {
+    if (window.openai && typeof window.openai.callTool === "function") {
+      window.openai.callTool(name, args);
+      return;
+    }
     window.parent.postMessage({
       jsonrpc: "2.0",
       id: requestId++,
@@ -140,7 +144,7 @@ const controlWidgetHtml = `
         media.subtitle,
         media.source && media.source !== "unknown" ? media.source : null,
         media.quality?.label
-      ].filter(Boolean).join(" · ");
+      ].filter(Boolean).join(" | ");
       copy.append(title, meta);
       card.append(copy);
 
@@ -181,11 +185,38 @@ const controlWidgetHtml = `
         zone.state,
         zone.now_playing?.line1,
         zone.now_playing?.line2
-      ].filter(Boolean).join(" · ");
+      ].filter(Boolean).join(" | ");
       copy.append(title, meta);
       card.append(copy);
       cards.append(card);
     }
+    result.hidden = true;
+    return true;
+  }
+
+  function renderPlayback(payload) {
+    if (!payload || payload.ok !== true || typeof payload.command !== "string") {
+      return false;
+    }
+    resultTitle.textContent = "Roon Playback";
+    cards.className = "cards";
+    cards.replaceChildren();
+    const card = document.createElement("div");
+    card.className = "card";
+    const copy = document.createElement("div");
+    const title = document.createElement("p");
+    title.className = "title";
+    title.textContent = text(payload.zone_name || payload.zone_id);
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    meta.textContent = [
+      payload.command,
+      payload.state,
+      payload.state_verified ? "verified" : "accepted"
+    ].filter(Boolean).join(" | ");
+    copy.append(title, meta);
+    card.append(copy);
+    cards.append(card);
     result.hidden = true;
     return true;
   }
@@ -195,9 +226,24 @@ const controlWidgetHtml = `
     cards.className = "";
     result.hidden = false;
     resultTitle.textContent = "Latest Tool Result";
-    if (renderMediaSearch(payload) || renderZones(payload)) return;
+    if (renderMediaSearch(payload) || renderZones(payload) || renderPlayback(payload)) return;
     result.textContent = JSON.stringify(payload, null, 2);
   }
+
+  function applyGlobals(globals) {
+    if (!globals) return;
+    if (globals.toolInput) latestInput = globals.toolInput;
+    if (globals.toolOutput !== undefined && globals.toolOutput !== null) {
+      const output = globals.toolOutput;
+      render(output.result ?? output);
+    }
+  }
+
+  applyGlobals(window.openai);
+
+  window.addEventListener("openai:set_globals", (event) => {
+    applyGlobals(event.detail?.globals);
+  }, { passive: true });
 
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
