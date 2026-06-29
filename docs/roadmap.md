@@ -255,21 +255,23 @@ The private app was connected and authorized from ChatGPT Apps successfully. See
 - Render typed search and zone results in widget v2.
 - Bind OAuth codes and tokens to the MCP resource and scope.
 
-## v0.9 Validated So Far
+## v0.9 Validated
 
 See [v0.9 Validation](v0.9-validation.md).
 
 - Typed track, album and artist search.
+- Typed Roon/TIDAL playlist search and complete playlist playback.
+- Relevance-first ranking with streaming source preference as a tiebreaker.
 - Exact track playback with queue replacement.
 - Complete album playback with queue replacement.
+- Artist-only catalog playback, distinct from radio.
 - Artist radio as an explicit similar-music action.
 - Exact append-to-queue.
 - MCP `0.9.0`, output schemas and widget v2 discovery.
+- Model-visible typed tools with legacy query tools hidden from model selection.
 - OAuth metadata advertising PKCE `S256`.
 
-## v0.9 Remaining
+## After v0.9
 
-- Validate artist-only Shuffle after separating it from artist radio.
 - Improve source and quality inspection beyond heuristic catalog markers.
-- Validate playlist search and playback against real Roon Browse responses.
 - Refresh the ChatGPT app connector and test the new model-visible tool selection.
