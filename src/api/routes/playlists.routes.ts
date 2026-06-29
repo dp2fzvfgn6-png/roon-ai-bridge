@@ -39,6 +39,16 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
+  router.patch("/playlists/:playlist_id", (req, res, next) => {
+    try {
+      res.json(
+        context.playlistService.updatePlaylist(req.params.playlist_id, req.body || {})
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/playlists/:playlist_id/tracks", (req, res, next) => {
     try {
       context.logger.info("Virtual playlist track add request received", {
@@ -46,6 +56,46 @@ export function createPlaylistsRouter(context: ApiContext): Router {
         query: req.body?.query
       });
       res.json(context.playlistService.addTrack(req.params.playlist_id, req.body));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/playlists/:playlist_id/tracks", (req, res, next) => {
+    try {
+      res.json(
+        context.playlistService.replaceTracks(
+          req.params.playlist_id,
+          req.body?.tracks ?? req.body
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/playlists/:playlist_id/tracks/reorder", (req, res, next) => {
+    try {
+      res.json(
+        context.playlistService.reorderTracks(
+          req.params.playlist_id,
+          req.body?.track_ids
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/playlists/:playlist_id/tracks/:track_id", (req, res, next) => {
+    try {
+      res.json(
+        context.playlistService.updateTrack(
+          req.params.playlist_id,
+          req.params.track_id,
+          req.body || {}
+        )
+      );
     } catch (error) {
       next(error);
     }

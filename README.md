@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.9.2 fixes ChatGPT widget hydration and verifies playback state changes before reporting success.
+Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.10 moves virtual playlists to SQLite, expands playlist-management tools and enriches library items with track metadata plus cover references.
 
-This project does not expose anything to the internet by itself. v0.9 does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts, refresh tokens or direct Roon queue editing.
+This project does not expose anything to the internet by itself. v0.10 still does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts or refresh tokens.
 
 ## Architecture
 
@@ -14,36 +14,42 @@ src/
   config/          environment and app configuration
   roon/            Roon client, types and Roon services
   api/             Express server and HTTP routes
-  services/        future application services
-  db/              future persistence adapter
+  services/        application services, including SQLite-backed playlists
+  db/              SQLite schema and persistence adapter
   mcp/             local/remote MCP server, Apps SDK resource and tool definitions
   security/        future security notes
   utils/           logger, errors and validation
 db/
-  schema.sql       planned SQLite schema
+  schema.sql       SQLite schema
 data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.9 uses `node-roon-api`, `node-roon-api-transport`, `node-roon-api-browse` and `@modelcontextprotocol/sdk`.
+v0.10 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+`node-roon-api-browse`, native `node:sqlite` and
+`@modelcontextprotocol/sdk`.
 
-## v0.9 Scope
+## v0.10 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
 - Connect and reconnect to Roon Core on the LAN.
 - List zones.
+- Group compatible zones while preserving the primary zone queue.
+- Fully ungroup a grouped zone into independent outputs.
 - Show basic now playing.
 - Control `play`, `pause`, `playpause`, `stop`, `next`, `previous`.
 - Control relative or absolute volume when the output supports it.
 - Browse the Roon library through `GET /roon/library`.
+- Return normalized song metadata and cover references in library browse items when Roon exposes them.
 - Search Roon through `GET /roon/search?q=...`.
 - Start playback from a simple query through `POST /roon/play`.
 - Read queue snapshots through `GET /roon/queue/:zone_id`.
 - Start playback from a queue item with `play_from_here`.
 - Add a query result next or to the queue when Roon exposes that browse action.
 - Create local virtual playlists.
-- Add/remove playlist tracks by stable query.
+- Store local virtual playlists in SQLite.
+- Create, read, update, delete and reorder playlist tracks by stable query with saved metadata.
 - Play or enqueue a virtual playlist through Roon.
 - Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
@@ -92,7 +98,7 @@ ROON_STREAMING_SOURCE=TIDAL
 
 `ROON_STREAMING_SOURCE` helps classify linked catalog results when Roon does not include an explicit service name. Source and quality remain `unknown` when Roon does not expose enough information.
 
-`ENABLE_MCP` is reserved for runtime signalling. v0.9 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
+`ENABLE_MCP` is reserved for runtime signalling. v0.10 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
 
 `OAUTH_APPROVAL_PIN` is used when authorizing ChatGPT. If it is empty, the authorization page accepts `API_TOKEN`.
 
@@ -377,7 +383,19 @@ curl http://localhost:3000/playlists | python3 -m json.tool
 
 curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks \
   -H "Content-Type: application/json" \
-  -d '{"query":"bad bunny monaco"}'
+  -d '{"query":"bad bunny monaco","title":"MONACO","image_key":"cover-123"}'
+
+curl -X PATCH http://localhost:3000/playlists/bad-bunny-test \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Bad Bunny Test v0.10"}'
+
+curl -X PUT http://localhost:3000/playlists/bad-bunny-test/tracks \
+  -H "Content-Type: application/json" \
+  -d '{"tracks":[{"query":"bad bunny dakiti"},{"query":"bad bunny monaco"}]}'
+
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks/reorder \
+  -H "Content-Type: application/json" \
+  -d '{"track_ids":["<TRACK_ID_2>","<TRACK_ID_1>"]}'
 
 curl -X POST http://localhost:3000/playlists/bad-bunny-test/play \
   -H "Content-Type: application/json" \
@@ -402,6 +420,20 @@ curl -X POST http://localhost:3000/roon/zones/transfer \
 
 This calls Roon's native `transfer_zone` operation. It does not search for the
 current track or rebuild the destination queue.
+
+Group zones while preserving the primary zone queue:
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/group \
+  -H "Content-Type: application/json" \
+  -d '{"primary_zone_id":"<PRIMARY_ZONE_ID>","additional_zone_ids":["<ZONE_ID_2>","<ZONE_ID_3>"]}'
+```
+
+Fully split a grouped zone:
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/<GROUPED_ZONE_ID>/ungroup
+```
 
 Relative volume:
 
@@ -442,6 +474,8 @@ Implemented MCP tools:
 - `roon_control_playback`
 - `roon_change_volume`
 - `roon_transfer_playback`
+- `roon_group_zones`
+- `roon_ungroup_zone`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`
@@ -449,7 +483,14 @@ Implemented MCP tools:
 - `roon_play_queue_item_from_here`
 - `roon_list_virtual_playlists`
 - `roon_create_virtual_playlist`
+- `roon_get_virtual_playlist`
+- `roon_update_virtual_playlist`
+- `roon_delete_virtual_playlist`
 - `roon_add_virtual_playlist_track`
+- `roon_update_virtual_playlist_track`
+- `roon_remove_virtual_playlist_track`
+- `roon_replace_virtual_playlist_tracks`
+- `roon_reorder_virtual_playlist_tracks`
 - `roon_play_virtual_playlist`
 - `roon_search_media`
 - `roon_get_media_details`
@@ -463,6 +504,10 @@ Keep the stdio process local. The remote endpoint must stay behind HTTPS and aut
 For requests such as "move what is playing in the office to the kitchen",
 ChatGPT must call `roon_transfer_playback` once. The MCP server instructions
 explicitly prohibit rebuilding the queue for a zone-transfer request.
+
+For grouping, ChatGPT first lists zones and calls `roon_group_zones` with the
+queue-owning zone as `primary_zone_id`. Separate playback commands are not
+synchronized grouping.
 
 Remote MCP endpoint:
 
@@ -480,7 +525,7 @@ See [ChatGPT App](docs/chatgpt-app.md) for setup notes.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.9:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.10:
 
 - `GET /history`
 - `GET /preferences`
@@ -491,7 +536,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-    "message": "History is not implemented in v0.9.0",
+      "message": "History is not implemented in v0.10.0",
     "details": {}
   }
 }
@@ -526,7 +571,7 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.9: typed media tools, deterministic playback, structured widget results and OAuth hardening.
 - v0.9.1: native playback transfer between Roon zones.
 - v0.9.2: reliable widget hydration and verified playback control results.
-- v0.10: zone grouping, transfer and normalized volume.
+- v0.10.0: SQLite virtual playlists, full playlist-management tools and normalized library item metadata with cover references.
 
 ## Security
 

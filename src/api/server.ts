@@ -18,6 +18,7 @@ import { createQueueRouter } from "./routes/queue.routes";
 import { createPlaylistsRouter } from "./routes/playlists.routes";
 import { createOAuthRouter } from "./routes/oauth.routes";
 import { createMediaRouter } from "./routes/media.routes";
+import { createGroupingRouter } from "./routes/grouping.routes";
 import { createAuthMiddleware } from "./middleware/auth";
 import { APP_VERSION } from "../config/version";
 
@@ -82,6 +83,7 @@ export function createServer(context: ApiContext): express.Express {
   app.use("/roon", createRoonRouter(context));
   app.use("/roon", createZonesRouter(context));
   app.use("/roon", createPlaybackRouter(context));
+  app.use("/roon", createGroupingRouter(context));
   app.use("/roon", createVolumeRouter(context));
   app.use("/roon", createLibraryRouter(context));
   app.use("/roon", createMediaRouter(context));

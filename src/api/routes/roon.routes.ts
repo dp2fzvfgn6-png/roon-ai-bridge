@@ -28,6 +28,7 @@ export function createRoonRouter(context: ApiContext): Router {
         typed_search: context.config.enableBrowse && browseImplemented,
         media_references: true,
         artist_radio: true,
+        zone_grouping: true,
         queue: queueImplemented,
         virtual_playlists: playlistServiceImplemented,
         mcp: true,

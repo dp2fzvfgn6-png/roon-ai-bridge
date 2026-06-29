@@ -296,3 +296,14 @@ See [v0.9.1 Validation](v0.9.1-validation.md).
 - Log MCP playback arguments for operational diagnosis.
 
 See [v0.9.2 Validation](v0.9.2-validation.md).
+
+## v0.10
+
+- Move virtual playlists from JSON to SQLite with automatic migration.
+- Add complete playlist and track CRUD, replacement and reordering tools.
+- Normalize library song metadata and cover references.
+- Group compatible Roon zones with an explicit queue-owning primary zone.
+- Fully ungroup a grouped zone.
+- Verify grouping topology before reporting success.
+
+See [v0.10 Validation](v0.10-validation.md).

@@ -1,19 +1,24 @@
-import fs from "fs";
-import path from "path";
 import { AppConfig } from "../config/env";
+import { createDatabase, SqliteDatabase } from "../db/database";
 import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
 import { RoonClient } from "../roon/roonClient";
 import { ApiError } from "../utils/errors";
 
 export const playlistServiceImplemented = true;
 
+export type VirtualPlaylistTrackMetadata = Record<string, unknown>;
+
 export type VirtualPlaylistTrack = {
   track_id: string;
   query: string;
+  roon_item_key: string | null;
   title: string | null;
   artist: string | null;
   album: string | null;
+  image_key: string | null;
+  cover: { image_key: string } | null;
   position: number;
+  metadata: VirtualPlaylistTrackMetadata | null;
   created_at: string;
 };
 
@@ -22,14 +27,32 @@ export type VirtualPlaylist = {
   name: string;
   description: string | null;
   tracks: VirtualPlaylistTrack[];
+  tracks_count: number;
   created_at: string;
   updated_at: string;
 };
 
 export type PlaylistPlayMode = "add_to_queue" | "add_next" | "play_now";
 
-type PlaylistStore = {
-  playlists: VirtualPlaylist[];
+type PlaylistRow = {
+  playlist_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TrackRow = {
+  track_id: string;
+  playlist_id: string;
+  query: string;
+  roon_item_key: string | null;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  position: number;
+  metadata_json: string | null;
+  created_at: string;
 };
 
 function nowIso(): string {
@@ -47,7 +70,7 @@ function slugify(value: string): string {
 }
 
 function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 8);
+  return Math.random().toString(36).slice(2, 10);
 }
 
 function nonEmptyString(value: unknown): string | null {
@@ -58,64 +81,143 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
-function normalizeTrackPositions(playlist: VirtualPlaylist): VirtualPlaylist {
-  playlist.tracks = playlist.tracks
-    .slice()
-    .sort((a, b) => a.position - b.position)
-    .map((track, index) => ({
-      ...track,
-      position: index + 1
-    }));
-  return playlist;
+function optionalFiniteInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseMetadata(value: string | null): VirtualPlaylistTrackMetadata | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return objectValue(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function serializeMetadata(value: unknown): string | null {
+  const metadata = objectValue(value);
+  return metadata ? JSON.stringify(metadata) : null;
+}
+
+function imageKeyFromMetadata(metadata: VirtualPlaylistTrackMetadata | null): string | null {
+  if (!metadata) return null;
+
+  const direct = optionalString(metadata.image_key);
+  if (direct) return direct;
+
+  const cover = objectValue(metadata.cover);
+  return optionalString(cover?.image_key);
+}
+
+function buildCover(imageKey: string | null): { image_key: string } | null {
+  return imageKey ? { image_key: imageKey } : null;
+}
+
+type NormalizedTrackInput = {
+  track_id: string;
+  query: string;
+  roon_item_key: string | null;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  position: number | null;
+  metadata_json: string | null;
+  created_at: string;
+};
+
+function normalizeTrackInput(
+  input: unknown,
+  fallbackTrackId?: string,
+  fallbackPosition?: number,
+  fallbackCreatedAt?: string
+): NormalizedTrackInput {
+  const payload = objectValue(input);
+  if (!payload) {
+    throw new ApiError("INVALID_PLAYLIST_TRACK", "Track must be an object");
+  }
+
+  const query = nonEmptyString(payload.query);
+  if (!query) {
+    throw new ApiError("INVALID_PLAYLIST_TRACK", "Track query is required");
+  }
+
+  const metadata =
+    objectValue(payload.metadata) ||
+    objectValue(payload.metadata_json) ||
+    null;
+
+  if (!metadata) {
+    const derivedMetadata: Record<string, unknown> = {};
+    for (const key of [
+      "image_key",
+      "cover",
+      "duration_seconds",
+      "track_number",
+      "disc_number",
+      "release_year",
+      "album_artist",
+      "composer",
+      "genre",
+      "source",
+      "quality"
+    ]) {
+      if (payload[key] !== undefined) derivedMetadata[key] = payload[key];
+    }
+    return {
+      track_id: nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`,
+      query,
+      roon_item_key: optionalString(payload.roon_item_key),
+      title: optionalString(payload.title),
+      artist: optionalString(payload.artist),
+      album: optionalString(payload.album),
+      position: optionalFiniteInteger(payload.position) ?? fallbackPosition ?? null,
+      metadata_json:
+        Object.keys(derivedMetadata).length > 0 ? JSON.stringify(derivedMetadata) : null,
+      created_at: optionalString(payload.created_at) || fallbackCreatedAt || nowIso()
+    };
+  }
+
+  return {
+    track_id: nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`,
+    query,
+    roon_item_key: optionalString(payload.roon_item_key),
+    title: optionalString(payload.title),
+    artist: optionalString(payload.artist),
+    album: optionalString(payload.album),
+    position: optionalFiniteInteger(payload.position) ?? fallbackPosition ?? null,
+    metadata_json: serializeMetadata(metadata),
+    created_at: optionalString(payload.created_at) || fallbackCreatedAt || nowIso()
+  };
 }
 
 export class PlaylistService {
-  private readonly filePath: string;
+  private readonly database: SqliteDatabase;
 
-  constructor(config: AppConfig) {
-    this.filePath = path.join(config.dataDir, "virtual-playlists.json");
-  }
-
-  private ensureDataDir(): void {
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-  }
-
-  private readStore(): PlaylistStore {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-      if (parsed && Array.isArray(parsed.playlists)) {
-        return parsed as PlaylistStore;
-      }
-    } catch {
-      // Fall through to an empty store.
-    }
-
-    return { playlists: [] };
-  }
-
-  private writeStore(store: PlaylistStore): void {
-    this.ensureDataDir();
-    const tempPath = `${this.filePath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(store, null, 2));
-    fs.renameSync(tempPath, this.filePath);
-  }
-
-  private getPlaylistOrThrow(store: PlaylistStore, playlistId: string): VirtualPlaylist {
-    const playlist = store.playlists.find((item) => item.playlist_id === playlistId);
-    if (!playlist) {
-      throw new ApiError("PLAYLIST_NOT_FOUND", "Virtual playlist not found", {
-        playlist_id: playlistId
-      });
-    }
-    return normalizeTrackPositions(playlist);
+  constructor(config: AppConfig, database?: SqliteDatabase) {
+    this.database = database || createDatabase(config);
   }
 
   listPlaylists(): VirtualPlaylist[] {
-    return this.readStore().playlists.map(normalizeTrackPositions);
+    const playlistRows = this.database.db
+      .prepare(
+        `SELECT playlist_id, name, description, created_at, updated_at
+         FROM virtual_playlists
+         ORDER BY updated_at DESC, name ASC`
+      )
+      .all() as PlaylistRow[];
+
+    return playlistRows.map((row) => this.getPlaylistFromRow(row));
   }
 
   getPlaylist(playlistId: string): VirtualPlaylist {
-    return this.getPlaylistOrThrow(this.readStore(), playlistId);
+    return this.getPlaylistById(playlistId);
   }
 
   createPlaylist(input: {
@@ -129,78 +231,206 @@ export class PlaylistService {
       throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
     }
 
-    const store = this.readStore();
     const baseId =
       nonEmptyString(input.playlist_id) || slugify(name) || `playlist-${randomSuffix()}`;
     let playlistId = baseId;
-    while (store.playlists.some((item) => item.playlist_id === playlistId)) {
+    while (this.playlistExists(playlistId)) {
       playlistId = `${baseId}-${randomSuffix()}`;
     }
 
     const createdAt = nowIso();
-    const playlist: VirtualPlaylist = {
-      playlist_id: playlistId,
-      name,
-      description: optionalString(input.description),
-      tracks: [],
-      created_at: createdAt,
-      updated_at: createdAt
-    };
 
-    if (Array.isArray(input.tracks)) {
-      for (const track of input.tracks) {
-        this.addTrackToPlaylistObject(playlist, track);
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          `INSERT INTO virtual_playlists (playlist_id, name, description, created_at, updated_at)
+           VALUES (:playlist_id, :name, :description, :created_at, :updated_at)`
+        )
+        .run({
+          playlist_id: playlistId,
+          name,
+          description: optionalString(input.description),
+          created_at: createdAt,
+          updated_at: createdAt
+        });
+
+      if (Array.isArray(input.tracks)) {
+        this.insertTracks(playlistId, input.tracks, createdAt);
       }
+    });
+
+    return this.getPlaylistById(playlistId);
+  }
+
+  updatePlaylist(
+    playlistId: string,
+    input: { name?: unknown; description?: unknown }
+  ): VirtualPlaylist {
+    const current = this.getPlaylistById(playlistId);
+    const nextName =
+      input.name === undefined ? current.name : nonEmptyString(input.name);
+
+    if (!nextName) {
+      throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
     }
 
-    store.playlists.push(normalizeTrackPositions(playlist));
-    this.writeStore(store);
-    return playlist;
+    const nextDescription =
+      input.description === undefined
+        ? current.description
+        : optionalString(input.description);
+
+    this.database.db
+      .prepare(
+        `UPDATE virtual_playlists
+         SET name = :name, description = :description, updated_at = :updated_at
+         WHERE playlist_id = :playlist_id`
+      )
+      .run({
+        playlist_id: playlistId,
+        name: nextName,
+        description: nextDescription,
+        updated_at: nowIso()
+      });
+
+    return this.getPlaylistById(playlistId);
   }
 
   addTrack(playlistId: string, input: unknown): VirtualPlaylist {
-    const store = this.readStore();
-    const playlist = this.getPlaylistOrThrow(store, playlistId);
-    this.addTrackToPlaylistObject(playlist, input);
-    playlist.updated_at = nowIso();
-    normalizeTrackPositions(playlist);
-    this.writeStore(store);
-    return playlist;
+    this.getPlaylistById(playlistId);
+    const position = this.nextTrackPosition(playlistId);
+    const normalized = normalizeTrackInput(input, undefined, position);
+    this.insertTrack(playlistId, normalized);
+    this.touchPlaylist(playlistId);
+    return this.getPlaylistById(playlistId);
   }
 
-  removeTrack(playlistId: string, trackId: string): VirtualPlaylist {
-    const store = this.readStore();
-    const playlist = this.getPlaylistOrThrow(store, playlistId);
-    const before = playlist.tracks.length;
-    playlist.tracks = playlist.tracks.filter((track) => track.track_id !== trackId);
-
-    if (playlist.tracks.length === before) {
-      throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
+  updateTrack(playlistId: string, trackId: string, input: unknown): VirtualPlaylist {
+    const row = this.getTrackRowOrThrow(playlistId, trackId);
+    const normalized = normalizeTrackInput(input, row.track_id, row.position, row.created_at);
+    this.database.db
+      .prepare(
+        `UPDATE virtual_playlist_tracks
+         SET query = :query,
+             roon_item_key = :roon_item_key,
+             title = :title,
+             artist = :artist,
+             album = :album,
+             position = :position,
+             metadata_json = :metadata_json
+         WHERE playlist_id = :playlist_id AND track_id = :track_id`
+      )
+      .run({
         playlist_id: playlistId,
-        track_id: trackId
+        track_id: trackId,
+        query: normalized.query,
+        roon_item_key: normalized.roon_item_key,
+        title: normalized.title,
+        artist: normalized.artist,
+        album: normalized.album,
+        position: normalized.position ?? row.position,
+        metadata_json: normalized.metadata_json
+      });
+
+    this.normalizeTrackPositions(playlistId);
+    this.touchPlaylist(playlistId);
+    return this.getPlaylistById(playlistId);
+  }
+
+  replaceTracks(playlistId: string, tracks: unknown): VirtualPlaylist {
+    this.getPlaylistById(playlistId);
+    if (!Array.isArray(tracks)) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "tracks must be an array");
+    }
+
+    const createdAt = nowIso();
+    this.database.transaction(() => {
+      this.database.db
+        .prepare("DELETE FROM virtual_playlist_tracks WHERE playlist_id = ?")
+        .run(playlistId);
+      this.insertTracks(playlistId, tracks, createdAt);
+      this.touchPlaylist(playlistId, createdAt);
+    });
+
+    return this.getPlaylistById(playlistId);
+  }
+
+  reorderTracks(playlistId: string, trackIds: unknown): VirtualPlaylist {
+    this.getPlaylistById(playlistId);
+    if (!Array.isArray(trackIds) || trackIds.length === 0) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "track_ids must be a non-empty array");
+    }
+
+    const existing = this.listTrackRows(playlistId);
+    const ids = trackIds
+      .map((value) => nonEmptyString(value))
+      .filter((value): value is string => Boolean(value));
+
+    if (ids.length !== existing.length) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "track_ids must include every playlist track exactly once", {
+        playlist_id: playlistId,
+        expected: existing.length,
+        received: ids.length
       });
     }
 
-    playlist.updated_at = nowIso();
-    normalizeTrackPositions(playlist);
-    this.writeStore(store);
-    return playlist;
+    const uniqueIds = new Set(ids);
+    if (uniqueIds.size !== ids.length) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "track_ids must not contain duplicates");
+    }
+
+    const existingIds = new Set(existing.map((track) => track.track_id));
+    for (const id of ids) {
+      if (!existingIds.has(id)) {
+        throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
+          playlist_id: playlistId,
+          track_id: id
+        });
+      }
+    }
+
+    this.database.transaction(() => {
+      const update = this.database.db.prepare(
+        `UPDATE virtual_playlist_tracks
+         SET position = :position
+         WHERE playlist_id = :playlist_id AND track_id = :track_id`
+      );
+
+      ids.forEach((id, index) => {
+        update.run({
+          playlist_id: playlistId,
+          track_id: id,
+          position: index + 1
+        });
+      });
+      this.touchPlaylist(playlistId);
+    });
+
+    return this.getPlaylistById(playlistId);
+  }
+
+  removeTrack(playlistId: string, trackId: string): VirtualPlaylist {
+    this.getTrackRowOrThrow(playlistId, trackId);
+    this.database.db
+      .prepare(
+        "DELETE FROM virtual_playlist_tracks WHERE playlist_id = ? AND track_id = ?"
+      )
+      .run(playlistId, trackId);
+    this.normalizeTrackPositions(playlistId);
+    this.touchPlaylist(playlistId);
+    return this.getPlaylistById(playlistId);
   }
 
   deletePlaylist(playlistId: string): { ok: true; playlist_id: string } {
-    const store = this.readStore();
-    const before = store.playlists.length;
-    store.playlists = store.playlists.filter(
-      (playlist) => playlist.playlist_id !== playlistId
-    );
+    const result = this.database.db
+      .prepare("DELETE FROM virtual_playlists WHERE playlist_id = ?")
+      .run(playlistId) as { changes?: number };
 
-    if (store.playlists.length === before) {
+    if (!result?.changes) {
       throw new ApiError("PLAYLIST_NOT_FOUND", "Virtual playlist not found", {
         playlist_id: playlistId
       });
     }
 
-    this.writeStore(store);
     return { ok: true, playlist_id: playlistId };
   }
 
@@ -209,7 +439,7 @@ export class PlaylistService {
     playlistId: string,
     input: { zone_id?: unknown; mode?: unknown; limit?: unknown; session_key?: unknown }
   ): Promise<Record<string, unknown>> {
-    const playlist = this.getPlaylist(playlistId);
+    const playlist = this.getPlaylistById(playlistId);
     const zoneId = nonEmptyString(input.zone_id);
     if (!zoneId) {
       throw new ApiError("ZONE_NOT_FOUND", "zone_id is required");
@@ -288,30 +518,159 @@ export class PlaylistService {
     });
   }
 
-  private addTrackToPlaylistObject(playlist: VirtualPlaylist, input: unknown): void {
-    if (!input || typeof input !== "object") {
-      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track must be an object");
+  private playlistExists(playlistId: string): boolean {
+    const row = this.database.db
+      .prepare("SELECT 1 FROM virtual_playlists WHERE playlist_id = ?")
+      .get(playlistId) as Record<string, unknown> | undefined;
+    return Boolean(row);
+  }
+
+  private getPlaylistById(playlistId: string): VirtualPlaylist {
+    const row = this.database.db
+      .prepare(
+        `SELECT playlist_id, name, description, created_at, updated_at
+         FROM virtual_playlists
+         WHERE playlist_id = ?`
+      )
+      .get(playlistId) as PlaylistRow | undefined;
+
+    if (!row) {
+      throw new ApiError("PLAYLIST_NOT_FOUND", "Virtual playlist not found", {
+        playlist_id: playlistId
+      });
     }
 
-    const payload = input as Record<string, unknown>;
-    const query = nonEmptyString(payload.query);
-    if (!query) {
-      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track query is required");
+    return this.getPlaylistFromRow(row);
+  }
+
+  private getPlaylistFromRow(row: PlaylistRow): VirtualPlaylist {
+    const tracks = this.listTrackRows(row.playlist_id).map((track) => this.mapTrack(track));
+    return {
+      playlist_id: row.playlist_id,
+      name: row.name,
+      description: row.description,
+      tracks,
+      tracks_count: tracks.length,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  }
+
+  private listTrackRows(playlistId: string): TrackRow[] {
+    return this.database.db
+      .prepare(
+        `SELECT track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
+         FROM virtual_playlist_tracks
+         WHERE playlist_id = ?
+         ORDER BY position ASC, created_at ASC, track_id ASC`
+      )
+      .all(playlistId) as TrackRow[];
+  }
+
+  private getTrackRowOrThrow(playlistId: string, trackId: string): TrackRow {
+    const row = this.database.db
+      .prepare(
+        `SELECT track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
+         FROM virtual_playlist_tracks
+         WHERE playlist_id = ? AND track_id = ?`
+      )
+      .get(playlistId, trackId) as TrackRow | undefined;
+
+    if (!row) {
+      throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
+        playlist_id: playlistId,
+        track_id: trackId
+      });
     }
 
-    const now = nowIso();
-    playlist.tracks.push({
-      track_id: nonEmptyString(payload.track_id) || `track-${randomSuffix()}`,
-      query,
-      title: optionalString(payload.title),
-      artist: optionalString(payload.artist),
-      album: optionalString(payload.album),
-      position:
-        typeof payload.position === "number" && Number.isFinite(payload.position)
-          ? Math.floor(payload.position)
-          : playlist.tracks.length + 1,
-      created_at: now
+    return row;
+  }
+
+  private mapTrack(row: TrackRow): VirtualPlaylistTrack {
+    const metadata = parseMetadata(row.metadata_json);
+    const imageKey = imageKeyFromMetadata(metadata);
+
+    return {
+      track_id: row.track_id,
+      query: row.query,
+      roon_item_key: row.roon_item_key,
+      title: row.title,
+      artist: row.artist,
+      album: row.album,
+      image_key: imageKey,
+      cover: buildCover(imageKey),
+      position: row.position,
+      metadata,
+      created_at: row.created_at
+    };
+  }
+
+  private nextTrackPosition(playlistId: string): number {
+    const row = this.database.db
+      .prepare(
+        "SELECT COALESCE(MAX(position), 0) AS max_position FROM virtual_playlist_tracks WHERE playlist_id = ?"
+      )
+      .get(playlistId) as { max_position?: number } | undefined;
+
+    return (row?.max_position || 0) + 1;
+  }
+
+  private insertTracks(playlistId: string, tracks: unknown[], createdAt: string): void {
+    tracks.forEach((track, index) => {
+      const normalized = normalizeTrackInput(track, undefined, index + 1, createdAt);
+      this.insertTrack(playlistId, normalized);
     });
+    this.normalizeTrackPositions(playlistId);
+  }
+
+  private insertTrack(playlistId: string, track: NormalizedTrackInput): void {
+    this.database.db
+      .prepare(
+        `INSERT INTO virtual_playlist_tracks (
+          track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
+         ) VALUES (
+          :track_id, :playlist_id, :query, :roon_item_key, :title, :artist, :album, :position, :metadata_json, :created_at
+         )`
+      )
+      .run({
+        track_id: track.track_id,
+        playlist_id: playlistId,
+        query: track.query,
+        roon_item_key: track.roon_item_key,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        position: track.position ?? this.nextTrackPosition(playlistId),
+        metadata_json: track.metadata_json,
+        created_at: track.created_at
+      });
+  }
+
+  private normalizeTrackPositions(playlistId: string): void {
+    const update = this.database.db.prepare(
+      `UPDATE virtual_playlist_tracks
+       SET position = :position
+       WHERE playlist_id = :playlist_id AND track_id = :track_id`
+    );
+
+    this.listTrackRows(playlistId).forEach((track, index) => {
+      update.run({
+        playlist_id: playlistId,
+        track_id: track.track_id,
+        position: index + 1
+      });
+    });
+  }
+
+  private touchPlaylist(playlistId: string, updatedAt = nowIso()): void {
+    this.database.db
+      .prepare(
+        "UPDATE virtual_playlists SET updated_at = :updated_at WHERE playlist_id = :playlist_id"
+      )
+      .run({
+        playlist_id: playlistId,
+        updated_at: updatedAt
+      });
   }
 
   private async applyTrack(

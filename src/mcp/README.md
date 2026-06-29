@@ -1,6 +1,6 @@
 # MCP Server
 
-v0.9 adds typed media tools, structured results and an interactive widget to the existing local/remote MCP server.
+v0.10 adds SQLite-backed virtual playlist management, alongside the typed media tools, structured results and interactive widget from v0.9.
 
 A local MCP client can launch stdio as a command from the LXC or another trusted shell that has access to the project.
 
@@ -31,6 +31,8 @@ Implemented tools:
 - `roon_control_playback`
 - `roon_change_volume`
 - `roon_transfer_playback`
+- `roon_group_zones`
+- `roon_ungroup_zone`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`
@@ -38,7 +40,14 @@ Implemented tools:
 - `roon_play_queue_item_from_here`
 - `roon_list_virtual_playlists`
 - `roon_create_virtual_playlist`
+- `roon_get_virtual_playlist`
+- `roon_update_virtual_playlist`
+- `roon_delete_virtual_playlist`
 - `roon_add_virtual_playlist_track`
+- `roon_update_virtual_playlist_track`
+- `roon_remove_virtual_playlist_track`
+- `roon_replace_virtual_playlist_tracks`
+- `roon_reorder_virtual_playlist_tracks`
 - `roon_play_virtual_playlist`
 - `roon_search_media`
 - `roon_get_media_details`

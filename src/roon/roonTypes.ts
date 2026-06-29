@@ -1,6 +1,8 @@
 export type RoonOutput = {
   output_id: string;
+  zone_id?: string;
   display_name: string;
+  can_group_with_output_ids?: string[];
   volume?: {
     type?: string;
     min?: number;

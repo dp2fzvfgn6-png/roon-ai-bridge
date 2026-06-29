@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.9 code is intentionally modular even though the current feature set is small.
+The v0.10 code is intentionally modular even though the current feature set is still compact.
 
 ```text
 src/
@@ -97,4 +97,4 @@ src/
 - `user_preferences`
 - `search_cache`
 
-v0.8.1 persists Roon authorization state in `data/roonstate.json`, local virtual playlists in `data/virtual-playlists.json`, and private OAuth clients/codes/tokens in `data/oauth-store.json`.
+v0.10 persists Roon authorization state in `data/roonstate.json`, local virtual playlists in `data/roonia.sqlite`, and private OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an empty SQLite store, legacy playlists from `data/virtual-playlists.json` are imported automatically.

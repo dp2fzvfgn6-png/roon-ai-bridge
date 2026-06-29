@@ -13,7 +13,7 @@ export function createRoonMcpServer(context: McpContext): McpServer {
     },
     {
       instructions:
-        "To move or transfer what is currently playing between zones, call roon_transfer_playback exactly once; never search for the music or rebuild the destination queue. Call roon_list_zones first when either zone ID is unknown. For play, pause or stop, only claim success when roon_control_playback returns state_verified=true. For new music, call roon_search_media and pass its result_id to roon_play_media or roon_add_media_to_queue. roon_play_media on an artist plays only that artist; roon_start_radio includes similar artists."
+        "To group zones, call roon_list_zones then roon_group_zones with the queue-owning zone as primary; never emulate grouping with separate playback. To split a group, call roon_ungroup_zone. To move playback without grouping, call roon_transfer_playback exactly once and never rebuild the queue. Only claim playback/grouping success when state_verified=true. For new music, call roon_search_media, then use its result_id with roon_play_media or roon_add_media_to_queue."
     }
   );
 

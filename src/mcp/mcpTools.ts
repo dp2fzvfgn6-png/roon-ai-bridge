@@ -6,6 +6,7 @@ import { getQueueSnapshot, playQueueItemFromHere } from "../roon/roonQueueServic
 import { listZones } from "../roon/roonZoneService";
 import { changeZoneVolume } from "../roon/roonVolumeService";
 import { transferZonePlayback } from "../roon/roonTransferService";
+import { groupZones, ungroupZone } from "../roon/roonGroupingService";
 import { ApiError } from "../utils/errors";
 import { parsePlaybackCommand, parseVolumeMode, parseVolumeValue } from "../utils/validation";
 import { roonControlWidgetUri } from "./appResources";
@@ -107,6 +108,61 @@ const legacyWidgetMeta = {
     visibility: ["app"]
   },
   "openai/outputTemplate": roonControlWidgetUri
+};
+
+const playlistTrackMetadataSchema = z
+  .object({})
+  .catchall(z.unknown());
+
+const playlistTrackInputSchema = z.object({
+  track_id: z.string().optional(),
+  query: z.string().min(1),
+  roon_item_key: z.string().optional(),
+  title: z.string().optional(),
+  artist: z.string().optional(),
+  album: z.string().optional(),
+  position: z.number().int().min(1).optional(),
+  metadata: playlistTrackMetadataSchema.optional(),
+  image_key: z.string().optional(),
+  duration_seconds: z.number().optional(),
+  track_number: z.number().int().optional(),
+  disc_number: z.number().int().optional(),
+  release_year: z.number().int().optional(),
+  album_artist: z.string().optional(),
+  composer: z.string().optional(),
+  genre: z.union([z.string(), z.array(z.string())]).optional(),
+  source: z.string().optional(),
+  quality: z.unknown().optional(),
+  cover: z
+    .object({
+      image_key: z.string()
+    })
+    .optional()
+});
+
+const playlistTrackWritableShape = {
+  query: z.string().min(1),
+  roon_item_key: z.string().optional(),
+  title: z.string().optional(),
+  artist: z.string().optional(),
+  album: z.string().optional(),
+  position: z.number().int().min(1).optional(),
+  metadata: playlistTrackMetadataSchema.optional(),
+  image_key: z.string().optional(),
+  duration_seconds: z.number().optional(),
+  track_number: z.number().int().optional(),
+  disc_number: z.number().int().optional(),
+  release_year: z.number().int().optional(),
+  album_artist: z.string().optional(),
+  composer: z.string().optional(),
+  genre: z.union([z.string(), z.array(z.string())]).optional(),
+  source: z.string().optional(),
+  quality: z.unknown().optional(),
+  cover: z
+    .object({
+      image_key: z.string()
+    })
+    .optional()
 };
 
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
@@ -215,6 +271,59 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       runTool(context, "roon_transfer_playback", () =>
         transferZonePlayback(context.roonClient, source_zone_id, target_zone_id)
       )
+  );
+
+  server.registerTool(
+    "roon_group_zones",
+    {
+      title: "Group Roon Zones",
+      description:
+        "Use this when the user asks to group or synchronize Roon zones. The primary zone's queue is preserved and the additional zones join it; never emulate grouping with separate playback commands.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        primary_zone_id: z
+          .string()
+          .min(1)
+          .describe("Zone whose current queue and playback should be preserved."),
+        additional_zone_ids: z
+          .array(z.string().min(1))
+          .min(1)
+          .describe("Different compatible zones that should join the primary zone.")
+      }
+    },
+    async ({ primary_zone_id, additional_zone_ids }) =>
+      runTool(context, "roon_group_zones", async () => {
+        context.logger.info("MCP zone grouping arguments", {
+          primaryZoneId: primary_zone_id,
+          additionalZoneIds: additional_zone_ids
+        });
+        return groupZones(context.roonClient, primary_zone_id, additional_zone_ids);
+      })
+  );
+
+  server.registerTool(
+    "roon_ungroup_zone",
+    {
+      title: "Ungroup Roon Zone",
+      description:
+        "Use this when the user asks to split or fully ungroup a grouped Roon zone. Every output in the selected grouped zone becomes an independent zone.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        zone_id: z
+          .string()
+          .min(1)
+          .describe("Current zone ID containing two or more grouped outputs.")
+      }
+    },
+    async ({ zone_id }) =>
+      runTool(context, "roon_ungroup_zone", async () => {
+        context.logger.info("MCP zone ungrouping arguments", { zoneId: zone_id });
+        return ungroupZone(context.roonClient, zone_id);
+      })
   );
 
   server.registerTool(
@@ -343,7 +452,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_create_virtual_playlist",
     {
       title: "Create Virtual Playlist",
-      description: "Create a local virtual playlist made of Roon search-query tracks.",
+      description: "Create a local virtual playlist stored in SQLite with optional rich track metadata.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -351,16 +460,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
         playlist_id: z.string().optional(),
         name: z.string().min(1),
         description: z.string().optional(),
-        tracks: z
-          .array(
-            z.object({
-              query: z.string().min(1),
-              title: z.string().optional(),
-              artist: z.string().optional(),
-              album: z.string().optional()
-            })
-          )
-          .optional()
+        tracks: z.array(playlistTrackInputSchema).optional()
       }
     },
     async (args) =>
@@ -370,24 +470,154 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
   );
 
   server.registerTool(
-    "roon_add_virtual_playlist_track",
+    "roon_get_virtual_playlist",
     {
-      title: "Add Virtual Playlist Track",
-      description: "Add one search-query track to a local virtual playlist.",
+      title: "Get Virtual Playlist",
+      description: "Read one local virtual playlist with all tracks and metadata.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1)
+      }
+    },
+    async ({ playlist_id }) =>
+      runTool(context, "roon_get_virtual_playlist", () =>
+        context.playlistService.getPlaylist(playlist_id)
+      )
+  );
+
+  server.registerTool(
+    "roon_update_virtual_playlist",
+    {
+      title: "Update Virtual Playlist",
+      description: "Rename or change the description of a local virtual playlist.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
         playlist_id: z.string().min(1),
-        query: z.string().min(1),
-        title: z.string().optional(),
-        artist: z.string().optional(),
-        album: z.string().optional()
+        name: z.string().min(1).optional(),
+        description: z.string().optional()
+      }
+    },
+    async ({ playlist_id, ...changes }) =>
+      runTool(context, "roon_update_virtual_playlist", () =>
+        context.playlistService.updatePlaylist(playlist_id, changes)
+      )
+  );
+
+  server.registerTool(
+    "roon_delete_virtual_playlist",
+    {
+      title: "Delete Virtual Playlist",
+      description: "Delete a local virtual playlist from SQLite storage.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1)
+      }
+    },
+    async ({ playlist_id }) =>
+      runTool(context, "roon_delete_virtual_playlist", () =>
+        context.playlistService.deletePlaylist(playlist_id)
+      )
+  );
+
+  server.registerTool(
+    "roon_add_virtual_playlist_track",
+    {
+      title: "Add Virtual Playlist Track",
+      description: "Add one track with query and optional metadata to a local virtual playlist.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        ...playlistTrackWritableShape
       }
     },
     async ({ playlist_id, ...track }) =>
       runTool(context, "roon_add_virtual_playlist_track", () =>
         context.playlistService.addTrack(playlist_id, track)
+      )
+  );
+
+  server.registerTool(
+    "roon_update_virtual_playlist_track",
+    {
+      title: "Update Virtual Playlist Track",
+      description: "Update a stored virtual playlist track, including query, metadata and position.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        track_id: z.string().min(1),
+        ...playlistTrackWritableShape
+      }
+    },
+    async ({ playlist_id, track_id, ...track }) =>
+      runTool(context, "roon_update_virtual_playlist_track", () =>
+        context.playlistService.updateTrack(playlist_id, track_id, track)
+      )
+  );
+
+  server.registerTool(
+    "roon_remove_virtual_playlist_track",
+    {
+      title: "Remove Virtual Playlist Track",
+      description: "Remove one track from a local virtual playlist.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        track_id: z.string().min(1)
+      }
+    },
+    async ({ playlist_id, track_id }) =>
+      runTool(context, "roon_remove_virtual_playlist_track", () =>
+        context.playlistService.removeTrack(playlist_id, track_id)
+      )
+  );
+
+  server.registerTool(
+    "roon_replace_virtual_playlist_tracks",
+    {
+      title: "Replace Virtual Playlist Tracks",
+      description: "Replace the full track list of a virtual playlist in one operation.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        tracks: z.array(playlistTrackInputSchema)
+      }
+    },
+    async ({ playlist_id, tracks }) =>
+      runTool(context, "roon_replace_virtual_playlist_tracks", () =>
+        context.playlistService.replaceTracks(playlist_id, tracks)
+      )
+  );
+
+  server.registerTool(
+    "roon_reorder_virtual_playlist_tracks",
+    {
+      title: "Reorder Virtual Playlist Tracks",
+      description: "Reorder all tracks of a virtual playlist by passing the full ordered track_id list.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        track_ids: z.array(z.string().min(1)).min(1)
+      }
+    },
+    async ({ playlist_id, track_ids }) =>
+      runTool(context, "roon_reorder_virtual_playlist_tracks", () =>
+        context.playlistService.reorderTracks(playlist_id, track_ids)
       )
   );
 

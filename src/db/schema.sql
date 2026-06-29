@@ -29,8 +29,9 @@ CREATE TABLE IF NOT EXISTS virtual_playlists (
 );
 
 CREATE TABLE IF NOT EXISTS virtual_playlist_tracks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  track_id TEXT PRIMARY KEY,
   playlist_id TEXT NOT NULL,
+  query TEXT NOT NULL,
   roon_item_key TEXT,
   title TEXT,
   artist TEXT,
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS virtual_playlist_tracks (
   position INTEGER NOT NULL,
   metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (playlist_id) REFERENCES virtual_playlists (playlist_id)
+  FOREIGN KEY (playlist_id) REFERENCES virtual_playlists (playlist_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS play_history (

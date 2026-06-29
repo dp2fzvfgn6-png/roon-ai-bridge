@@ -112,6 +112,8 @@ Browse a specific hierarchy:
 curl "http://localhost:3000/roon/library?hierarchy=albums&count=50"
 ```
 
+Library items now include a normalized `media` object with song-level metadata such as artist, album, track number, duration, release year and `cover.image_key` when Roon exposes those fields.
+
 Open an item from a previous response:
 
 ```bash
@@ -279,7 +281,39 @@ Add a track:
 ```bash
 curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks \
   -H "Content-Type: application/json" \
-  -d '{"query":"bad bunny monaco","title":"MONACO","artist":"Bad Bunny"}'
+  -d '{"query":"bad bunny monaco","title":"MONACO","artist":"Bad Bunny","image_key":"cover-123"}'
+```
+
+Update playlist metadata:
+
+```bash
+curl -X PATCH http://localhost:3000/playlists/bad-bunny-test \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Bad Bunny Test v0.10","description":"SQLite playlist"}'
+```
+
+Replace every track in a playlist:
+
+```bash
+curl -X PUT http://localhost:3000/playlists/bad-bunny-test/tracks \
+  -H "Content-Type: application/json" \
+  -d '{"tracks":[{"query":"bad bunny dakiti","title":"Dákiti"},{"query":"bad bunny monaco","title":"MONACO"}]}'
+```
+
+Update one track:
+
+```bash
+curl -X PATCH http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"query":"bad bunny monaco live","title":"MONACO (Live)","position":1}'
+```
+
+Reorder tracks:
+
+```bash
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks/reorder \
+  -H "Content-Type: application/json" \
+  -d '{"track_ids":["<TRACK_ID_2>","<TRACK_ID_1>"]}'
 ```
 
 Remove a track:
@@ -302,7 +336,7 @@ Supported play modes:
 - `add_next`
 - `play_now`
 
-Virtual playlists are local to Roon AI Bridge and are stored in `data/virtual-playlists.json`. Tracks are stored as stable search queries, not Roon browse `item_key` values.
+Virtual playlists are local to Roon AI Bridge and are stored in `data/roonia.sqlite`. On first start, legacy data from `data/virtual-playlists.json` is migrated automatically if the SQLite store is still empty. Tracks are still played through stable search queries, with optional saved metadata including cover `image_key`.
 
 ## MCP Tools
 
@@ -329,6 +363,8 @@ Implemented tools:
 - `roon_control_playback`
 - `roon_change_volume`
 - `roon_transfer_playback`
+- `roon_group_zones`
+- `roon_ungroup_zone`
 - `roon_search`
 - `roon_play_by_query`
 - `roon_get_queue`
@@ -336,7 +372,14 @@ Implemented tools:
 - `roon_play_queue_item_from_here`
 - `roon_list_virtual_playlists`
 - `roon_create_virtual_playlist`
+- `roon_get_virtual_playlist`
+- `roon_update_virtual_playlist`
+- `roon_delete_virtual_playlist`
 - `roon_add_virtual_playlist_track`
+- `roon_update_virtual_playlist_track`
+- `roon_remove_virtual_playlist_track`
+- `roon_replace_virtual_playlist_tracks`
+- `roon_reorder_virtual_playlist_tracks`
 - `roon_play_virtual_playlist`
 - `roon_search_media`
 - `roon_get_media_details`
@@ -365,6 +408,8 @@ Supported commands:
 - `pause`
 - `playpause`
 - `stop`
+- `next`
+- `previous`
 
 ## Zone Playback Transfer
 
@@ -376,8 +421,26 @@ curl -X POST http://localhost:3000/roon/zones/transfer \
 
 The endpoint uses Roon's native `transfer_zone` command to move the current
 queue and playback state. It does not reconstruct the queue from metadata.
-- `next`
-- `previous`
+
+## Zone Grouping
+
+Preserve the primary zone queue and group compatible additional zones:
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/group \
+  -H "Content-Type: application/json" \
+  -d '{"primary_zone_id":"<PRIMARY_ZONE_ID>","additional_zone_ids":["<ZONE_ID_2>","<ZONE_ID_3>"]}'
+```
+
+Fully split every output in a grouped zone:
+
+```bash
+curl -X POST http://localhost:3000/roon/zones/<GROUPED_ZONE_ID>/ungroup
+```
+
+Both operations wait for the Roon zone subscription to confirm the final
+topology and return `state_verified: true`. Grouping preserves the queue of the
+primary zone and replaces the independent queues of added zones.
 
 ## Volume
 

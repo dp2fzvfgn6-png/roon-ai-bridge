@@ -147,6 +147,68 @@ function asItems(value: unknown): BrowseItem[] {
   return Array.isArray(value) ? (value as BrowseItem[]) : [];
 }
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function pickString(item: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return null;
+}
+
+function pickNumber(item: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function coverPayload(imageKey: string | null): Record<string, unknown> | null {
+  return imageKey ? { image_key: imageKey } : null;
+}
+
+export function enrichBrowseItem(item: BrowseItem): BrowseItem {
+  const raw = asObject(item) || {};
+  const imageKey =
+    typeof item.image_key === "string" && item.image_key.trim() !== ""
+      ? item.image_key.trim()
+      : pickString(raw, ["album_art_key", "artwork_key", "cover_key"]);
+
+  const media = {
+    title: pickString(raw, ["title"]) || null,
+    subtitle: pickString(raw, ["subtitle"]) || null,
+    artist: pickString(raw, ["artist", "artist_name"]) || null,
+    album: pickString(raw, ["album", "album_name"]) || null,
+    album_artist: pickString(raw, ["album_artist", "albumartist"]) || null,
+    composer: pickString(raw, ["composer"]) || null,
+    genre: raw.genre ?? raw.genres ?? null,
+    track_number: pickNumber(raw, ["track_number", "track"]) ?? null,
+    disc_number: pickNumber(raw, ["disc_number", "disc"]) ?? null,
+    duration_seconds:
+      pickNumber(raw, ["duration_seconds", "duration", "length"]) ?? null,
+    release_year: pickNumber(raw, ["release_year", "year"]) ?? null,
+    roon_item_key: pickString(raw, ["item_key"]) || null,
+    image_key: imageKey || null,
+    cover: coverPayload(imageKey || null)
+  };
+
+  return {
+    ...item,
+    image_key: imageKey || item.image_key || null,
+    media
+  };
+}
+
 function normalizeQuery(query: string): string {
   return query.trim().replace(/\s+/g, " ");
 }
@@ -268,7 +330,7 @@ export async function loadCurrentList(
     action: "list",
     hierarchy,
     list: loadResult.list || null,
-    items: asItems(loadResult.items),
+    items: asItems(loadResult.items).map(enrichBrowseItem),
     offset:
       typeof loadResult.offset === "number" ? loadResult.offset : offset,
     count,
