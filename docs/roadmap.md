@@ -319,3 +319,14 @@ See [v0.10 Validation](v0.10-validation.md).
 - Support desktop and mobile layouts.
 
 See [v0.11 Validation](v0.11-validation.md).
+
+## v0.12
+
+- Provide native Settings and Status services to Roon.
+- Add first-run portal administrator creation and hashed sessions.
+- Add output subscriptions, seek, mute, global actions and source controls.
+- Add playback settings, generic Browse effects and artwork.
+- Add safe host-supervised updates and runtime port overrides.
+- Add zone presets and per-output volume policies.
+
+See [v0.12 Validation](v0.12-validation.md).

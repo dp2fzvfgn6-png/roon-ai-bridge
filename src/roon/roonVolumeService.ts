@@ -10,7 +10,7 @@ function volumeCapableOutputs(zone: RoonZone): RoonOutput[] {
 
 function validateVolume(
   outputs: RoonOutput[],
-  mode: "relative" | "absolute",
+  mode: "relative" | "absolute" | "relative_step",
   value: number
 ): void {
   if (outputs.length === 0) {
@@ -55,7 +55,7 @@ function validateVolume(
 export async function changeZoneVolume(
   roonClient: RoonClient,
   zoneId: string,
-  mode: "relative" | "absolute",
+  mode: "relative" | "absolute" | "relative_step",
   value: number
 ): Promise<RoonOutput[]> {
   const transport = requireTransport(roonClient);

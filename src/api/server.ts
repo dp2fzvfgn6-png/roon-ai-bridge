@@ -22,6 +22,11 @@ import { createGroupingRouter } from "./routes/grouping.routes";
 import { createAuthMiddleware } from "./middleware/auth";
 import { APP_VERSION } from "../config/version";
 import { ApiKeyService } from "../services/apiKeyService";
+import { PortalAuthService } from "../services/portalAuthService";
+import { SystemManagementService } from "../services/systemManagementService";
+import { ZonePresetService } from "../services/zonePresetService";
+import { OutputVolumeSettingsService } from "../services/outputVolumeSettingsService";
+import { createAdvancedRouter } from "./routes/advanced.routes";
 
 export type ApiContext = {
   config: AppConfig;
@@ -31,6 +36,10 @@ export type ApiContext = {
   oauthService: OAuthService;
   mediaService: RoonMediaService;
   apiKeyService: ApiKeyService;
+  portalAuthService: PortalAuthService;
+  systemManagementService: SystemManagementService;
+  zonePresetService: ZonePresetService;
+  outputVolumeSettingsService: OutputVolumeSettingsService;
 };
 
 export function createServer(context: ApiContext): express.Express {
@@ -90,6 +99,7 @@ export function createServer(context: ApiContext): express.Express {
   app.use("/roon", createLibraryRouter(context));
   app.use("/roon", createMediaRouter(context));
   app.use("/roon", createQueueRouter(context));
+  app.use("/roon", createAdvancedRouter(context));
   app.use("/", createPlaylistsRouter(context));
 
   app.get("/history", (req, res, next) => {

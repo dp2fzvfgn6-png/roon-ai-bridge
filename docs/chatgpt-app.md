@@ -35,7 +35,7 @@ The MCP server exposes tools for:
 The server also registers a minimal Apps SDK widget resource:
 
 ```text
-ui://roon-ai-bridge/control-v3.html
+ui://roon-ai-bridge/control-v4.html
 ```
 
 ## ChatGPT Developer Setup

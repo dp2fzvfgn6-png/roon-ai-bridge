@@ -29,8 +29,8 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | --- | --- | --- | --- | --- |
 | SDK base | Registrar la extension en Roon | Si | `src/roon/roonClient.ts` | Se hace con `new RoonApi(...)` y el registro posterior del core. |
 | SDK base | Declarar servicios requeridos con `init_services()` | Si | `src/roon/roonClient.ts` | RoonIA declara `RoonApiTransport` y opcionalmente `RoonApiBrowse`. |
-| SDK base | Declarar servicios opcionales | No | `src/roon/roonClient.ts` | No se usa `optional_services`. |
-| SDK base | Declarar servicios provistos propios | Parcial | `src/roon/roonClient.ts` | RoonIA no registra servicios propios custom, pero el SDK anade `ping` y el servicio interno de pairing. |
+| SDK base | Declarar servicios opcionales | Si | `src/roon/roonClient.ts` | El servicio Image es opcional para no impedir la conexion con un Core que no lo exponga. |
+| SDK base | Declarar servicios provistos propios | Si | `src/roon/roonClient.ts` | v0.12 registra Settings y Status, ademas de ping y pairing. |
 | SDK base | Descubrir Roon Core automaticamente con `start_discovery()` | Si | `src/roon/roonClient.ts` | Es el modo principal de conexion actual. |
 | SDK base | Detener discovery con `stop_discovery()` | No | n/a | No hay wrapper ni endpoint para ello. |
 | SDK base | Cerrar todas las conexiones con `disconnect_all()` | No | n/a | No se usa. |
@@ -38,15 +38,15 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | SDK base | Persistir estado/autorizacion con `get_persisted_state` / `set_persisted_state` | Si | `src/roon/roonClient.ts` | Guarda `roonstate.json`. |
 | SDK base | Pairing con un unico Core (`core_paired` / `core_unpaired`) | Si | `src/roon/roonClient.ts` | Es el modo usado por la app. |
 | SDK base | Modo multi-core sin pairing (`core_found` / `core_lost`) | No | n/a | No se usa. |
-| SDK base | Registrar un servicio custom con `register_service()` | No | n/a | No hay servicios custom hacia Roon mas alla de los implicitos del SDK. |
+| SDK base | Registrar un servicio custom con `register_service()` | Si | `src/roon/roonClient.ts` | Se usa a traves de los modulos oficiales Settings y Status. |
 | SDK base | Servicio `ping` provisto a Roon | Si | implicito por `init_services()` | Lo anade el propio SDK. |
 
 ## 2. Servicios que una extension puede proveer a Roon
 
 | Servicio | Accion nativa | Estado en RoonIA | Evidencia | Nota |
 | --- | --- | --- | --- | --- |
-| Servicio provisto | Publicar estado de extension (`node-roon-api-status`) | No | n/a | RoonIA no usa `node-roon-api-status` ni `set_status()`. |
-| Servicio provisto | Exponer ajustes UI en Roon (`node-roon-api-settings`) | No | n/a | No implementado. |
+| Servicio provisto | Publicar estado de extension (`node-roon-api-status`) | Si | `src/roon/roonClient.ts` | Publica conexion, version y resultado de comprobaciones de actualizacion. |
+| Servicio provisto | Exponer ajustes UI en Roon (`node-roon-api-settings`) | Si | `src/roon/roonClient.ts` | Permite configurar puertos, ver la direccion y solicitar comprobacion, reinicio o actualizacion. |
 | Servicio provisto | Exponer control de volumen hardware a Roon (`node-roon-api-volume-control`) | No | n/a | RoonIA consume el transporte de Roon; no provee un dispositivo de volumen a Roon. |
 | Servicio provisto | Exponer control de fuente/standby hardware a Roon (`node-roon-api-source-control`) | No | n/a | No implementado. |
 
@@ -55,32 +55,32 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | Servicio | Accion nativa | Estado en RoonIA | Evidencia | Nota |
 | --- | --- | --- | --- | --- |
 | Transport | Obtener zonas con `get_zones()` | Si | `src/roon/roonClient.ts`, `src/api/routes/zones.routes.ts`, `src/mcp/mcpTools.ts` | RoonIA lista zonas via HTTP y MCP. |
-| Transport | Obtener outputs con `get_outputs()` | No | n/a | No hay llamada dedicada a `get_outputs()`. |
+| Transport | Obtener outputs con `get_outputs()` | Si | `src/roon/roonClient.ts`, `src/api/routes/advanced.routes.ts` | Inicializa y expone el inventario de outputs. |
 | Transport | Suscribirse a cambios de zonas con `subscribe_zones()` | Si | `src/roon/roonClient.ts` | Se usa para mantener cache local de zonas. |
-| Transport | Suscribirse a cambios de outputs con `subscribe_outputs()` | No | n/a | No implementado. |
+| Transport | Suscribirse a cambios de outputs con `subscribe_outputs()` | Si | `src/roon/roonClient.ts` | Mantiene una cache reactiva para portal, API y MCP. |
 | Transport | Control `play` | Si | `src/roon/roonPlaybackService.ts`, `src/api/routes/playback.routes.ts`, `src/mcp/mcpTools.ts` | Verifica el estado final en v0.9.2. |
 | Transport | Control `pause` | Si | `src/roon/roonPlaybackService.ts` | Expuesto por HTTP y MCP. |
 | Transport | Control `playpause` | Si | `src/roon/roonPlaybackService.ts` | Expuesto por HTTP y MCP. |
 | Transport | Control `stop` | Si | `src/roon/roonPlaybackService.ts` | Expuesto por HTTP y MCP. |
 | Transport | Control `previous` | Si | `src/roon/roonPlaybackService.ts` | Expuesto por HTTP y MCP. |
 | Transport | Control `next` | Si | `src/roon/roonPlaybackService.ts` | Expuesto por HTTP y MCP. |
-| Transport | Seek absoluto con `seek(..., "absolute", ...)` | No | n/a | No hay endpoint ni herramienta para seek. |
-| Transport | Seek relativo con `seek(..., "relative", ...)` | No | n/a | No implementado. |
+| Transport | Seek absoluto con `seek(..., "absolute", ...)` | Si | `src/roon/roonAdvancedTransportService.ts` | Expuesto en API, MCP y portal. |
+| Transport | Seek relativo con `seek(..., "relative", ...)` | Si | `src/roon/roonAdvancedTransportService.ts` | Admite segundos positivos y negativos. |
 | Transport | Cambiar volumen absoluto con `change_volume(..., "absolute", ...)` | Si | `src/roon/roonVolumeService.ts`, `src/api/routes/volume.routes.ts`, `src/mcp/mcpTools.ts` | Implementado por output de la zona. |
 | Transport | Cambiar volumen relativo con `change_volume(..., "relative", ...)` | Si | `src/roon/roonVolumeService.ts` | Implementado por output de la zona. |
-| Transport | Cambiar volumen por paso relativo con `change_volume(..., "relative_step", ...)` | No | n/a | No expuesto. |
-| Transport | Mutear/unmutear un output con `mute()` | No | n/a | No implementado. |
-| Transport | Mutear/unmutear todas las zonas con `mute_all()` | No | n/a | No implementado. |
-| Transport | Pausar todas las zonas con `pause_all()` | No | n/a | No implementado. |
-| Transport | Poner output en standby con `standby()` | No | n/a | No implementado. |
-| Transport | Alternar standby con `toggle_standby()` | No | n/a | No implementado. |
-| Transport | `convenience_switch()` de un output/fuente | No | n/a | No implementado. |
+| Transport | Cambiar volumen por paso relativo con `change_volume(..., "relative_step", ...)` | Si | `src/roon/roonVolumeService.ts` | Expuesto en API y MCP. |
+| Transport | Mutear/unmutear un output con `mute()` | Si | `src/roon/roonAdvancedTransportService.ts` | Expuesto por output. |
+| Transport | Mutear/unmutear todas las zonas con `mute_all()` | Si | `src/roon/roonAdvancedTransportService.ts` | Accion global explicita. |
+| Transport | Pausar todas las zonas con `pause_all()` | Si | `src/roon/roonAdvancedTransportService.ts` | Accion global explicita. |
+| Transport | Poner output en standby con `standby()` | Si | `src/roon/roonAdvancedTransportService.ts` | Admite `control_key` opcional. |
+| Transport | Alternar standby con `toggle_standby()` | Si | `src/roon/roonAdvancedTransportService.ts` | Disponible en portal, API y MCP. |
+| Transport | `convenience_switch()` de un output/fuente | Si | `src/roon/roonAdvancedTransportService.ts` | Disponible en portal, API y MCP. |
 | Transport | Transferir cola y reproduccion entre zonas con `transfer_zone()` | Si | `src/roon/roonTransferService.ts`, `src/api/routes/playback.routes.ts`, `src/mcp/mcpTools.ts` | Implementado en v0.9.1. |
 | Transport | Agrupar outputs sincronizados con `group_outputs()` | Si | `src/roon/roonGroupingService.ts`, `src/api/routes/grouping.routes.ts`, `src/mcp/mcpTools.ts` | Implementado en v0.10 con una zona primaria explicita y verificacion de la topologia final. |
 | Transport | Desagrupar outputs con `ungroup_outputs()` | Si | `src/roon/roonGroupingService.ts`, `src/api/routes/grouping.routes.ts`, `src/mcp/mcpTools.ts` | Implementado en v0.10; separa todos los outputs y verifica que vuelvan a zonas independientes. |
-| Transport | Cambiar `shuffle` via `change_settings()` | No | n/a | RoonIA no usa `change_settings`; el modo artista usa acciones de `browse`. |
-| Transport | Cambiar `auto_radio` via `change_settings()` | No | n/a | No implementado. |
-| Transport | Cambiar `loop` via `change_settings()` | No | n/a | No implementado. |
+| Transport | Cambiar `shuffle` via `change_settings()` | Si | `src/roon/roonAdvancedTransportService.ts` | Expuesto por zona. |
+| Transport | Cambiar `auto_radio` via `change_settings()` | Si | `src/roon/roonAdvancedTransportService.ts` | Expuesto por zona. |
+| Transport | Cambiar `loop` via `change_settings()` | Si | `src/roon/roonAdvancedTransportService.ts` | Admite `loop`, `loop_one`, `disabled` y `next`. |
 | Transport | Leer cola por suscripcion con `subscribe_queue()` | Si | `src/roon/roonQueueService.ts`, `src/api/routes/queue.routes.ts`, `src/mcp/mcpTools.ts` | Se usa para snapshots de cola. |
 | Transport | Saltar a un item de cola con `play_from_here()` | Si | `src/roon/roonQueueService.ts`, `src/api/routes/queue.routes.ts`, `src/mcp/mcpTools.ts` | Implementado. |
 
@@ -97,7 +97,7 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | Browse | Navegar jerarquia `artists` | Si | `src/api/routes/library.routes.ts` | Soportada. |
 | Browse | Navegar jerarquia `genres` | Si | `src/api/routes/library.routes.ts` | Soportada. |
 | Browse | Navegar jerarquia `composers` | Si | `src/api/routes/library.routes.ts` | Soportada. |
-| Browse | Navegar jerarquia `settings` | No | n/a | El SDK la permite, pero RoonIA no la expone. |
+| Browse | Navegar jerarquia `settings` | Si | `src/api/routes/library.routes.ts`, `portal/app.js` | Disponible en el explorador generico. |
 | Browse | Buscar con jerarquia `search` | Si | `src/api/routes/library.routes.ts`, `src/roon/roonBrowseService.ts`, `src/roon/roonMediaService.ts` | Expuesta como `/roon/search` y en la capa typed media. |
 | Browse | Cargar items de lista con `load()` | Si | `src/roon/roonBrowseService.ts` | Se usa para paginacion y carga de acciones. |
 | Browse | Paginacion por `offset`/`count` | Si | `src/api/routes/library.routes.ts`, `src/roon/roonBrowseService.ts` | Implementada. |
@@ -107,7 +107,7 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | Browse | Retroceder niveles con `pop_levels` | Si | `src/api/routes/library.routes.ts` | Implementado. |
 | Browse | Refrescar lista con `refresh_list` | Si | `src/api/routes/library.routes.ts` | Implementado. |
 | Browse | Actualizar `display_offset` / `set_display_offset` | Si | `src/roon/roonBrowseService.ts` | Se usa en `loadCurrentList()`. |
-| Browse | Enviar `input` a un item con `input_prompt` generico | No | n/a | RoonIA no expone un endpoint generico para contestar prompts arbitrarios de browse. |
+| Browse | Enviar `input` a un item con `input_prompt` generico | Si | `src/roon/roonBrowseService.ts`, `portal/app.js` | El portal renderiza el prompt y devuelve la entrada a la misma sesion. |
 
 ### 4.2 Acciones dinamicas de `browse` que RoonIA si usa o inspecciona
 
@@ -119,7 +119,7 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | Browse dinamico | Ejecutar `Shuffle`/catalogo del artista | Si | `src/roon/roonMediaService.ts` | Usado para reproducir solo el catalogo del artista. |
 | Browse dinamico | Ejecutar `Start Radio` / radio del artista | Si | `src/roon/roonMediaService.ts`, `src/api/routes/media.routes.ts`, `src/mcp/mcpTools.ts` | Implementado como accion separada. |
 | Browse dinamico | Inspeccionar acciones disponibles para un resultado | Si | `src/roon/roonBrowseService.ts`, `src/api/routes/queue.routes.ts` | `inspect_actions`. |
-| Browse dinamico | Ejecutar cualquier otra accion arbitraria que Roon devuelva en un action-list | No | n/a | No existe un endpoint generico "run arbitrary browse action". |
+| Browse dinamico | Ejecutar cualquier otra accion arbitraria que Roon devuelva en un action-list | Si | `src/roon/roonBrowseService.ts`, `src/api/routes/library.routes.ts` | Requiere un `item_key` de la misma sesion Browse. |
 
 ### 4.3 Respuestas/efectos nativos de `browse`
 
@@ -128,35 +128,33 @@ Nota importante sobre `browse`: el SDK solo define dos llamadas nativas fijas (`
 | Browse | Manejar respuesta `list` | Si | `src/roon/roonBrowseService.ts` | Base de toda la navegacion. |
 | Browse | Manejar respuesta `message` | Si | `src/roon/roonBrowseService.ts`, `src/roon/roonMediaService.ts` | Se devuelve al cliente cuando aparece. |
 | Browse | Manejar respuesta `none` | Si | `src/roon/roonBrowseService.ts` | Se propaga como accion/respuesta. |
-| Browse | Manejar respuesta `replace_item` | Parcial | `src/roon/roonBrowseService.ts` | Se propaga si aparece, pero no hay UX generica para explotarla como flujo propio. |
-| Browse | Manejar respuesta `remove_item` | Parcial | `src/roon/roonBrowseService.ts` | Igual que la anterior. |
+| Browse | Manejar respuesta `replace_item` | Si | `src/roon/roonBrowseService.ts`, `portal/app.js` | El portal reemplaza el item afectado sin perder la sesion. |
+| Browse | Manejar respuesta `remove_item` | Si | `src/roon/roonBrowseService.ts`, `portal/app.js` | El portal elimina el item afectado de la lista activa. |
 
 ## 5. Servicio nativo `image`
 
 | Servicio | Accion nativa | Estado en RoonIA | Evidencia | Nota |
 | --- | --- | --- | --- | --- |
-| Image | Descargar imagen con `get_image(image_key, ...)` | No | n/a | El SDK lo documenta, pero RoonIA no declara ni usa `node-roon-api-image`. |
-| Image | Descargar imagen por HTTP nativo de Roon (`/api/image/...`) | No | n/a | RoonIA no lo encapsula ni lo expone. |
+| Image | Descargar imagen con `get_image(image_key, ...)` | Si | `src/roon/roonImageService.ts` | Limita formato y dimensiones, y lo expone a API, MCP, portal y widget. |
+| Image | Descargar imagen por HTTP nativo de Roon (`/api/image/...`) | Parcial | `src/api/routes/advanced.routes.ts` | RoonIA usa el servicio SDK y publica su propio proxy autenticado en vez de depender del puerto interno del Core. |
 
 ## 6. Acciones nativas que hoy estan implementadas en RoonIA
 
 Esta es la lista consolidada de acciones nativas realmente implementadas hoy:
 
-- registro de extension y pairing con un unico Core
-- discovery automatico del Core
-- persistencia de autorizacion/estado
-- listado de zonas
-- cache reactiva de zonas via `subscribe_zones()`
-- control de reproduccion: `play`, `pause`, `playpause`, `stop`, `previous`, `next`
-- cambio de volumen `absolute` y `relative`
-- transferencia nativa entre zonas con `transfer_zone()`
-- lectura de cola via `subscribe_queue()`
-- `play_from_here()` sobre items de cola
-- browse de biblioteca en jerarquias `browse`, `playlists`, `internet_radio`, `albums`, `artists`, `genres`, `composers`
-- busqueda en jerarquia `search`
-- `load()` con paginacion, `item_key`, `multi_session_key`, `pop_all`, `pop_levels`, `refresh_list`, `set_display_offset`
-- ejecucion controlada de acciones dinamicas de browse para `Play`, `Add Next`, `Add to Queue`, `Shuffle` de artista y `Start Radio`
-- inspeccion de acciones dinamicas disponibles para cola
+- registro, pairing, discovery y persistencia de autorizacion
+- servicios proporcionados Settings y Status mediante `register_service()`
+- zonas y outputs con `get_*` y suscripciones reactivas
+- playback, seek absoluto/relativo, volumen en los tres modos y mute
+- acciones globales `mute_all()` y `pause_all()`
+- standby, toggle standby y convenience switch
+- transferencia, agrupacion, desagrupacion y presets persistentes
+- cambio de shuffle, auto-radio y loop
+- lectura y reinicio de cola desde su primer item
+- todas las jerarquias Browse documentadas, incluida `settings`
+- browse generico con prompts, acciones arbitrarias, `replace_item` y `remove_item`
+- descarga y transformacion de imagenes con el servicio Image
+- proxy autenticado de imagenes y datos de imagen para el widget MCP
 
 ## 7. Acciones nativas del SDK que NO estan implementadas en RoonIA
 
@@ -165,26 +163,21 @@ Pendientes o ausentes a dia de hoy:
 - `stop_discovery()`
 - `disconnect_all()`
 - `ws_connect()`
-- servicios opcionales del SDK base
-- servicios provistos `status`, `settings`, `volume-control`, `source-control`
-- `get_outputs()`
-- `subscribe_outputs()`
-- `seek()` absoluto y relativo
-- `change_volume(..., "relative_step", ...)`
-- `mute()`
-- `mute_all()`
-- `pause_all()`
-- `standby()`
-- `toggle_standby()`
-- `convenience_switch()`
-- `change_settings()` para `shuffle`, `auto_radio` y `loop`
-- jerarquia `settings` en browse
-- soporte generico para `input_prompt`
-- ejecucion generica de cualquier accion arbitraria devuelta por Roon en browse
-- `get_image()` y proxy/uso del servicio de imagenes
+- servicios proporcionados `volume-control` y `source-control`
+
+Estas exclusiones son deliberadas:
+
+- Parar discovery, desconectar el Core o forzar `ws_connect()` no aporta una
+  accion normal de usuario y puede dejar el bridge aislado.
+- `volume-control` y `source-control` sirven para que una extension se presente
+  como hardware ante Roon. RoonIA consume outputs existentes; no debe fingir
+  que es un dispositivo de audio.
 
 ## 8. Conclusiones practicas
 
-- En control de reproduccion y cola, RoonIA cubre bien el nucleo nativo que mas valor aporta: zonas, playback, volumen, cola, browse, busqueda, radio y transferencia.
-- La mayor parte de lo que falta esta en tres grupos: gestion avanzada de outputs, ajustes/standby/mute/seek, y acciones genericas no tipadas de `browse`.
-- Si queremos cerrar la brecha con el SDK nativo de Roon, las prioridades naturales son: `seek`, `mute`, `change_settings`, `get_outputs`/`subscribe_outputs`, e `image`.
+- v0.12 cubre todas las acciones del SDK que resultan convenientes para un
+  bridge de control sin representar hardware ficticio.
+- Las acciones peligrosas globales se mantienen como intenciones separadas y
+  explicitas en API, MCP y portal.
+- Las operaciones que Roon no ofrece de forma nativa se describen con
+  precision: reiniciar cola vuelve al primer item, no borra la cola.

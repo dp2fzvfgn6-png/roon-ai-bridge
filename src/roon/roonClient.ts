@@ -3,10 +3,15 @@ import path from "path";
 import RoonApi = require("node-roon-api");
 import RoonApiBrowse = require("node-roon-api-browse");
 import RoonApiTransport = require("node-roon-api-transport");
+import RoonApiImage = require("node-roon-api-image");
+import RoonApiSettings = require("node-roon-api-settings");
+import RoonApiStatus = require("node-roon-api-status");
 import { AppConfig } from "../config/env";
 import { APP_VERSION } from "../config/version";
 import { Logger } from "../utils/logger";
 import { RoonZone } from "./roonTypes";
+import { RoonOutput } from "./roonTypes";
+import { SystemManagementService } from "../services/systemManagementService";
 
 export type RoonClient = {
   start(): void;
@@ -14,20 +19,31 @@ export type RoonClient = {
   isCoreConnected(): boolean;
   isTransportReady(): boolean;
   isBrowseReady(): boolean;
+  isImageReady(): boolean;
   getTransport(): any | null;
   getBrowse(): any | null;
+  getImage(): any | null;
   getZones(): RoonZone[];
+  getOutputs(): RoonOutput[];
+  getOutput(outputId: string): RoonOutput | null;
   getZone(zoneId: string): RoonZone | null;
 };
 
-export function createRoonClient(config: AppConfig, logger: Logger): RoonClient {
+export function createRoonClient(
+  config: AppConfig,
+  logger: Logger,
+  systemManagement?: SystemManagementService
+): RoonClient {
   const stateFile = path.join(config.dataDir, "roonstate.json");
   let currentCore: any | null = null;
   let transport: any | null = null;
   let browse: any | null = null;
+  let image: any | null = null;
   let transportReady = false;
   let browseReady = false;
+  let imageReady = false;
   let zonesById = new Map<string, RoonZone>();
+  let outputsById = new Map<string, RoonOutput>();
 
   function ensureDataDir(): void {
     fs.mkdirSync(config.dataDir, { recursive: true });
@@ -57,6 +73,24 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
     );
   }
 
+  function mergeOutputChanges(event: string, data: any): void {
+    if (event === "Subscribed" && Array.isArray(data?.outputs)) {
+      outputsById = new Map(
+        data.outputs.map((output: RoonOutput) => [output.output_id, output])
+      );
+      return;
+    }
+    for (const output of data?.outputs_added || []) {
+      outputsById.set(output.output_id, output);
+    }
+    for (const output of data?.outputs_changed || []) {
+      outputsById.set(output.output_id, output);
+    }
+    for (const outputId of data?.outputs_removed || []) {
+      outputsById.delete(outputId);
+    }
+  }
+
   ensureDataDir();
 
   const roon = new RoonApi({
@@ -79,8 +113,10 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
       currentCore = core;
       transport = core.services.RoonApiTransport;
       browse = core.services.RoonApiBrowse || null;
+      image = core.services.RoonApiImage || null;
       transportReady = Boolean(transport);
       browseReady = Boolean(browse);
+      imageReady = Boolean(image);
 
       logger.info("Authorization completed and core connected", {
         coreId: core.core_id,
@@ -88,6 +124,10 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
         transportReady,
         browseReady
       });
+      statusService.set_status(
+        `Connected to ${core.display_name}; portal ${config.portalPort}`,
+        false
+      );
 
       if (!transport) {
         logger.error("Roon transport service is not available");
@@ -104,6 +144,24 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
           removed: data?.zones_removed?.length
         });
       });
+
+      transport.subscribe_outputs((event: string, data: any) => {
+        mergeOutputChanges(event, data);
+        logger.info("Outputs changed", {
+          event,
+          outputsCount: outputsById.size,
+          added: data?.outputs_added?.length,
+          changed: data?.outputs_changed?.length,
+          removed: data?.outputs_removed?.length
+        });
+      });
+
+      transport.get_outputs((error: string | false, body: any) => {
+        if (error || !Array.isArray(body?.outputs)) return;
+        outputsById = new Map(
+          body.outputs.map((output: RoonOutput) => [output.output_id, output])
+        );
+      });
     },
     core_unpaired: (core: any) => {
       logger.warn("Core disconnected or unpaired", {
@@ -113,18 +171,141 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
       currentCore = null;
       transport = null;
       browse = null;
+      image = null;
       transportReady = false;
       browseReady = false;
+      imageReady = false;
       zonesById = new Map();
+      outputsById = new Map();
+      statusService.set_status("Roon Core disconnected", true);
     }
   });
+
+  const managementValues = () => {
+    const info = systemManagement?.getSystemInfo() as any;
+    const firstAddress = info?.addresses?.[0];
+    return {
+      bridge_port: config.port,
+      portal_port: config.portalPort,
+      service_address:
+        firstAddress?.portal_url || `http://localhost:${config.portalPort}`,
+      action: "none"
+    };
+  };
+
+  const managementLayout = (values = managementValues()) => ({
+    values,
+    layout: [
+      {
+        type: "string",
+        title: "Service address (informational)",
+        maxlength: 256,
+        setting: "service_address"
+      },
+      {
+        type: "integer",
+        title: "Bridge API port",
+        min: 1,
+        max: 65535,
+        setting: "bridge_port"
+      },
+      {
+        type: "integer",
+        title: "Administration portal port",
+        min: 1,
+        max: 65535,
+        setting: "portal_port"
+      },
+      {
+        type: "dropdown",
+        title: "Operation applied when settings are saved",
+        values: [
+          { value: "none", title: "No operation" },
+          { value: "check_update", title: "Check for updates" },
+          { value: "restart", title: "Restart RoonIA" },
+          { value: "update", title: "Update to latest main version" }
+        ],
+        setting: "action"
+      }
+    ],
+    has_error: false
+  });
+
+  const settingsService = new RoonApiSettings(roon, {
+    get_settings: (callback: (settings: unknown) => void) => {
+      callback(managementLayout());
+    },
+    save_settings: (req: any, isDryRun: boolean, settings: any) => {
+      try {
+        const requested = settings?.values || {};
+        const bridgePort = Number(requested.bridge_port);
+        const portalPort = Number(requested.portal_port);
+        const action = String(requested.action || "none");
+        if (!systemManagement) throw new Error("System management is unavailable");
+        if (
+          !Number.isInteger(bridgePort) ||
+          !Number.isInteger(portalPort) ||
+          bridgePort < 1 ||
+          bridgePort > 65535 ||
+          portalPort < 1 ||
+          portalPort > 65535 ||
+          bridgePort === portalPort
+        ) {
+          throw new Error("Ports must be different integers from 1 to 65535");
+        }
+        const layout = managementLayout({
+          ...managementValues(),
+          bridge_port: bridgePort,
+          portal_port: portalPort,
+          action: "none"
+        });
+        req.send_complete("Success", { settings: layout });
+        if (isDryRun) return;
+        systemManagement.savePorts({
+          api_port: bridgePort,
+          portal_port: portalPort
+        });
+        settingsService.update_settings(layout);
+        if (action === "check_update") {
+          systemManagement.checkForUpdates().then((result) => {
+            statusService.set_status(
+              result.error
+                ? `Update check failed: ${result.error}`
+                : result.update_available
+                  ? `Update available: ${result.latest_version}`
+                  : `RoonIA ${APP_VERSION} is up to date`,
+              Boolean(result.error)
+            );
+          });
+        } else if (action === "update") {
+          systemManagement.requestUpdate();
+          statusService.set_status("Update requested; waiting for LXC updater", false);
+        } else if (action === "restart") {
+          systemManagement.requestRestart();
+        }
+      } catch (error) {
+        req.send_complete("NotValid", {
+          settings: {
+            ...managementLayout(settings?.values),
+            has_error: true
+          },
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    },
+    button_pressed: (req: any) => req.send_complete("Success")
+  });
+  const statusService = new RoonApiStatus(roon);
+  statusService.set_status(`RoonIA ${APP_VERSION} starting`, false);
 
   const requiredServices = config.enableBrowse
     ? [RoonApiTransport, RoonApiBrowse]
     : [RoonApiTransport];
 
   roon.init_services({
-    required_services: requiredServices
+    required_services: requiredServices,
+    optional_services: [RoonApiImage],
+    provided_services: [settingsService, statusService]
   });
 
   return {
@@ -147,14 +328,26 @@ export function createRoonClient(config: AppConfig, logger: Logger): RoonClient 
     isBrowseReady() {
       return browseReady;
     },
+    isImageReady() {
+      return imageReady;
+    },
     getTransport() {
       return transport;
     },
     getBrowse() {
       return browse;
     },
+    getImage() {
+      return image;
+    },
     getZones() {
       return Array.from(zonesById.values());
+    },
+    getOutputs() {
+      return Array.from(outputsById.values());
+    },
+    getOutput(outputId: string) {
+      return outputsById.get(outputId) || null;
     },
     getZone(zoneId: string) {
       return zonesById.get(zoneId) || null;

@@ -9,7 +9,8 @@ export type BrowseHierarchy =
   | "artists"
   | "genres"
   | "composers"
-  | "playlists";
+  | "playlists"
+  | "settings";
 
 export type BrowseItem = {
   title: string;
@@ -41,6 +42,7 @@ export type BrowseRequest = {
   popLevels?: number;
   refreshList: boolean;
   sessionKey?: string;
+  input?: string;
 };
 
 export type BrowseResponse = {
@@ -52,6 +54,7 @@ export type BrowseResponse = {
   count: number;
   message: string | null;
   is_error: boolean | null;
+  item?: BrowseItem | null;
 };
 
 export type SearchRequest = {
@@ -354,6 +357,7 @@ export async function browseLibrary(
   if (request.popAll) browseOpts.pop_all = true;
   if (typeof request.popLevels === "number") browseOpts.pop_levels = request.popLevels;
   if (request.refreshList) browseOpts.refresh_list = true;
+  if (typeof request.input === "string") browseOpts.input = request.input;
 
   const browseResult = await browseCall(browse, browseOpts);
   if (browseResult.action !== "list") {
@@ -366,7 +370,8 @@ export async function browseLibrary(
       count: request.count,
       message: browseResult.message || null,
       is_error:
-        typeof browseResult.is_error === "boolean" ? browseResult.is_error : null
+        typeof browseResult.is_error === "boolean" ? browseResult.is_error : null,
+      item: browseResult.item ? enrichBrowseItem(browseResult.item) : null
     };
   }
 
@@ -382,6 +387,60 @@ export async function browseLibrary(
     ...loaded,
     action: browseResult.action,
     list: loaded.list || browseResult.list || null
+  };
+}
+
+export async function runBrowseAction(
+  roonClient: RoonClient,
+  request: {
+    hierarchy: BrowseHierarchy | "search";
+    itemKey: string;
+    sessionKey?: string;
+    zoneOrOutputId?: string;
+    input?: string;
+    count?: number;
+  }
+): Promise<BrowseResponse> {
+  if (!request.itemKey?.trim()) {
+    throw new ApiError("INVALID_BROWSE_ACTION", "item_key is required");
+  }
+  const browse = requireBrowse(roonClient);
+  const opts: Record<string, unknown> = {
+    hierarchy: request.hierarchy,
+    item_key: request.itemKey
+  };
+  if (request.sessionKey) opts.multi_session_key = request.sessionKey;
+  if (request.zoneOrOutputId) {
+    opts.zone_or_output_id = request.zoneOrOutputId;
+  }
+  if (typeof request.input === "string") opts.input = request.input;
+
+  const result = await browseCall(browse, opts);
+  if (result.action === "list") {
+    const loaded = await loadCurrentList(
+      browse,
+      request.hierarchy,
+      request.sessionKey,
+      0,
+      Math.max(1, Math.min(request.count || 100, 500))
+    );
+    return {
+      ...loaded,
+      action: "list",
+      list: loaded.list || result.list || null,
+      item: result.item ? enrichBrowseItem(result.item) : null
+    };
+  }
+  return {
+    action: result.action || "none",
+    hierarchy: request.hierarchy,
+    list: result.list || null,
+    items: [],
+    offset: 0,
+    count: 0,
+    message: result.message || null,
+    is_error: typeof result.is_error === "boolean" ? result.is_error : null,
+    item: result.item ? enrichBrowseItem(result.item) : null
   };
 }
 

@@ -4,6 +4,7 @@ import { ApiError } from "../../utils/errors";
 import {
   BrowseHierarchy,
   browseLibrary,
+  runBrowseAction,
   searchRoon
 } from "../../roon/roonBrowseService";
 
@@ -14,7 +15,8 @@ const ALLOWED_HIERARCHIES = new Set([
   "artists",
   "genres",
   "composers",
-  "playlists"
+  "playlists",
+  "settings"
 ]);
 
 function stringQuery(value: unknown): string | undefined {
@@ -67,7 +69,8 @@ export function createLibraryRouter(context: ApiContext): Router {
         popAll: boolQuery(req.query.pop_all, !itemKey && popLevels === undefined),
         popLevels,
         refreshList: boolQuery(req.query.refresh_list, false),
-        sessionKey: stringQuery(req.query.session_key) || "roon-ai-bridge-http"
+        sessionKey: stringQuery(req.query.session_key) || "roon-ai-bridge-http",
+        input: stringQuery(req.query.input)
       };
 
       context.logger.info("Library browse request received", {
@@ -78,6 +81,26 @@ export function createLibraryRouter(context: ApiContext): Router {
       });
 
       res.json(await browseLibrary(context.roonClient, request));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/browse/action", async (req, res, next) => {
+    try {
+      res.json(
+        await runBrowseAction(context.roonClient, {
+          hierarchy: hierarchyQuery(req.body?.hierarchy),
+          itemKey:
+            typeof req.body?.item_key === "string" ? req.body.item_key : "",
+          sessionKey: stringQuery(req.body?.session_key),
+          zoneOrOutputId: stringQuery(req.body?.zone_id),
+          input:
+            typeof req.body?.input === "string" ? req.body.input : undefined,
+          count:
+            typeof req.body?.count === "number" ? req.body.count : undefined
+        })
+      );
     } catch (error) {
       next(error);
     }

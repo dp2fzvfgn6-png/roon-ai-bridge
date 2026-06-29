@@ -24,11 +24,19 @@ export function parsePlaybackCommand(value: unknown): PlaybackCommand {
   });
 }
 
-export function parseVolumeMode(value: unknown): "relative" | "absolute" {
-  if (value === "relative" || value === "absolute") return value;
+export function parseVolumeMode(
+  value: unknown
+): "relative" | "absolute" | "relative_step" {
+  if (
+    value === "relative" ||
+    value === "absolute" ||
+    value === "relative_step"
+  ) {
+    return value;
+  }
 
-  throw new ApiError("INVALID_VOLUME_MODE", "Volume mode must be relative or absolute", {
-    allowed: ["relative", "absolute"]
+  throw new ApiError("INVALID_VOLUME_MODE", "Unsupported volume mode", {
+    allowed: ["relative", "absolute", "relative_step"]
   });
 }
 

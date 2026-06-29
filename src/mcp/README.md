@@ -55,5 +55,16 @@ Implemented tools:
 - `roon_play_media`
 - `roon_start_radio`
 - `roon_add_media_to_queue`
+- `roon_list_outputs`
+- `roon_seek`
+- `roon_mute_output`
+- `roon_change_output_volume`
+- `roon_mute_all`
+- `roon_pause_all`
+- `roon_output_power`
+- `roon_change_playback_settings`
+- `roon_restart_queue`
+- `roon_run_browse_action`
+- `roon_get_image`
 
 Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.

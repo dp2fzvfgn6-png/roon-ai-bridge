@@ -19,6 +19,9 @@ export type RoonZone = {
   display_name: string;
   state: string;
   now_playing?: {
+    image_key?: string;
+    seek_position?: number;
+    length?: number;
     three_line?: {
       line1?: string;
       line2?: string;
@@ -30,6 +33,11 @@ export type RoonZone = {
   is_pause_allowed?: boolean;
   is_next_allowed?: boolean;
   is_previous_allowed?: boolean;
+  settings?: {
+    shuffle?: boolean;
+    auto_radio?: boolean;
+    loop?: "loop" | "loop_one" | "disabled";
+  };
   [key: string]: unknown;
 };
 
@@ -41,6 +49,14 @@ export type PublicZone = {
     line1: string | null;
     line2: string | null;
     line3: string | null;
+    image_key: string | null;
+    seek_position: number | null;
+    length: number | null;
   };
   outputs: RoonOutput[];
+  playback_settings: {
+    shuffle: boolean | null;
+    auto_radio: boolean | null;
+    loop: string | null;
+  };
 };

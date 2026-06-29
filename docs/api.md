@@ -387,17 +387,39 @@ Implemented tools:
 - `roon_play_media`
 - `roon_start_radio`
 - `roon_add_media_to_queue`
+- `roon_list_outputs`
+- `roon_seek`
+- `roon_mute_output`
+- `roon_change_output_volume`
+- `roon_mute_all`
+- `roon_pause_all`
+- `roon_output_power`
+- `roon_change_playback_settings`
+- `roon_restart_queue`
+- `roon_run_browse_action`
+- `roon_get_image`
 
 ## Administration Portal API
 
 The portal on port `3001` uses protected same-origin endpoints:
 
+- `GET /api/auth/status`
+- `POST /api/auth/setup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 - `GET /api/session`
 - `GET /api/dashboard`
 - `GET /api/admin/settings`
+- `GET /api/admin/system`
+- `PATCH /api/admin/system/ports`
+- `POST /api/admin/system/check-update`
+- `POST /api/admin/system/update`
+- `POST /api/admin/system/restart`
 - `GET /api/admin/api-keys`
 - `POST /api/admin/api-keys`
 - `DELETE /api/admin/api-keys/:key_id`
+- CRUD and apply routes below `/api/admin/zone-presets`
+- Read/write/apply routes below `/api/admin/output-volumes`
 
 It also exposes existing Roon routes below `/api/roon/*` and playlist routes
 below `/api/playlists/*`. Every portal API endpoint requires
@@ -418,6 +440,31 @@ Roles:
 
 The creation response contains `token` once. List responses expose only
 `key_prefix`; revocation is permanent.
+
+## Advanced Transport And Outputs
+
+- `GET /roon/outputs`
+- `POST /roon/zones/:zone_id/seek`
+- `POST /roon/zones/:zone_id/settings`
+- `POST /roon/zones/:zone_id/queue/restart`
+- `POST /roon/outputs/:output_id/mute`
+- `POST /roon/outputs/:output_id/volume`
+- `POST /roon/outputs/:output_id/power`
+- `POST /roon/mute-all`
+- `POST /roon/pause-all`
+- `GET /roon/images/:image_key`
+- `POST /roon/browse/action`
+
+Power actions are `standby`, `toggle_standby` and `convenience_switch`. Seek
+modes are `absolute` and `relative`. Playback settings accept `shuffle`,
+`auto_radio` and `loop`.
+
+`POST /roon/browse/action` executes an `item_key` in its existing Browse
+session and can include `input` for `input_prompt`. Responses preserve native
+`list`, `message`, `none`, `replace_item` and `remove_item` effects.
+
+Queue restart plays from the first item returned by Roon; it does not clear or
+rebuild the queue.
 
 ## Zones
 

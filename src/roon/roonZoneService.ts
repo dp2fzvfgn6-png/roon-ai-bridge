@@ -13,9 +13,29 @@ export function formatZone(zone: RoonZone): PublicZone {
     now_playing: {
       line1: nowPlaying.line1 || null,
       line2: nowPlaying.line2 || null,
-      line3: nowPlaying.line3 || null
+      line3: nowPlaying.line3 || null,
+      image_key: zone.now_playing?.image_key || null,
+      seek_position:
+        typeof zone.now_playing?.seek_position === "number"
+          ? zone.now_playing.seek_position
+          : null,
+      length:
+        typeof zone.now_playing?.length === "number"
+          ? zone.now_playing.length
+          : null
     },
-    outputs: zone.outputs || []
+    outputs: zone.outputs || [],
+    playback_settings: {
+      shuffle:
+        typeof zone.settings?.shuffle === "boolean"
+          ? zone.settings.shuffle
+          : null,
+      auto_radio:
+        typeof zone.settings?.auto_radio === "boolean"
+          ? zone.settings.auto_radio
+          : null,
+      loop: zone.settings?.loop || null
+    }
   };
 }
 

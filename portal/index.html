@@ -11,15 +11,26 @@
   <div id="login" class="login-shell">
     <section class="login-card">
       <div class="brand-mark" aria-hidden="true">R</div>
-      <p class="eyebrow">Roon AI Bridge</p>
-      <h1>Tu música.<br>Todo bajo control.</h1>
-      <p class="muted">Accede con el token administrativo del bridge o con una API key de rol admin.</p>
+      <p class="eyebrow" id="login-eyebrow">Roon AI Bridge</p>
+      <h1 id="login-title">Tu música.<br>Todo bajo control.</h1>
+      <p class="muted" id="login-description">Accede con tu usuario administrador.</p>
+      <form id="setup-form" hidden>
+        <label for="setup-bootstrap">Token bootstrap</label>
+        <input id="setup-bootstrap" type="password" autocomplete="one-time-code" placeholder="API_TOKEN actual" required>
+        <label for="setup-username">Usuario administrador</label>
+        <input id="setup-username" autocomplete="username" minlength="3" maxlength="40" required>
+        <label for="setup-password">Contraseña</label>
+        <input id="setup-password" type="password" autocomplete="new-password" minlength="10" required>
+        <label for="setup-password-confirm">Repite la contraseña</label>
+        <input id="setup-password-confirm" type="password" autocomplete="new-password" minlength="10" required>
+        <button class="button primary wide" type="submit">Crear administrador</button>
+        <p id="setup-error" class="form-error" role="alert"></p>
+      </form>
       <form id="login-form">
-        <label for="login-token">Credencial administrativa</label>
-        <div class="secret-field">
-          <input id="login-token" name="token" type="password" autocomplete="current-password" placeholder="API token o rnb_…" required>
-          <button class="icon-button" type="button" data-toggle-secret="login-token" aria-label="Mostrar credencial">●</button>
-        </div>
+        <label for="login-username">Usuario</label>
+        <input id="login-username" autocomplete="username" required>
+        <label for="login-password">Contraseña</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
         <button class="button primary wide" type="submit">Entrar al portal</button>
         <p id="login-error" class="form-error" role="alert"></p>
       </form>
@@ -35,7 +46,9 @@
       <nav id="main-nav">
         <button class="nav-item active" data-view="dashboard"><span>◫</span> Inicio</button>
         <button class="nav-item" data-view="zones"><span>▶</span> Reproducción</button>
+        <button class="nav-item" data-view="library"><span>⌕</span> Explorar</button>
         <button class="nav-item" data-view="playlists"><span>≡</span> Playlists</button>
+        <button class="nav-item" data-view="presets"><span>◇</span> Presets</button>
         <button class="nav-item" data-view="keys"><span>⌁</span> API keys</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Sistema</button>
       </nav>
@@ -52,7 +65,7 @@
           <h2 id="view-title">Buenos días</h2>
         </div>
         <div class="top-actions">
-          <span id="version-badge" class="badge">v0.11.0</span>
+          <span id="version-badge" class="badge">v0.12.0</span>
           <button id="refresh" class="button ghost">↻ Actualizar</button>
         </div>
       </header>
@@ -72,9 +85,35 @@
       <section id="view-zones" class="view">
         <div class="section-toolbar">
           <div><p class="muted">Control directo y estado verificado por Roon Core.</p></div>
-          <button id="open-group-dialog" class="button ghost">Agrupar zonas</button>
+          <div class="top-actions">
+            <button id="pause-all" class="button ghost">Pausar todo</button>
+            <button id="mute-all" class="button ghost">Silenciar todo</button>
+            <button id="open-group-dialog" class="button ghost">Agrupar zonas</button>
+          </div>
         </div>
         <div id="zones-grid" class="zone-grid"></div>
+      </section>
+
+      <section id="view-library" class="view">
+        <div class="section-toolbar">
+          <div><p class="muted">Navegación genérica del árbol Browse de Roon, incluidas acciones y prompts.</p></div>
+          <div class="top-actions">
+            <select id="browse-hierarchy" aria-label="Jerarquía">
+              <option value="browse">Biblioteca</option>
+              <option value="albums">Álbumes</option>
+              <option value="artists">Artistas</option>
+              <option value="genres">Géneros</option>
+              <option value="composers">Compositores</option>
+              <option value="playlists">Playlists de Roon</option>
+              <option value="internet_radio">Radio por Internet</option>
+              <option value="settings">Settings</option>
+            </select>
+            <button id="browse-home" class="button ghost">Inicio</button>
+            <button id="browse-back" class="button ghost">Atrás</button>
+          </div>
+        </div>
+        <div id="browse-heading" class="section-heading"></div>
+        <div id="browse-list" class="browse-list"></div>
       </section>
 
       <section id="view-playlists" class="view">
@@ -94,6 +133,22 @@
         </div>
       </section>
 
+      <section id="view-presets" class="view">
+        <div class="preset-layout">
+          <article class="info-card">
+            <div class="section-toolbar"><div><p class="eyebrow">Agrupación</p><h3>Presets de zonas</h3></div><button id="new-preset" class="button primary">+ Nuevo</button></div>
+            <p class="muted">Guarda composiciones de outputs y sus volúmenes. Al aplicar, RoonIA pausa primero las zonas afectadas.</p>
+            <div id="preset-list" class="playlist-list"></div>
+          </article>
+          <article class="info-card">
+            <p class="eyebrow">Seguridad de escucha</p>
+            <h3>Volúmenes por output</h3>
+            <p class="muted">Define límites informativos y un volumen preferido que puedes aplicar desde aquí.</p>
+            <div id="output-volume-list" class="output-volume-list"></div>
+          </article>
+        </div>
+      </section>
+
       <section id="view-keys" class="view">
         <div class="section-toolbar">
           <div>
@@ -110,6 +165,20 @@
       </section>
 
       <section id="view-settings" class="view">
+        <article class="info-card system-manager">
+          <div class="section-toolbar"><div><p class="eyebrow">Operación</p><h3>Bridge y actualizaciones</h3></div><span id="update-state" class="badge">Sin comprobar</span></div>
+          <div id="service-addresses" class="address-list"></div>
+          <div class="port-grid">
+            <label>Puerto del bridge<input id="system-api-port" type="number" min="1" max="65535"></label>
+            <label>Puerto del portal<input id="system-portal-port" type="number" min="1" max="65535"></label>
+            <button id="save-ports" class="button ghost">Guardar puertos</button>
+          </div>
+          <div class="top-actions system-actions">
+            <button id="check-update" class="button ghost">Comprobar versión</button>
+            <button id="request-update" class="button primary">Actualizar</button>
+            <button id="restart-service" class="button danger">Reiniciar servicio</button>
+          </div>
+        </article>
         <div id="settings-grid" class="settings-grid"></div>
         <article class="info-card warning-card">
           <p class="eyebrow">Seguridad</p>
@@ -143,6 +212,15 @@
     <fieldset><legend>Zonas adicionales</legend><div id="group-options" class="check-list"></div></fieldset>
     <p id="group-error" class="form-error"></p>
     <button id="group-submit" class="button primary wide">Crear grupo</button>
+  </dialog>
+
+  <dialog id="prompt-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">Roon solicita datos</p><h3 id="prompt-title">Entrada requerida</h3></div><button class="icon-button" data-close-dialog="prompt-dialog">×</button></div>
+    <form id="prompt-form">
+      <label id="prompt-label">Valor<input id="prompt-input"></label>
+      <p id="prompt-error" class="form-error"></p>
+      <button id="prompt-submit" class="button primary wide" type="submit">Enviar</button>
+    </form>
   </dialog>
 
   <script src="/app.js" defer></script>

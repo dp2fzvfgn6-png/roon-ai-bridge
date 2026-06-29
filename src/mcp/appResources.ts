@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v3.html";
+const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v4.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const controlWidgetHtml = `
@@ -76,6 +76,16 @@ const controlWidgetHtml = `
     border-top: 1px solid #e7ebf2;
     padding-top: 10px;
   }
+  .card.with-art {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+  }
+  .art {
+    width: 52px;
+    height: 52px;
+    border-radius: 7px;
+    object-fit: cover;
+    background: #e7ebf2;
+  }
   .card:first-child {
     border-top: 0;
     padding-top: 0;
@@ -132,7 +142,11 @@ const controlWidgetHtml = `
 
     for (const media of payload.results) {
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "card with-art";
+      const art = document.createElement("img");
+      art.className = "art";
+      art.alt = "";
+      if (media.image_data_url) art.src = media.image_data_url;
       const copy = document.createElement("div");
       const title = document.createElement("p");
       title.className = "title";
@@ -146,7 +160,7 @@ const controlWidgetHtml = `
         media.quality?.label
       ].filter(Boolean).join(" | ");
       copy.append(title, meta);
-      card.append(copy);
+      card.append(art, copy);
 
       if (zoneId && media.result_id) {
         const play = document.createElement("button");
@@ -174,7 +188,11 @@ const controlWidgetHtml = `
     cards.replaceChildren();
     for (const zone of payload) {
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "card with-art";
+      const art = document.createElement("img");
+      art.className = "art";
+      art.alt = "";
+      if (zone.now_playing?.image_data_url) art.src = zone.now_playing.image_data_url;
       const copy = document.createElement("div");
       const title = document.createElement("p");
       title.className = "title";
@@ -187,7 +205,7 @@ const controlWidgetHtml = `
         zone.now_playing?.line2
       ].filter(Boolean).join(" | ");
       copy.append(title, meta);
-      card.append(copy);
+      card.append(art, copy);
       cards.append(card);
     }
     result.hidden = true;
@@ -221,12 +239,27 @@ const controlWidgetHtml = `
     return true;
   }
 
+  function renderImage(payload) {
+    if (!payload || typeof payload.data_url !== "string") return false;
+    resultTitle.textContent = "Roon Artwork";
+    cards.className = "cards";
+    cards.replaceChildren();
+    const image = document.createElement("img");
+    image.src = payload.data_url;
+    image.alt = "Roon artwork";
+    image.style.maxWidth = "100%";
+    image.style.borderRadius = "8px";
+    cards.append(image);
+    result.hidden = true;
+    return true;
+  }
+
   function render(payload) {
     cards.replaceChildren();
     cards.className = "";
     result.hidden = false;
     resultTitle.textContent = "Latest Tool Result";
-    if (renderMediaSearch(payload) || renderZones(payload) || renderPlayback(payload)) return;
+    if (renderMediaSearch(payload) || renderZones(payload) || renderPlayback(payload) || renderImage(payload)) return;
     result.textContent = JSON.stringify(payload, null, 2);
   }
 

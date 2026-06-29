@@ -87,6 +87,44 @@ CREATE TABLE IF NOT EXISTS api_keys (
   revoked_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS portal_users (
+  user_id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS portal_sessions (
+  session_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES portal_users (user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS zone_presets (
+  preset_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  primary_output_id TEXT NOT NULL,
+  output_ids_json TEXT NOT NULL,
+  volume_values_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS output_volume_settings (
+  output_id TEXT PRIMARY KEY,
+  display_name TEXT,
+  minimum_value REAL,
+  maximum_value REAL,
+  preferred_value REAL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_virtual_playlist_tracks_playlist
   ON virtual_playlist_tracks (playlist_id, position);
 
@@ -98,3 +136,6 @@ CREATE INDEX IF NOT EXISTS idx_search_cache_query
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_active
   ON api_keys (revoked_at, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_portal_sessions_user
+  ON portal_sessions (user_id, expires_at);

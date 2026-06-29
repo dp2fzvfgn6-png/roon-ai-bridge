@@ -7,6 +7,7 @@ const test = require("node:test");
 const { createPortalServer } = require("../dist/portal/server");
 const { ApiKeyService } = require("../dist/services/apiKeyService");
 const { createDatabase } = require("../dist/db/database");
+const { PortalAuthService } = require("../dist/services/portalAuthService");
 
 function createConfig(dataDir) {
   return {
@@ -35,6 +36,7 @@ test("serves portal assets publicly but protects every administration endpoint",
   const config = createConfig(dataDir);
   const database = createDatabase(config);
   const apiKeyService = new ApiKeyService(config, database);
+  const portalAuthService = new PortalAuthService(config, database);
   const noop = () => {};
   const context = {
     config,
@@ -44,12 +46,18 @@ test("serves portal assets publicly but protects every administration endpoint",
       isCoreConnected: () => false,
       getCoreName: () => null,
       isTransportReady: () => false,
-      isBrowseReady: () => false
+      isBrowseReady: () => false,
+      isImageReady: () => false,
+      getOutputs: () => []
     },
     playlistService: { listPlaylists: () => [] },
     oauthService: {},
     mediaService: {},
-    apiKeyService
+    apiKeyService,
+    portalAuthService,
+    systemManagementService: { getSystemInfo: () => ({}) },
+    zonePresetService: {},
+    outputVolumeSettingsService: {}
   };
   const server = createPortalServer(context).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
@@ -61,6 +69,24 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.equal(page.status, 200);
     assert.match(await page.text(), /RoonIA Control/);
 
+    const authStatus = await fetch(`${baseUrl}/api/auth/status`);
+    assert.equal((await authStatus.json()).setup_required, true);
+
+    const setup = await fetch(`${baseUrl}/api/auth/setup`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer portal-test-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username: "administrator",
+        password: "long-test-password"
+      })
+    });
+    assert.equal(setup.status, 201);
+    const setupBody = await setup.json();
+    assert.match(setupBody.token, /^rns_/);
+
     const denied = await fetch(`${baseUrl}/api/session`);
     assert.equal(denied.status, 401);
 
@@ -69,6 +95,12 @@ test("serves portal assets publicly but protects every administration endpoint",
     });
     assert.equal(session.status, 200);
     assert.equal((await session.json()).portal_port, 3001);
+
+    const userSession = await fetch(`${baseUrl}/api/session`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal(userSession.status, 200);
+    assert.equal((await userSession.json()).user.username, "administrator");
 
     const readKey = apiKeyService.create({ name: "Read only", role: "read" });
     const forbidden = await fetch(`${baseUrl}/api/session`, {

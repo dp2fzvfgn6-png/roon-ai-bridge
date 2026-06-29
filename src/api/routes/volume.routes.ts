@@ -16,6 +16,13 @@ export function createVolumeRouter(context: ApiContext): Router {
         mode,
         value
       });
+      if (mode === "absolute") {
+        context.outputVolumeSettingsService.validateZoneAbsoluteValue(
+          context.roonClient,
+          req.params.zone_id,
+          value
+        );
+      }
 
       const outputs = await changeZoneVolume(
         context.roonClient,

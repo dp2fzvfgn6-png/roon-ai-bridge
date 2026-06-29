@@ -8,6 +8,10 @@ import { createLogger } from "./utils/logger";
 import { createDatabase } from "./db/database";
 import { ApiKeyService } from "./services/apiKeyService";
 import { createPortalServer } from "./portal/server";
+import { PortalAuthService } from "./services/portalAuthService";
+import { SystemManagementService } from "./services/systemManagementService";
+import { ZonePresetService } from "./services/zonePresetService";
+import { OutputVolumeSettingsService } from "./services/outputVolumeSettingsService";
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
@@ -25,12 +29,19 @@ logger.info("Configuration loaded", {
   roonStreamingSource: config.roonStreamingSource
 });
 
-const roonClient = createRoonClient(config, logger);
+const systemManagementService = new SystemManagementService(config, logger);
+const roonClient = createRoonClient(config, logger, systemManagementService);
 const database = createDatabase(config);
 const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 const apiKeyService = new ApiKeyService(config, database);
+const portalAuthService = new PortalAuthService(config, database);
+const zonePresetService = new ZonePresetService(config, database);
+const outputVolumeSettingsService = new OutputVolumeSettingsService(
+  config,
+  database
+);
 const context = {
   config,
   logger,
@@ -38,7 +49,11 @@ const context = {
   playlistService,
   oauthService,
   mediaService,
-  apiKeyService
+  apiKeyService,
+  portalAuthService,
+  systemManagementService,
+  zonePresetService,
+  outputVolumeSettingsService
 };
 const app = createServer(context);
 

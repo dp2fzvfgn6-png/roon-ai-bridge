@@ -1,6 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { playByQuery, queueByQuery, searchRoon } from "../roon/roonBrowseService";
+import {
+  playByQuery,
+  queueByQuery,
+  runBrowseAction,
+  searchRoon
+} from "../roon/roonBrowseService";
 import { controlPlayback } from "../roon/roonPlaybackService";
 import { getQueueSnapshot, playQueueItemFromHere } from "../roon/roonQueueService";
 import { listZones } from "../roon/roonZoneService";
@@ -11,6 +16,18 @@ import { ApiError } from "../utils/errors";
 import { parsePlaybackCommand, parseVolumeMode, parseVolumeValue } from "../utils/validation";
 import { roonControlWidgetUri } from "./appResources";
 import { McpContext } from "./mcpContext";
+import {
+  changeZoneSettings,
+  changeOutputVolume,
+  listOutputs,
+  muteAll,
+  muteOutput,
+  outputPowerAction,
+  pauseAll,
+  restartQueuePlayback,
+  seekZone
+} from "../roon/roonAdvancedTransportService";
+import { getRoonImage } from "../roon/roonImageService";
 
 type ToolResult = {
   structuredContent: Record<string, unknown>;
@@ -61,13 +78,35 @@ async function runTool<T>(
   }
 }
 
+async function imageDataUrl(
+  context: McpContext,
+  imageKey: unknown
+): Promise<string | null> {
+  if (typeof imageKey !== "string" || !imageKey || !context.roonClient.isImageReady()) {
+    return null;
+  }
+  try {
+    const image = await getRoonImage(context.roonClient, imageKey, {
+      width: 240,
+      height: 240,
+      scale: "fill",
+      format: "image/jpeg"
+    });
+    return `data:${image.contentType};base64,${image.bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 function statusPayload(context: McpContext): Record<string, unknown> {
   return {
     core_connected: context.roonClient.isCoreConnected(),
     core_name: context.roonClient.getCoreName(),
     transport_ready: context.roonClient.isTransportReady(),
     browse_ready: context.roonClient.isBrowseReady(),
-    zones_count: context.roonClient.getZones().length
+    image_ready: context.roonClient.isImageReady(),
+    zones_count: context.roonClient.getZones().length,
+    outputs_count: context.roonClient.getOutputs().length
   };
 }
 
@@ -187,7 +226,21 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       annotations: readOnlyAnnotations,
       _meta: widgetMeta
     },
-    async () => runTool(context, "roon_list_zones", () => listZones(context.roonClient))
+    async () =>
+      runTool(context, "roon_list_zones", async () =>
+        Promise.all(
+          listZones(context.roonClient).map(async (zone) => ({
+            ...zone,
+            now_playing: {
+              ...zone.now_playing,
+              image_data_url: await imageDataUrl(
+                context,
+                zone.now_playing.image_key
+              )
+            }
+          }))
+        )
+      )
   );
 
   server.registerTool(
@@ -225,7 +278,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       _meta: widgetMeta,
       inputSchema: {
         zone_id: z.string().min(1),
-        mode: z.enum(["relative", "absolute"]),
+        mode: z.enum(["relative", "absolute", "relative_step"]),
         value: z.number()
       }
     },
@@ -670,15 +723,27 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       }
     },
     async ({ query, types, zone_id, count, source_preference }) =>
-      runTool(context, "roon_search_media", () =>
-        context.mediaService.search({
+      runTool(context, "roon_search_media", async () => {
+        const payload = await context.mediaService.search({
           query,
           types,
           zoneId: zone_id,
           count,
           sourcePreference: source_preference
-        })
-      )
+        });
+        return {
+          ...payload,
+          results: await Promise.all(
+            payload.results.map(async (media: any) => ({
+              ...media,
+              image_data_url: await imageDataUrl(
+                context,
+                media.image_key || media.cover?.image_key
+              )
+            }))
+          )
+        };
+      })
   );
 
   server.registerTool(
@@ -784,5 +849,234 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
           position === "next" ? "play_next" : "append"
         )
       )
+  );
+
+  server.registerTool(
+    "roon_list_outputs",
+    {
+      title: "List Roon Outputs",
+      description:
+        "Use this when output-level volume, mute, standby, source control or presets require stable output IDs.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_list_outputs", () => listOutputs(context.roonClient))
+  );
+
+  server.registerTool(
+    "roon_seek",
+    {
+      title: "Seek Roon Playback",
+      description:
+        "Use this when the user asks to jump to an absolute playback time or move forward/backward by a relative number of seconds.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        zone_id: z.string().min(1),
+        mode: z.enum(["absolute", "relative"]),
+        seconds: z.number()
+      }
+    },
+    async ({ zone_id, mode, seconds }) =>
+      runTool(context, "roon_seek", () =>
+        seekZone(context.roonClient, zone_id, mode, seconds)
+      )
+  );
+
+  server.registerTool(
+    "roon_mute_output",
+    {
+      title: "Mute Roon Output",
+      description:
+        "Use this when the user asks to mute or unmute one specific output; do not use for every zone.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        output_id: z.string().min(1),
+        action: z.enum(["mute", "unmute"])
+      }
+    },
+    async ({ output_id, action }) =>
+      runTool(context, "roon_mute_output", () =>
+        muteOutput(context.roonClient, output_id, action)
+      )
+  );
+
+  server.registerTool(
+    "roon_change_output_volume",
+    {
+      title: "Change Roon Output Volume",
+      description:
+        "Use this for one output, especially incremental outputs that require relative_step instead of zone-wide absolute volume.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        output_id: z.string().min(1),
+        mode: z.enum(["absolute", "relative", "relative_step"]),
+        value: z.number()
+      }
+    },
+    async ({ output_id, mode, value }) =>
+      runTool(context, "roon_change_output_volume", () =>
+        changeOutputVolume(context.roonClient, output_id, mode, value)
+      )
+  );
+
+  server.registerTool(
+    "roon_mute_all",
+    {
+      title: "Mute All Roon Outputs",
+      description:
+        "Use this only when the user explicitly asks to mute or unmute every mutable Roon output.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { action: z.enum(["mute", "unmute"]) }
+    },
+    async ({ action }) =>
+      runTool(context, "roon_mute_all", () => muteAll(context.roonClient, action))
+  );
+
+  server.registerTool(
+    "roon_pause_all",
+    {
+      title: "Pause All Roon Zones",
+      description: "Use this when the user explicitly asks to pause playback in every Roon zone.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_pause_all", () => pauseAll(context.roonClient))
+  );
+
+  server.registerTool(
+    "roon_output_power",
+    {
+      title: "Control Roon Output Power",
+      description:
+        "Use this for standby, toggling standby or convenience-switching one output that exposes source controls.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        output_id: z.string().min(1),
+        action: z.enum(["standby", "toggle_standby", "convenience_switch"]),
+        control_key: z.string().optional()
+      }
+    },
+    async ({ output_id, action, control_key }) =>
+      runTool(context, "roon_output_power", () =>
+        outputPowerAction(context.roonClient, output_id, action, control_key)
+      )
+  );
+
+  server.registerTool(
+    "roon_change_playback_settings",
+    {
+      title: "Change Roon Playback Settings",
+      description:
+        "Use this to change shuffle, auto-radio or loop settings for one existing Roon zone.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        zone_id: z.string().min(1),
+        shuffle: z.boolean().optional(),
+        auto_radio: z.boolean().optional(),
+        loop: z.enum(["loop", "loop_one", "disabled", "next"]).optional()
+      }
+    },
+    async ({ zone_id, shuffle, auto_radio, loop }) =>
+      runTool(context, "roon_change_playback_settings", () =>
+        changeZoneSettings(context.roonClient, zone_id, {
+          shuffle,
+          auto_radio,
+          loop
+        })
+      )
+  );
+
+  server.registerTool(
+    "roon_restart_queue",
+    {
+      title: "Restart Roon Queue Playback",
+      description:
+        "Use this when the user asks to restart the existing queue from its first item without clearing or rebuilding it.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { zone_id: z.string().min(1) }
+    },
+    async ({ zone_id }) =>
+      runTool(context, "roon_restart_queue", () =>
+        restartQueuePlayback(context.roonClient, zone_id)
+      )
+  );
+
+  server.registerTool(
+    "roon_run_browse_action",
+    {
+      title: "Run Generic Roon Browse Action",
+      description:
+        "Use this only with an item_key returned by the same Browse session, including actions with input_prompt and settings hierarchy items.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        hierarchy: z.enum([
+          "browse", "playlists", "settings", "internet_radio",
+          "albums", "artists", "genres", "composers", "search"
+        ]),
+        item_key: z.string().min(1),
+        session_key: z.string().optional(),
+        zone_id: z.string().optional(),
+        input: z.string().optional()
+      }
+    },
+    async ({ hierarchy, item_key, session_key, zone_id, input }) =>
+      runTool(context, "roon_run_browse_action", () =>
+        runBrowseAction(context.roonClient, {
+          hierarchy,
+          itemKey: item_key,
+          sessionKey: session_key,
+          zoneOrOutputId: zone_id,
+          input
+        })
+      )
+  );
+
+  server.registerTool(
+    "roon_get_image",
+    {
+      title: "Get Roon Image",
+      description:
+        "Use this when a Roon image_key must be rendered in the ChatGPT widget for a track, album, artist or playlist.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        image_key: z.string().min(1),
+        width: z.number().int().min(1).max(1000).default(320),
+        height: z.number().int().min(1).max(1000).default(320)
+      }
+    },
+    async ({ image_key, width, height }) =>
+      runTool(context, "roon_get_image", async () => {
+        const image = await getRoonImage(context.roonClient, image_key, {
+          width,
+          height,
+          scale: "fit",
+          format: "image/jpeg"
+        });
+        return {
+          image_key,
+          content_type: image.contentType,
+          data_url: `data:${image.contentType};base64,${image.bytes.toString("base64")}`
+        };
+      })
   );
 }

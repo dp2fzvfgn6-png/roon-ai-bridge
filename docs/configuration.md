@@ -63,16 +63,36 @@ PORTAL_PORT=3001
 PORTAL_ADMIN_TOKEN=
 ```
 
-`PORTAL_ADMIN_TOKEN` falls back to `API_TOKEN` when empty. Set a different
-value when browser administration and API clients should use separate
-bootstrap credentials.
+`PORTAL_ADMIN_TOKEN` falls back to `API_TOKEN` when empty. It is a bootstrap
+credential: the first portal visit requires it once to create the administrator
+username and password.
 
 Every `/api/*` route on port `3001` except `/api/health` requires an
 administrator bearer token. Static assets and the health probe contain no
-private data and can load before login. The portal accepts the bootstrap token
-or a non-revoked managed key with role `admin`. Managed keys are stored in
-SQLite as SHA-256 hashes and their complete secret is returned only when
-created.
+private data and can load before login. The portal accepts an administrator
+session, the bootstrap token or a non-revoked managed key with role `admin`.
+Passwords use salted `scrypt`; session and managed-key tokens are stored as
+SHA-256 hashes.
+
+## Runtime Ports And Native Roon Settings
+
+RoonIA provides Settings and Status services to Roon. From
+`Settings > Extensions > Roon AI Bridge > Settings`, an administrator can:
+
+- inspect the detected service address;
+- change the bridge and portal ports;
+- check for a new version;
+- request restart or update.
+
+Saved ports are written to `data/runtime-config.json` and override environment
+ports on the next process start. The API and portal ports must be different.
+
+## Safe Update Channel
+
+The app container never receives Docker socket or sudo access. An update
+request creates `data/update-request.json`. The official LXC updater installs a
+systemd path unit that watches only that file and executes the fixed repository
+updater as root. State is reported in `data/update-status.json`.
 
 ## ChatGPT App OAuth
 

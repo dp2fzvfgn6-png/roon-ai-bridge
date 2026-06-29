@@ -1,7 +1,7 @@
 {
   "name": "roon-ai-bridge",
-  "version": "0.11.0",
-  "description": "Local Roon bridge with a secure administration and playback portal.",
+  "version": "0.12.0",
+  "description": "Roon bridge with native extension settings, advanced transport control and a secure administration portal.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -22,6 +22,9 @@
     "express": "^4.19.2",
     "node-roon-api": "github:roonlabs/node-roon-api",
     "node-roon-api-browse": "github:roonlabs/node-roon-api-browse",
+    "node-roon-api-image": "github:roonlabs/node-roon-api-image",
+    "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
+    "node-roon-api-status": "github:roonlabs/node-roon-api-status",
     "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
     "zod": "^4.4.3"
   },

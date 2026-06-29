@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 
 export type AppConfig = {
   port: number;
@@ -30,6 +31,31 @@ function intFromEnv(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function validPort(value: unknown): number | null {
+  const port =
+    typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
+export function loadRuntimePortOverrides(dataDir: string): {
+  port?: number;
+  portalPort?: number;
+} {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(dataDir, "runtime-config.json"), "utf8")
+    ) as Record<string, unknown>;
+    const port = validPort(parsed.port);
+    const portalPort = validPort(parsed.portal_port);
+    return {
+      ...(port ? { port } : {}),
+      ...(portalPort ? { portalPort } : {})
+    };
+  } catch {
+    return {};
+  }
+}
+
 export function loadConfig(): AppConfig {
   const enableAuth = boolFromEnv(process.env.ENABLE_AUTH);
   const apiToken =
@@ -54,17 +80,20 @@ export function loadConfig(): AppConfig {
     streamingSourceValue === "tidal" || streamingSourceValue === "qobuz"
       ? streamingSourceValue
       : null;
+  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
+  const runtimePorts = loadRuntimePortOverrides(dataDir);
 
   return {
-    port: intFromEnv(process.env.PORT, 3000),
-    portalPort: intFromEnv(process.env.PORTAL_PORT, 3001),
+    port: runtimePorts.port ?? intFromEnv(process.env.PORT, 3000),
+    portalPort:
+      runtimePorts.portalPort ?? intFromEnv(process.env.PORTAL_PORT, 3001),
     enablePortal: boolFromEnv(process.env.ENABLE_PORTAL, true),
     nodeEnv: process.env.NODE_ENV || "production",
     logLevel: process.env.LOG_LEVEL || "info",
     roonExtensionName: process.env.ROON_EXTENSION_NAME || "Roon AI Bridge",
     roonExtensionId:
       process.env.ROON_EXTENSION_ID || "com.local.roon-ai-bridge",
-    dataDir: process.env.DATA_DIR || path.join(process.cwd(), "data"),
+    dataDir,
     enableBrowse: boolFromEnv(process.env.ENABLE_BROWSE),
     enableMcp: boolFromEnv(process.env.ENABLE_MCP),
     enableAuth,

@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.11 code keeps the API, MCP server and administration portal on one
+The v0.12 code keeps the API, MCP server and administration portal on one
 shared Roon client and service graph.
 
 ```text
@@ -36,6 +36,10 @@ src/
   services/
     oauthService.ts
     playlistService.ts
+    portalAuthService.ts
+    systemManagementService.ts
+    zonePresetService.ts
+    outputVolumeSettingsService.ts
     historyService.ts
     preferencesService.ts
   db/
@@ -105,8 +109,13 @@ playlists and API-key database without registering a second extension.
 - `user_preferences`
 - `search_cache`
 
-v0.11 persists Roon authorization state in `data/roonstate.json`, local virtual
-playlists and hashed managed API keys in `data/roonia.sqlite`, and private
+v0.12 persists Roon authorization state in `data/roonstate.json`, local virtual
+playlists, portal users/sessions, zone presets, volume policies and hashed
+managed API keys in `data/roonia.sqlite`, and private
 OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an
 empty SQLite store, legacy playlists from `data/virtual-playlists.json` are
 imported automatically.
+
+Runtime port overrides live in `data/runtime-config.json`. Update requests and
+results use `data/update-request.json` and `data/update-status.json` as a narrow
+handoff between the app container and the LXC systemd watcher.

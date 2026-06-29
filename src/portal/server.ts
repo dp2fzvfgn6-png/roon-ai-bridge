@@ -11,6 +11,7 @@ import { createQueueRouter } from "../api/routes/queue.routes";
 import { createPlaylistsRouter } from "../api/routes/playlists.routes";
 import { createLibraryRouter } from "../api/routes/library.routes";
 import { createMediaRouter } from "../api/routes/media.routes";
+import { createAdvancedRouter } from "../api/routes/advanced.routes";
 import { ApiError, sendError } from "../utils/errors";
 import { APP_VERSION } from "../config/version";
 
@@ -24,6 +25,14 @@ function createPortalAuth(context: ApiContext) {
 
     const staticToken = context.config.portalAdminToken;
     if (staticToken && tokenMatches(provided, staticToken)) {
+      next();
+      return;
+    }
+
+    const portalUser = context.portalAuthService.authenticate(provided);
+    if (portalUser) {
+      _res.locals.portalUser = portalUser;
+      _res.locals.portalSessionToken = provided;
       next();
       return;
     }
@@ -68,8 +77,49 @@ export function createPortalServer(context: ApiContext): express.Express {
       ok: true,
       service: "roon-ai-bridge-portal",
       version: APP_VERSION,
-      authentication_configured: Boolean(context.config.portalAdminToken)
+      authentication_configured: Boolean(context.config.portalAdminToken),
+      setup_required: context.portalAuthService.setupRequired()
     });
+  });
+
+  app.get("/api/auth/status", (_req, res) => {
+    res.json({
+      setup_required: context.portalAuthService.setupRequired(),
+      bootstrap_token_required: context.portalAuthService.setupRequired()
+    });
+  });
+
+  app.post("/api/auth/setup", (req, res, next) => {
+    try {
+      const bootstrap = getBearerToken(req);
+      const expected = context.config.portalAdminToken;
+      if (!expected) {
+        throw new ApiError(
+          "AUTH_REQUIRED",
+          "PORTAL_ADMIN_TOKEN or API_TOKEN must be configured for first setup"
+        );
+      }
+      if (!bootstrap || !tokenMatches(bootstrap, expected)) {
+        throw new ApiError("AUTH_INVALID", "Invalid bootstrap token");
+      }
+      res.status(201).json(context.portalAuthService.setup(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/auth/login", (req, res, next) => {
+    try {
+      if (context.portalAuthService.setupRequired()) {
+        throw new ApiError(
+          "AUTH_REQUIRED",
+          "Create the first administrator before signing in"
+        );
+      }
+      res.json(context.portalAuthService.login(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.use("/api", createPortalAuth(context));
@@ -78,8 +128,31 @@ export function createPortalServer(context: ApiContext): express.Express {
     res.json({
       ok: true,
       version: APP_VERSION,
-      portal_port: context.config.portalPort
+      portal_port: context.config.portalPort,
+      user: res.locals.portalUser || null
     });
+  });
+
+  app.post("/api/auth/logout", (_req, res) => {
+    const token = res.locals.portalSessionToken;
+    if (typeof token === "string") context.portalAuthService.logout(token);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/auth/change-password", (req, res, next) => {
+    try {
+      const user = res.locals.portalUser;
+      if (!user?.user_id) {
+        throw new ApiError(
+          "AUTH_FORBIDDEN",
+          "Sign in with username and password to change it"
+        );
+      }
+      context.portalAuthService.changePassword(user.user_id, req.body || {});
+      res.json({ ok: true, signed_out: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/api/dashboard", (_req, res) => {
@@ -133,6 +206,42 @@ export function createPortalServer(context: ApiContext): express.Express {
     });
   });
 
+  app.get("/api/admin/system", (_req, res) => {
+    res.json(context.systemManagementService.getSystemInfo());
+  });
+
+  app.patch("/api/admin/system/ports", (req, res, next) => {
+    try {
+      res.json(context.systemManagementService.savePorts(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/system/check-update", async (_req, res, next) => {
+    try {
+      res.json(await context.systemManagementService.checkForUpdates());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/system/update", (_req, res, next) => {
+    try {
+      res.status(202).json(context.systemManagementService.requestUpdate());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/system/restart", (_req, res, next) => {
+    try {
+      res.status(202).json(context.systemManagementService.requestRestart());
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/admin/api-keys", (_req, res) => {
     res.json(context.apiKeyService.list());
   });
@@ -164,6 +273,86 @@ export function createPortalServer(context: ApiContext): express.Express {
     }
   });
 
+  app.get("/api/admin/zone-presets", (_req, res) => {
+    res.json(context.zonePresetService.list());
+  });
+
+  app.post("/api/admin/zone-presets", (req, res, next) => {
+    try {
+      res.status(201).json(
+        context.zonePresetService.create(context.roonClient, req.body || {})
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/zone-presets/:preset_id", (req, res, next) => {
+    try {
+      res.json(
+        context.zonePresetService.update(req.params.preset_id, req.body || {})
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/zone-presets/:preset_id", (req, res, next) => {
+    try {
+      context.zonePresetService.delete(req.params.preset_id);
+      res.json({ ok: true, preset_id: req.params.preset_id });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/zone-presets/:preset_id/apply", async (req, res, next) => {
+    try {
+      res.json(
+        await context.zonePresetService.apply(
+          context.roonClient,
+          req.params.preset_id
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/output-volumes", (_req, res) => {
+    res.json(context.outputVolumeSettingsService.list(context.roonClient));
+  });
+
+  app.put("/api/admin/output-volumes/:output_id", (req, res, next) => {
+    try {
+      res.json(
+        context.outputVolumeSettingsService.save(
+          context.roonClient,
+          req.params.output_id,
+          req.body || {}
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/api/admin/output-volumes/:output_id/apply",
+    async (req, res, next) => {
+      try {
+        res.json(
+          await context.outputVolumeSettingsService.applyPreferred(
+            context.roonClient,
+            req.params.output_id
+          )
+        );
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
   app.use("/api/roon", createRoonRouter(context));
   app.use("/api/roon", createZonesRouter(context));
   app.use("/api/roon", createPlaybackRouter(context));
@@ -172,6 +361,7 @@ export function createPortalServer(context: ApiContext): express.Express {
   app.use("/api/roon", createLibraryRouter(context));
   app.use("/api/roon", createMediaRouter(context));
   app.use("/api/roon", createQueueRouter(context));
+  app.use("/api/roon", createAdvancedRouter(context));
   app.use("/api", createPlaylistsRouter(context));
 
   app.use("/api", (req, _res, next) => {

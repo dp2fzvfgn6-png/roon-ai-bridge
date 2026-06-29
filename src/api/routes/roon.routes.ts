@@ -13,7 +13,9 @@ export function createRoonRouter(context: ApiContext): Router {
       core_name: context.roonClient.getCoreName(),
       transport_ready: context.roonClient.isTransportReady(),
       browse_ready: context.config.enableBrowse && context.roonClient.isBrowseReady(),
-      zones_count: context.roonClient.getZones().length
+      image_ready: context.roonClient.isImageReady(),
+      zones_count: context.roonClient.getZones().length,
+      outputs_count: context.roonClient.getOutputs().length
     });
   });
 
@@ -29,6 +31,15 @@ export function createRoonRouter(context: ApiContext): Router {
         media_references: true,
         artist_radio: true,
         zone_grouping: true,
+        outputs: true,
+        seek: true,
+        mute: true,
+        standby: true,
+        transport_settings: true,
+        images: context.roonClient.isImageReady(),
+        generic_browse_actions: true,
+        zone_presets: true,
+        output_volume_settings: true,
         queue: queueImplemented,
         virtual_playlists: playlistServiceImplemented,
         mcp: true,

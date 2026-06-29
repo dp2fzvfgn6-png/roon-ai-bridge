@@ -1,10 +1,11 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs and a secure administration portal.
-v0.11 adds RoonIA Control on port `3001` for playback, queues, zone
-grouping, virtual playlists, API keys and service diagnostics.
+v0.12 adds native Roon extension settings, first-run administrator setup,
+advanced output/transport controls, artwork, generic Browse flows, zone
+presets, per-output volume policies and safe self-update requests.
 
-This project does not expose anything to the internet by itself. v0.11 still does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts or refresh tokens.
+This project does not expose anything to the internet by itself. v0.12 still does not implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
 
 ## Architecture
 
@@ -27,11 +28,11 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.11 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.12 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.11 Scope
+## v0.12 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -58,9 +59,18 @@ v0.11 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Control playback, volume, queues and synchronized zone groups from the portal.
 - Create, edit, reorder, play and delete virtual playlists from the portal.
 - Create and revoke hashed, role-based API keys (`read`, `control`, `admin`).
+- Configure API/portal ports and operations from Roon extension settings.
+- Publish extension status and addresses inside Roon.
+- Bootstrap the first portal administrator with username/password.
+- Subscribe to outputs and expose seek, mute, global pause, standby and source switching.
+- Change shuffle, auto-radio and loop settings.
+- Browse the generic Settings hierarchy and handle input prompts and item mutations.
+- Render Roon artwork in the portal and ChatGPT widget.
+- Save/apply zone grouping presets and per-output volume policies.
+- Check GitHub versions and request a host-supervised update.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v3.html`.
+- Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v4.html`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -77,10 +87,10 @@ v0.11 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 
 ## Administration Portal
 
-Open `http://10.0.60.38:3001` and sign in with `PORTAL_ADMIN_TOKEN`,
-the legacy `API_TOKEN`, or a managed API key with the `admin` role. The portal
-never returns configured environment secrets. Managed key secrets are shown
-once at creation and only their SHA-256 hashes are persisted.
+Open `http://10.0.60.38:3001`. On first access, enter the bootstrap
+`PORTAL_ADMIN_TOKEN` (or its `API_TOKEN` fallback) and create the administrator
+username/password. Later logins use that account. Passwords and session tokens
+are stored only as one-way hashes.
 
 ```env
 ENABLE_PORTAL=true
@@ -122,7 +132,7 @@ ROON_STREAMING_SOURCE=TIDAL
 
 `ROON_STREAMING_SOURCE` helps classify linked catalog results when Roon does not include an explicit service name. Source and quality remain `unknown` when Roon does not expose enough information.
 
-`ENABLE_MCP` is reserved for runtime signalling. v0.11 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
+`ENABLE_MCP` is reserved for runtime signalling. v0.12 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
 
 `OAUTH_APPROVAL_PIN` is used when authorizing ChatGPT. If it is empty, the authorization page accepts `API_TOKEN`.
 
@@ -522,6 +532,17 @@ Implemented MCP tools:
 - `roon_play_media`
 - `roon_start_radio`
 - `roon_add_media_to_queue`
+- `roon_list_outputs`
+- `roon_seek`
+- `roon_mute_output`
+- `roon_change_output_volume`
+- `roon_mute_all`
+- `roon_pause_all`
+- `roon_output_power`
+- `roon_change_playback_settings`
+- `roon_restart_queue`
+- `roon_run_browse_action`
+- `roon_get_image`
 
 Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
 
@@ -549,7 +570,7 @@ See [ChatGPT App](docs/chatgpt-app.md) for setup notes.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.11:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.12:
 
 - `GET /history`
 - `GET /preferences`
@@ -560,7 +581,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-      "message": "History is not implemented in v0.11.0",
+      "message": "History is not implemented in v0.12.0",
     "details": {}
   }
 }
@@ -597,6 +618,7 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.9.2: reliable widget hydration and verified playback control results.
 - v0.10.0: SQLite virtual playlists, full playlist-management tools and normalized library item metadata with cover references.
 - v0.11.0: complete administration portal and revocable role-based API keys.
+- v0.12.0: native Roon settings, advanced SDK controls, artwork, presets, administrator accounts and safe updates.
 
 ## Security
 
