@@ -6,6 +6,9 @@ Default `.env.example`:
 
 ```env
 PORT=3000
+PORTAL_PORT=3001
+ENABLE_PORTAL=true
+PORTAL_ADMIN_TOKEN=
 NODE_ENV=production
 LOG_LEVEL=info
 ROON_EXTENSION_NAME=Roon AI Bridge
@@ -49,6 +52,27 @@ Authorization: Bearer <API_TOKEN>
 ```
 
 The app refuses to start if `ENABLE_AUTH=true` and `API_TOKEN` is empty.
+
+## Administration Portal
+
+The portal listens independently from the API:
+
+```env
+ENABLE_PORTAL=true
+PORTAL_PORT=3001
+PORTAL_ADMIN_TOKEN=
+```
+
+`PORTAL_ADMIN_TOKEN` falls back to `API_TOKEN` when empty. Set a different
+value when browser administration and API clients should use separate
+bootstrap credentials.
+
+Every `/api/*` route on port `3001` except `/api/health` requires an
+administrator bearer token. Static assets and the health probe contain no
+private data and can load before login. The portal accepts the bootstrap token
+or a non-revoked managed key with role `admin`. Managed keys are stored in
+SQLite as SHA-256 hashes and their complete secret is returned only when
+created.
 
 ## ChatGPT App OAuth
 

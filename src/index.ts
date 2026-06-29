@@ -5,12 +5,17 @@ import { PlaylistService } from "./services/playlistService";
 import { OAuthService } from "./services/oauthService";
 import { RoonMediaService } from "./roon/roonMediaService";
 import { createLogger } from "./utils/logger";
+import { createDatabase } from "./db/database";
+import { ApiKeyService } from "./services/apiKeyService";
+import { createPortalServer } from "./portal/server";
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
 
 logger.info("Configuration loaded", {
   port: config.port,
+  portalPort: config.portalPort,
+  portalEnabled: config.enablePortal,
   nodeEnv: config.nodeEnv,
   dataDir: config.dataDir,
   browseEnabled: config.enableBrowse,
@@ -21,17 +26,21 @@ logger.info("Configuration loaded", {
 });
 
 const roonClient = createRoonClient(config, logger);
-const playlistService = new PlaylistService(config);
+const database = createDatabase(config);
+const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
-const app = createServer({
+const apiKeyService = new ApiKeyService(config, database);
+const context = {
   config,
   logger,
   roonClient,
   playlistService,
   oauthService,
-  mediaService
-});
+  mediaService,
+  apiKeyService
+};
+const app = createServer(context);
 
 logger.info("Starting service", {
   service: "roon-ai-bridge",
@@ -43,3 +52,13 @@ roonClient.start();
 app.listen(config.port, "0.0.0.0", () => {
   logger.info("HTTP server listening", { port: config.port });
 });
+
+if (config.enablePortal) {
+  const portal = createPortalServer(context);
+  portal.listen(config.portalPort, "0.0.0.0", () => {
+    logger.info("Administration portal listening", {
+      port: config.portalPort,
+      authenticationConfigured: Boolean(config.portalAdminToken)
+    });
+  });
+}

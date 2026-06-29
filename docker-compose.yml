@@ -8,6 +8,8 @@ services:
       - .env
     environment:
       PORT: ${PORT:-3000}
+      PORTAL_PORT: ${PORTAL_PORT:-3001}
+      ENABLE_PORTAL: ${ENABLE_PORTAL:-true}
       DATA_DIR: /app/data
     volumes:
       - ./data:/app/data

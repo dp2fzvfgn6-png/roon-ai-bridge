@@ -1,8 +1,10 @@
 # Roon AI Bridge
 
-Local Roon extension with a small HTTP API and MCP tools in Node.js. v0.10 moves virtual playlists to SQLite, expands playlist-management tools and enriches library items with track metadata plus cover references.
+Local Roon extension with HTTP/MCP APIs and a secure administration portal.
+v0.11 adds RoonIA Control on port `3001` for playback, queues, zone
+grouping, virtual playlists, API keys and service diagnostics.
 
-This project does not expose anything to the internet by itself. v0.10 still does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts or refresh tokens.
+This project does not expose anything to the internet by itself. v0.11 still does not implement OpenAI API calls, Cloudflare automation, direct TIDAL write access, per-user accounts or refresh tokens.
 
 ## Architecture
 
@@ -25,11 +27,11 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.10 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.11 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.10 Scope
+## v0.11 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -52,6 +54,10 @@ v0.10 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Create, read, update, delete and reorder playlist tracks by stable query with saved metadata.
 - Play or enqueue a virtual playlist through Roon.
 - Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
+- Serve an independent administration portal on port `3001`.
+- Control playback, volume, queues and synchronized zone groups from the portal.
+- Create, edit, reorder, play and delete virtual playlists from the portal.
+- Create and revoke hashed, role-based API keys (`read`, `control`, `admin`).
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
 - Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v3.html`.
@@ -69,6 +75,21 @@ v0.10 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Return homogeneous API errors.
 - Use centralized logs.
 
+## Administration Portal
+
+Open `http://10.0.60.38:3001` and sign in with `PORTAL_ADMIN_TOKEN`,
+the legacy `API_TOKEN`, or a managed API key with the `admin` role. The portal
+never returns configured environment secrets. Managed key secrets are shown
+once at creation and only their SHA-256 hashes are persisted.
+
+```env
+ENABLE_PORTAL=true
+PORTAL_PORT=3001
+PORTAL_ADMIN_TOKEN=
+```
+
+When `PORTAL_ADMIN_TOKEN` is empty, it falls back to `API_TOKEN`.
+
 ## Environment
 
 Copy `.env.example` to `.env`:
@@ -81,6 +102,9 @@ Main values:
 
 ```env
 PORT=3000
+PORTAL_PORT=3001
+ENABLE_PORTAL=true
+PORTAL_ADMIN_TOKEN=
 NODE_ENV=production
 LOG_LEVEL=info
 ROON_EXTENSION_NAME=Roon AI Bridge
@@ -98,7 +122,7 @@ ROON_STREAMING_SOURCE=TIDAL
 
 `ROON_STREAMING_SOURCE` helps classify linked catalog results when Roon does not include an explicit service name. Source and quality remain `unknown` when Roon does not expose enough information.
 
-`ENABLE_MCP` is reserved for runtime signalling. v0.10 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
+`ENABLE_MCP` is reserved for runtime signalling. v0.11 keeps the local stdio MCP process with `npm run mcp` and also exposes remote MCP at `/mcp` through the main HTTP server.
 
 `OAUTH_APPROVAL_PIN` is used when authorizing ChatGPT. If it is empty, the authorization page accepts `API_TOKEN`.
 
@@ -525,7 +549,7 @@ See [ChatGPT App](docs/chatgpt-app.md) for setup notes.
 
 ## Prepared 501 Endpoints
 
-These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.10:
+These endpoints exist to reserve the architecture, but return `501 Not Implemented` in v0.11:
 
 - `GET /history`
 - `GET /preferences`
@@ -536,7 +560,7 @@ Error format:
 {
   "error": {
     "code": "NOT_IMPLEMENTED",
-      "message": "History is not implemented in v0.10.0",
+      "message": "History is not implemented in v0.11.0",
     "details": {}
   }
 }
@@ -572,6 +596,7 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.9.1: native playback transfer between Roon zones.
 - v0.9.2: reliable widget hydration and verified playback control results.
 - v0.10.0: SQLite virtual playlists, full playlist-management tools and normalized library item metadata with cover references.
+- v0.11.0: complete administration portal and revocable role-based API keys.
 
 ## Security
 

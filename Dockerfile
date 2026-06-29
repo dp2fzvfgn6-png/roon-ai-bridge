@@ -11,6 +11,7 @@ RUN npm install
 
 COPY src ./src
 COPY db ./db
+COPY portal ./portal
 COPY tsconfig.json ./tsconfig.json
 RUN npm run build
 
@@ -19,5 +20,6 @@ ENV PORT=3000
 ENV DATA_DIR=/app/data
 
 EXPOSE 3000
+EXPOSE 3001
 
 CMD ["npm", "start"]

@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.10 repository:
+This documentation covers the current v0.11 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
@@ -20,6 +20,7 @@ This documentation covers the current v0.10 repository:
 - [v0.9.1 Validation](v0.9.1-validation.md)
 - [v0.9.2 Validation](v0.9.2-validation.md)
 - [v0.10 Validation](v0.10-validation.md)
+- [v0.11 Validation](v0.11-validation.md)
 - [ChatGPT App](chatgpt-app.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)

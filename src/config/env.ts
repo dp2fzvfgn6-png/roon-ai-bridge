@@ -2,6 +2,8 @@ import path from "path";
 
 export type AppConfig = {
   port: number;
+  portalPort: number;
+  enablePortal: boolean;
   nodeEnv: string;
   logLevel: string;
   roonExtensionName: string;
@@ -11,6 +13,7 @@ export type AppConfig = {
   enableMcp: boolean;
   enableAuth: boolean;
   apiToken: string | null;
+  portalAdminToken: string | null;
   publicBaseUrl: string;
   oauthIssuer: string;
   oauthApprovalPin: string | null;
@@ -54,6 +57,8 @@ export function loadConfig(): AppConfig {
 
   return {
     port: intFromEnv(process.env.PORT, 3000),
+    portalPort: intFromEnv(process.env.PORTAL_PORT, 3001),
+    enablePortal: boolFromEnv(process.env.ENABLE_PORTAL, true),
     nodeEnv: process.env.NODE_ENV || "production",
     logLevel: process.env.LOG_LEVEL || "info",
     roonExtensionName: process.env.ROON_EXTENSION_NAME || "Roon AI Bridge",
@@ -64,6 +69,11 @@ export function loadConfig(): AppConfig {
     enableMcp: boolFromEnv(process.env.ENABLE_MCP),
     enableAuth,
     apiToken,
+    portalAdminToken:
+      typeof process.env.PORTAL_ADMIN_TOKEN === "string" &&
+      process.env.PORTAL_ADMIN_TOKEN.trim() !== ""
+        ? process.env.PORTAL_ADMIN_TOKEN.trim()
+        : apiToken,
     publicBaseUrl,
     oauthIssuer,
     oauthApprovalPin,

@@ -21,6 +21,7 @@ import { createMediaRouter } from "./routes/media.routes";
 import { createGroupingRouter } from "./routes/grouping.routes";
 import { createAuthMiddleware } from "./middleware/auth";
 import { APP_VERSION } from "../config/version";
+import { ApiKeyService } from "../services/apiKeyService";
 
 export type ApiContext = {
   config: AppConfig;
@@ -29,6 +30,7 @@ export type ApiContext = {
   playlistService: PlaylistService;
   oauthService: OAuthService;
   mediaService: RoonMediaService;
+  apiKeyService: ApiKeyService;
 };
 
 export function createServer(context: ApiContext): express.Express {

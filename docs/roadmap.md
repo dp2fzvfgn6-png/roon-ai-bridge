@@ -307,3 +307,15 @@ See [v0.9.2 Validation](v0.9.2-validation.md).
 - Verify grouping topology before reporting success.
 
 See [v0.10 Validation](v0.10-validation.md).
+
+## v0.11
+
+- Add RoonIA Control on port `3001`.
+- Share one Roon client between API, MCP and portal.
+- Manage playback, queues, volume and zone grouping visually.
+- Manage the complete lifecycle and ordering of virtual playlists.
+- Add hashed, revocable API keys with read, control and admin roles.
+- Expose safe diagnostics without returning environment secrets.
+- Support desktop and mobile layouts.
+
+See [v0.11 Validation](v0.11-validation.md).

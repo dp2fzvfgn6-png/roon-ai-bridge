@@ -1,6 +1,7 @@
 # Architecture
 
-The v0.10 code is intentionally modular even though the current feature set is still compact.
+The v0.11 code keeps the API, MCP server and administration portal on one
+shared Roon client and service graph.
 
 ```text
 src/
@@ -30,6 +31,8 @@ src/
       playlists.routes.ts
       oauth.routes.ts
       media.routes.ts
+  portal/
+    server.ts
   services/
     oauthService.ts
     playlistService.ts
@@ -52,6 +55,11 @@ src/
     errors.ts
     validation.ts
 ```
+
+Static portal assets live in `portal/` and are copied into the Docker image.
+The main API listens on `3000`; the portal listens on `3001`. Both servers run
+inside the same Node.js process so they observe the same Roon subscription,
+playlists and API-key database without registering a second extension.
 
 ## Layers
 
@@ -97,4 +105,8 @@ src/
 - `user_preferences`
 - `search_cache`
 
-v0.10 persists Roon authorization state in `data/roonstate.json`, local virtual playlists in `data/roonia.sqlite`, and private OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an empty SQLite store, legacy playlists from `data/virtual-playlists.json` are imported automatically.
+v0.11 persists Roon authorization state in `data/roonstate.json`, local virtual
+playlists and hashed managed API keys in `data/roonia.sqlite`, and private
+OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an
+empty SQLite store, legacy playlists from `data/virtual-playlists.json` are
+imported automatically.

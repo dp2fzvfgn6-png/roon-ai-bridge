@@ -1,7 +1,7 @@
 {
   "name": "roon-ai-bridge",
-  "version": "0.10.0",
-  "description": "Local HTTP bridge for controlling Roon zones on a LAN with SQLite-backed virtual playlists.",
+  "version": "0.11.0",
+  "description": "Local Roon bridge with a secure administration and playback portal.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

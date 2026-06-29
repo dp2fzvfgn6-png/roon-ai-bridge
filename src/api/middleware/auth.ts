@@ -2,8 +2,9 @@ import crypto from "crypto";
 import { NextFunction, Request, Response } from "express";
 import { ApiError } from "../../utils/errors";
 import { ApiContext } from "../server";
+import { roleCanControl } from "../../services/apiKeyService";
 
-function getBearerToken(req: Request): string | null {
+export function getBearerToken(req: Request): string | null {
   const header = req.header("authorization");
   if (!header) return null;
 
@@ -11,7 +12,7 @@ function getBearerToken(req: Request): string | null {
   return match ? match[1].trim() : null;
 }
 
-function tokenMatches(provided: string, expected: string): boolean {
+export function tokenMatches(provided: string, expected: string): boolean {
   const providedBuffer = Buffer.from(provided);
   const expectedBuffer = Buffer.from(expected);
 
@@ -54,14 +55,20 @@ export function createAuthMiddleware(context: ApiContext) {
       return;
     }
 
-    if (
-      !tokenMatches(provided, expected) &&
-      !context.oauthService.tokenIsValid(
+    const staticTokenMatches = tokenMatches(provided, expected);
+    const managedKey = staticTokenMatches
+      ? null
+      : context.apiKeyService.authenticate(provided);
+    const oauthMatches =
+      !staticTokenMatches &&
+      !managedKey &&
+      context.oauthService.tokenIsValid(
         provided,
         context.oauthService.getExpectedResource(),
         "roon:control"
-      )
-    ) {
+      );
+
+    if (!staticTokenMatches && !managedKey && !oauthMatches) {
       if (req.path === "/mcp") {
         _res.setHeader(
           "WWW-Authenticate",
@@ -69,6 +76,14 @@ export function createAuthMiddleware(context: ApiContext) {
         );
       }
       next(new ApiError("AUTH_INVALID", "Invalid bearer token"));
+      return;
+    }
+
+    const needsControl =
+      req.path === "/mcp" ||
+      !["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase());
+    if (managedKey && needsControl && !roleCanControl(managedKey.role)) {
+      next(new ApiError("AUTH_FORBIDDEN", "This API key is read-only"));
       return;
     }
 

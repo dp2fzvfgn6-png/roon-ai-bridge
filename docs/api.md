@@ -388,6 +388,37 @@ Implemented tools:
 - `roon_start_radio`
 - `roon_add_media_to_queue`
 
+## Administration Portal API
+
+The portal on port `3001` uses protected same-origin endpoints:
+
+- `GET /api/session`
+- `GET /api/dashboard`
+- `GET /api/admin/settings`
+- `GET /api/admin/api-keys`
+- `POST /api/admin/api-keys`
+- `DELETE /api/admin/api-keys/:key_id`
+
+It also exposes existing Roon routes below `/api/roon/*` and playlist routes
+below `/api/playlists/*`. Every portal API endpoint requires
+`Authorization: Bearer <ADMIN_TOKEN>`.
+
+```bash
+curl -X POST http://localhost:3001/api/admin/api-keys \
+  -H "Authorization: Bearer $PORTAL_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Home automation","role":"control"}'
+```
+
+Roles:
+
+- `read`: read-only access to the main HTTP API.
+- `control`: reads and mutating Roon/playlist requests.
+- `admin`: control plus access to the portal and API-key management.
+
+The creation response contains `token` once. List responses expose only
+`key_prefix`; revocation is permanent.
+
 ## Zones
 
 ```bash

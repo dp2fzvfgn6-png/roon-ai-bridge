@@ -5,6 +5,7 @@ import { OAuthService } from "../services/oauthService";
 import { RoonMediaService } from "../roon/roonMediaService";
 import { createStderrLogger } from "../utils/logger";
 import { startMcpServer } from "./server";
+import { createDatabase } from "../db/database";
 
 const config = {
   ...loadConfig(),
@@ -20,7 +21,8 @@ logger.info("MCP configuration loaded", {
 });
 
 const roonClient = createRoonClient(config, logger);
-const playlistService = new PlaylistService(config);
+const database = createDatabase(config);
+const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 
