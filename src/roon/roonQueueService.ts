@@ -95,7 +95,7 @@ export async function getQueueSnapshot(
         resolve({
           zone_id: zoneId,
           max_item_count: count,
-          items,
+          items: items.slice(0, count),
           raw: body
         })
       );

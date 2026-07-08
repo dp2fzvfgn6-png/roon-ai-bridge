@@ -48,6 +48,7 @@ Implemented tools:
 - `roon_remove_virtual_playlist_track`
 - `roon_replace_virtual_playlist_tracks`
 - `roon_reorder_virtual_playlist_tracks`
+- `roon_resolve_virtual_playlist`
 - `roon_play_virtual_playlist`
 - `roon_search_media`
 - `roon_get_media_details`
@@ -66,5 +67,27 @@ Implemented tools:
 - `roon_restart_queue`
 - `roon_run_browse_action`
 - `roon_get_image`
+
+`roon_create_virtual_playlist`, `roon_add_virtual_playlist_track` and
+`roon_replace_virtual_playlist_tracks` resolve missing `roon_item_key` values
+against Roon search automatically. Use `roon_resolve_virtual_playlist` to retry
+an existing playlist. `roon_search_media` returns `image_key` metadata without
+base64 artwork unless `include_images` is true.
+
+Contract notes:
+
+- Tool errors return `{ ok: false, error: { code, message, details } }`.
+- `roon_list_zones` omits `image_data_url` unless `include_image_data` is true.
+- `roon_list_virtual_playlists` defaults to summaries only and supports
+  `limit`, `offset`, `track_limit` and `track_offset`.
+- `roon_search_media` returns typed media results with `result_id`, `type`,
+  `title`, `artist`, `album`, `source`, `quality`, `is_library`,
+  `roon_item_key` and `image_key`.
+- `roon_get_media_details` reads a non-expired `result_id` from the current
+  search session.
+- `roon_control_playback` is idempotent for already-paused pause requests and
+  already-playing play requests.
+- `roon_change_volume` validates supported volume ranges and returns refreshed
+  output state.
 
 Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.

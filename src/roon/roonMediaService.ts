@@ -26,13 +26,18 @@ export type MediaQuality = {
 
 export type MediaResult = {
   result_id: string;
+  roon_item_key: string | null;
+  type: MediaType;
   media_type: MediaType;
   title: string;
+  artist: string | null;
+  album: string | null;
   subtitle: string | null;
   image_key: string | null;
   source: MediaSource;
   source_confidence: "high" | "medium" | "low";
   quality: MediaQuality | null;
+  is_library: boolean;
   playable: boolean;
   expires_at: string;
 };
@@ -233,6 +238,89 @@ function mediaResultScore(
     qualityScore(result.quality) * 100 +
     sourceScore(result.source, preference)
   );
+}
+
+export function scoreSearchResult(
+  result: MediaResult,
+  request: {
+    query: string;
+    title?: string | null;
+    artist?: string | null;
+    sourcePreference?: SourcePreference;
+  }
+): { score: number; reasons: string[] } {
+  const preference = request.sourcePreference || "highest_quality";
+  const query = normalize(request.query);
+  const title = request.title ? normalize(request.title) : "";
+  const artist = request.artist ? normalize(request.artist) : "";
+  const resultTitle = normalize(result.title);
+  const resultSubtitle = normalize(result.subtitle || "");
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (result.media_type === "track") {
+    score += 3000;
+    reasons.push("track result");
+  }
+
+  if (result.playable) {
+    score += 2500;
+    reasons.push("playable");
+  }
+
+  if (title) {
+    if (resultTitle === title) {
+      score += 2500;
+      reasons.push("exact title");
+    } else if (resultTitle.includes(title) || title.includes(resultTitle)) {
+      score += 1400;
+      reasons.push("partial title");
+    }
+  }
+
+  if (artist) {
+    if (resultSubtitle === artist || resultSubtitle.includes(artist)) {
+      score += 1800;
+      reasons.push("artist match");
+    } else {
+      const artistTokens = artist.split(" ").filter((token) => token.length > 2);
+      const matched = artistTokens.filter((token) => resultSubtitle.includes(token)).length;
+      if (matched > 0) {
+        score += matched * 250;
+        reasons.push("artist token match");
+      }
+    }
+  }
+
+  if (query) {
+    const relevance = mediaRelevanceScore(result, query);
+    score += relevance;
+    if (relevance > 0) reasons.push("query relevance");
+  }
+
+  const quality = qualityScore(result.quality);
+  if (quality > 0) {
+    score += quality;
+    reasons.push("quality metadata");
+  }
+
+  const source = sourceScore(result.source, preference);
+  if (source > 0) {
+    score += source;
+    reasons.push(`${result.source} source`);
+  }
+
+  if (result.media_type !== "track") {
+    score -= 1500;
+    reasons.push("non-track penalty");
+  }
+
+  if (!result.playable) {
+    score -= 3000;
+    reasons.push("not playable penalty");
+  }
+
+  return { score, reasons };
 }
 
 function titleMatchesCategory(title: string, type: MediaType): boolean {
@@ -535,13 +623,18 @@ export class RoonMediaService {
     const source = inferConfiguredStreamingSource(item, this.configuredStreamingSource);
     const reference: MediaReference = {
       result_id: resultId,
+      type,
       media_type: type,
       title: String(item.title || ""),
+      roon_item_key: typeof item.item_key === "string" ? item.item_key : null,
+      artist: typeof item.subtitle === "string" ? item.subtitle : null,
+      album: null,
       subtitle: typeof item.subtitle === "string" ? item.subtitle : null,
       image_key: typeof item.image_key === "string" ? item.image_key : null,
       source: source.source,
       source_confidence: source.confidence,
       quality: inferMediaQuality(item),
+      is_library: source.source === "library",
       playable: Boolean(item.item_key),
       expires_at: expiresAt,
       query,

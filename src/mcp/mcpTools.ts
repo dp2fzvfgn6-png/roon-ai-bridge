@@ -28,6 +28,7 @@ import {
   seekZone
 } from "../roon/roonAdvancedTransportService";
 import { getRoonImage } from "../roon/roonImageService";
+import type { MediaType } from "../roon/roonMediaService";
 
 type ToolResult = {
   structuredContent: Record<string, unknown>;
@@ -46,6 +47,7 @@ function jsonToolResult(value: unknown, isError = false): ToolResult {
 function errorPayload(error: unknown): Record<string, unknown> {
   if (error instanceof ApiError) {
     return {
+      ok: false,
       error: {
         code: error.code,
         message: error.message,
@@ -55,6 +57,7 @@ function errorPayload(error: unknown): Record<string, unknown> {
   }
 
   return {
+    ok: false,
     error: {
       code: "INTERNAL_ERROR",
       message: error instanceof Error ? error.message : String(error),
@@ -155,7 +158,7 @@ const playlistTrackMetadataSchema = z
 
 const playlistTrackInputSchema = z.object({
   track_id: z.string().optional(),
-  query: z.string().min(1),
+  query: z.string().min(1).optional(),
   roon_item_key: z.string().optional(),
   title: z.string().optional(),
   artist: z.string().optional(),
@@ -180,7 +183,7 @@ const playlistTrackInputSchema = z.object({
 });
 
 const playlistTrackWritableShape = {
-  query: z.string().min(1),
+  query: z.string().min(1).optional(),
   roon_item_key: z.string().optional(),
   title: z.string().optional(),
   artist: z.string().optional(),
@@ -204,6 +207,17 @@ const playlistTrackWritableShape = {
     .optional()
 };
 
+const mediaTypeSchema = z.enum(["track", "album", "artist", "playlist"]);
+const mediaTypesInputSchema = z
+  .union([z.array(mediaTypeSchema), mediaTypeSchema])
+  .optional();
+
+function normalizeMediaTypesInput(value: unknown): MediaType[] | undefined {
+  if (Array.isArray(value)) return value as MediaType[];
+  if (typeof value === "string" && value.trim() !== "") return [value as MediaType];
+  return undefined;
+}
+
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
   server.registerTool(
     "roon_status",
@@ -224,22 +238,27 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       description: "List available Roon zones, now playing metadata and outputs.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
-      _meta: widgetMeta
+      _meta: widgetMeta,
+      inputSchema: {
+        include_image_data: z.boolean().default(false)
+      }
     },
-    async () =>
+    async ({ include_image_data }) =>
       runTool(context, "roon_list_zones", async () =>
-        Promise.all(
-          listZones(context.roonClient).map(async (zone) => ({
-            ...zone,
-            now_playing: {
-              ...zone.now_playing,
-              image_data_url: await imageDataUrl(
-                context,
-                zone.now_playing.image_key
-              )
-            }
-          }))
-        )
+        include_image_data
+          ? Promise.all(
+              listZones(context.roonClient).map(async (zone) => ({
+                ...zone,
+                now_playing: {
+                  ...zone.now_playing,
+                  image_data_url: await imageDataUrl(
+                    context,
+                    zone.now_playing.image_key
+                  )
+                }
+              }))
+            )
+          : listZones(context.roonClient)
       )
   );
 
@@ -286,17 +305,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       runTool(context, "roon_change_volume", async () => {
         const parsedMode = parseVolumeMode(mode);
         const parsedValue = parseVolumeValue(value);
-        const outputs = await changeZoneVolume(context.roonClient, zone_id, parsedMode, parsedValue);
-        return {
-          ok: true,
-          zone_id,
-          mode: parsedMode,
-          value: parsedValue,
-          outputs: outputs.map((output) => ({
-            output_id: output.output_id,
-            display_name: output.display_name
-          }))
-        };
+        return changeZoneVolume(context.roonClient, zone_id, parsedMode, parsedValue);
       })
   );
 
@@ -493,11 +502,24 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       description: "List local virtual playlists stored by Roon AI Bridge.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
-      _meta: widgetMeta
+      _meta: widgetMeta,
+      inputSchema: {
+        include_tracks: z.boolean().default(false),
+        limit: z.number().int().min(1).max(100).default(25),
+        offset: z.number().int().min(0).default(0),
+        track_limit: z.number().int().min(1).max(100).default(25),
+        track_offset: z.number().int().min(0).default(0)
+      }
     },
-    async () =>
+    async ({ include_tracks, limit, offset, track_limit, track_offset }) =>
       runTool(context, "roon_list_virtual_playlists", () =>
-        context.playlistService.listPlaylists()
+        context.playlistService.listPlaylists({
+          includeTracks: include_tracks,
+          limit,
+          offset,
+          trackLimit: track_limit,
+          trackOffset: track_offset
+        })
       )
   );
 
@@ -518,7 +540,10 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     },
     async (args) =>
       runTool(context, "roon_create_virtual_playlist", () =>
-        context.playlistService.createPlaylist(args)
+        context.playlistService.createPlaylistResolved(args, {
+          mediaService: context.mediaService,
+          logger: context.logger
+        })
       )
   );
 
@@ -593,7 +618,10 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     },
     async ({ playlist_id, ...track }) =>
       runTool(context, "roon_add_virtual_playlist_track", () =>
-        context.playlistService.addTrack(playlist_id, track)
+        context.playlistService.addTrackResolved(playlist_id, track, {
+          mediaService: context.mediaService,
+          logger: context.logger
+        })
       )
   );
 
@@ -651,7 +679,38 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     },
     async ({ playlist_id, tracks }) =>
       runTool(context, "roon_replace_virtual_playlist_tracks", () =>
-        context.playlistService.replaceTracks(playlist_id, tracks)
+        context.playlistService.replaceTracksResolved(playlist_id, tracks, {
+          mediaService: context.mediaService,
+          logger: context.logger
+        })
+      )
+  );
+
+  server.registerTool(
+    "roon_resolve_virtual_playlist",
+    {
+      title: "Resolve Virtual Playlist",
+      description:
+        "Use this when an existing local virtual playlist has unresolved or low-confidence tracks and should be re-matched against Roon search.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        force: z.boolean().default(false),
+        source_preference: z
+          .enum(["highest_quality", "streaming_first", "library_first"])
+          .default("highest_quality")
+      }
+    },
+    async ({ playlist_id, force, source_preference }) =>
+      runTool(context, "roon_resolve_virtual_playlist", () =>
+        context.playlistService.resolveVirtualPlaylistItems(playlist_id, {
+          mediaService: context.mediaService,
+          logger: context.logger,
+          force,
+          sourcePreference: source_preference
+        })
       )
   );
 
@@ -712,25 +771,25 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       _meta: widgetMeta,
       inputSchema: {
         query: z.string().min(1),
-        types: z
-          .array(z.enum(["track", "album", "artist", "playlist"]))
-          .optional(),
+        types: mediaTypesInputSchema,
         zone_id: z.string().optional(),
         count: z.number().int().min(1).max(25).default(10),
         source_preference: z
           .enum(["highest_quality", "streaming_first", "library_first"])
-          .default("highest_quality")
+          .default("highest_quality"),
+        include_images: z.boolean().default(false)
       }
     },
-    async ({ query, types, zone_id, count, source_preference }) =>
+    async ({ query, types, zone_id, count, source_preference, include_images }) =>
       runTool(context, "roon_search_media", async () => {
         const payload = await context.mediaService.search({
           query,
-          types,
+          types: normalizeMediaTypesInput(types),
           zoneId: zone_id,
           count,
           sourcePreference: source_preference
         });
+        if (!include_images) return payload;
         return {
           ...payload,
           results: await Promise.all(

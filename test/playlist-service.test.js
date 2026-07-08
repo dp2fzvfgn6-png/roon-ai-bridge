@@ -161,3 +161,187 @@ test("enriches library items with normalized song metadata and cover payload", (
     cover: { image_key: "cover-123" }
   });
 });
+
+test("lists virtual playlists without tracks by default and paginates tracks explicitly", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  service.createPlaylist({ name: "Empty" });
+  const long = service.createPlaylist({
+    name: "Long",
+    tracks: Array.from({ length: 194 }, (_, index) => ({
+      query: `song ${index + 1}`,
+      title: `Song ${index + 1}`
+    }))
+  });
+
+  const summaries = service.listPlaylists({
+    includeTracks: false,
+    limit: 10,
+    offset: 0
+  });
+  assert.equal(summaries.total, 2);
+  assert.equal(summaries.include_tracks, false);
+  assert.equal(summaries.playlists.length, 2);
+  assert.equal(summaries.playlists.find((playlist) => playlist.playlist_id === long.playlist_id).track_count, 194);
+  assert.equal("tracks" in summaries.playlists[0], false);
+
+  const paged = service.listPlaylists({
+    includeTracks: true,
+    limit: 1,
+    offset: 0,
+    trackLimit: 5,
+    trackOffset: 10
+  });
+  assert.equal(paged.playlists.length, 1);
+  assert.equal(paged.playlists[0].tracks.length, 5);
+  assert.equal(paged.playlists[0].track_pagination.total, 194);
+  assert.equal(paged.playlists[0].track_pagination.offset, 10);
+  assert.equal(paged.playlists[0].tracks[0].position, 11);
+
+  const outside = service.listPlaylists({
+    includeTracks: true,
+    limit: 10,
+    offset: 99
+  });
+  assert.equal(outside.total, 2);
+  assert.equal(outside.playlists.length, 0);
+});
+
+test("runs virtual playlist CRUD cleanup without leaking temporary resources", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const created = service.createPlaylist({
+    playlist_id: "roonia_test_crud",
+    name: "roonia_test_crud",
+    tracks: [{ query: "one", title: "One" }]
+  });
+  const added = service.addTrack(created.playlist_id, {
+    query: "two",
+    title: "Two"
+  });
+  const updated = service.updateTrack(
+    created.playlist_id,
+    added.tracks[0].track_id,
+    { query: "one updated", title: "One Updated" }
+  );
+  const reordered = service.reorderTracks(created.playlist_id, [
+    updated.tracks[1].track_id,
+    updated.tracks[0].track_id
+  ]);
+  assert.equal(reordered.tracks[0].title, "Two");
+  service.removeTrack(created.playlist_id, reordered.tracks[0].track_id);
+  service.updatePlaylist(created.playlist_id, { name: "roonia_test_renamed" });
+  service.deletePlaylist(created.playlist_id);
+
+  assert.throws(
+    () => service.getPlaylist(created.playlist_id),
+    (error) => error.code === "PLAYLIST_NOT_FOUND"
+  );
+});
+
+test("marks unresolved virtual playlist entries explicitly", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const mediaService = {
+    async search(request) {
+      assert.equal(request.query, "Imaginary Song Imaginary Artist");
+      assert.equal(request.types, undefined);
+      return {
+        query: request.query,
+        source_preference: request.sourcePreference || "highest_quality",
+        results: [],
+        warnings: []
+      };
+    }
+  };
+
+  const playlist = await service.createPlaylistResolved(
+    {
+      name: "Unresolved Mix",
+      tracks: [
+        {
+          title: "Imaginary Song",
+          artist: "Imaginary Artist"
+        }
+      ]
+    },
+    { mediaService }
+  );
+
+  assert.equal(playlist.tracks_count, 1);
+  assert.equal(playlist.tracks[0].query, "Imaginary Song Imaginary Artist");
+  assert.equal(playlist.tracks[0].roon_item_key, null);
+  assert.equal(playlist.tracks[0].metadata.resolution.status, "unresolved");
+  assert.match(
+    playlist.tracks[0].metadata.resolution.reason,
+    /no results/i
+  );
+});
+
+test("resolves virtual playlist entries with the best playable track", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const mediaService = {
+    async search(request) {
+      assert.equal(request.query, "Red Right Hand Nick Cave Bad Seeds");
+      assert.equal(request.types, undefined);
+      return {
+        query: request.query,
+        source_preference: request.sourcePreference || "highest_quality",
+        warnings: [],
+        results: [
+          {
+            result_id: "media_album",
+            roon_item_key: "album-key",
+            media_type: "album",
+            title: "Red Right Hand",
+            subtitle: "Nick Cave & the Bad Seeds",
+            image_key: null,
+            source: "tidal",
+            source_confidence: "medium",
+            quality: null,
+            playable: true,
+            expires_at: new Date().toISOString()
+          },
+          {
+            result_id: "media_track",
+            roon_item_key: "track-key",
+            media_type: "track",
+            title: "Red Right Hand",
+            subtitle: "Nick Cave & the Bad Seeds",
+            image_key: "cover-key",
+            source: "tidal",
+            source_confidence: "medium",
+            quality: {
+              label: "24-bit / 96 kHz / FLAC",
+              bit_depth: 24,
+              sample_rate_hz: 96000,
+              format: "FLAC"
+            },
+            playable: true,
+            expires_at: new Date().toISOString()
+          }
+        ]
+      };
+    }
+  };
+
+  const playlist = await service.createPlaylistResolved(
+    {
+      name: "Resolved Mix",
+      tracks: [
+        {
+          title: "Red Right Hand",
+          artist: "Nick Cave & the Bad Seeds",
+          query: "Red Right Hand Nick Cave Bad Seeds"
+        }
+      ]
+    },
+    { mediaService }
+  );
+
+  assert.equal(playlist.tracks[0].roon_item_key, "track-key");
+  assert.equal(playlist.tracks[0].metadata.resolution.status, "resolved");
+  assert.equal(playlist.tracks[0].metadata.resolution.result.result_id, "media_track");
+  assert.equal(playlist.tracks[0].image_key, "cover-key");
+});

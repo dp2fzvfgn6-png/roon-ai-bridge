@@ -20,6 +20,19 @@ curl http://localhost:3000/roon/status \
 
 Missing or invalid tokens return `401` with the standard error format.
 
+Standard errors use a stable JSON shape:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "ZONE_NOT_FOUND",
+    "message": "Zone not found",
+    "details": { "zone_id": "missing-zone" }
+  }
+}
+```
+
 ## OAuth For ChatGPT Apps
 
 OAuth metadata:
@@ -169,6 +182,12 @@ curl -X POST "http://localhost:3000/roon/media/<RESULT_ID>/play" \
   -d '{"zone_id":"<ZONE_ID>","mode":"replace_queue"}'
 ```
 
+Stable result fields include `result_id`, `type`, `media_type`, `title`,
+`artist`, `album`, `source`, `quality`, `is_library`, `image_key`,
+`roon_item_key`, `playable` and `expires_at`. Unknown or expired result IDs
+return `SEARCH_NO_RESULTS`; they are scoped to the current in-memory search
+session.
+
 Playback modes:
 
 - `replace_queue`
@@ -188,6 +207,10 @@ Artist releases:
 ```bash
 curl "http://localhost:3000/roon/media/<ARTIST_RESULT_ID>/releases?zone_id=<ZONE_ID>"
 ```
+
+MCP `roon_search_media` omits base64 artwork by default. Pass
+`include_images: true` only when the client needs inline cover images; internal
+resolution flows use `image_key` metadata instead.
 
 ## Legacy Search
 
@@ -259,7 +282,32 @@ The add actions depend on Roon exposing matching browse actions for the selected
 List virtual playlists:
 
 ```bash
-curl http://localhost:3000/playlists
+curl "http://localhost:3000/playlists?include_tracks=false&limit=25&offset=0"
+```
+
+List tracks for returned playlists only when needed:
+
+```bash
+curl "http://localhost:3000/playlists?include_tracks=true&limit=5&offset=0&track_limit=25&track_offset=0"
+```
+
+The list response is paginated and includes summaries by default:
+
+```json
+{
+  "playlists": [
+    {
+      "playlist_id": "mix",
+      "name": "Mix",
+      "track_count": 194,
+      "tracks_count": 194
+    }
+  ],
+  "total": 1,
+  "limit": 25,
+  "offset": 0,
+  "include_tracks": false
+}
 ```
 
 Create a virtual playlist:
@@ -269,6 +317,12 @@ curl -X POST http://localhost:3000/playlists \
   -H "Content-Type: application/json" \
   -d '{"playlist_id":"bad-bunny-test","name":"Bad Bunny Test","tracks":[{"query":"bad bunny dakiti"},{"query":"bad bunny neverita"}]}'
 ```
+
+Creation, track addition and full replacement automatically try to resolve
+tracks against Roon search. Entries can pass `query`, or `title` plus optional
+`artist`; unresolved entries keep `roon_item_key: null` and store
+`metadata.resolution.status` as `unresolved`, `low_confidence` or `error` with a
+reason.
 
 Get one virtual playlist:
 
@@ -298,6 +352,14 @@ Replace every track in a playlist:
 curl -X PUT http://localhost:3000/playlists/bad-bunny-test/tracks \
   -H "Content-Type: application/json" \
   -d '{"tracks":[{"query":"bad bunny dakiti","title":"Dákiti"},{"query":"bad bunny monaco","title":"MONACO"}]}'
+```
+
+Retry resolution for unresolved entries, or force re-resolution of all entries:
+
+```bash
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/resolve \
+  -H "Content-Type: application/json" \
+  -d '{"force":false,"source_preference":"highest_quality"}'
 ```
 
 Update one track:
@@ -380,6 +442,7 @@ Implemented tools:
 - `roon_remove_virtual_playlist_track`
 - `roon_replace_virtual_playlist_tracks`
 - `roon_reorder_virtual_playlist_tracks`
+- `roon_resolve_virtual_playlist`
 - `roon_play_virtual_playlist`
 - `roon_search_media`
 - `roon_get_media_details`
@@ -398,6 +461,41 @@ Implemented tools:
 - `roon_restart_queue`
 - `roon_run_browse_action`
 - `roon_get_image`
+
+Read-only tools include status, zone/output listing, queue reads, media search,
+media details, artist releases, image fetches and virtual playlist reads.
+State-changing tools include playback, queue mutation, volume/mute, grouping,
+playlist CRUD, media playback and output power/settings changes. Destructive or
+audible tools should be exercised manually against a real Roon Core.
+
+Important MCP contracts:
+
+- `roon_list_zones` returns lightweight now-playing metadata by default. Pass
+  `include_image_data: true` only when inline base64 artwork is required.
+- `roon_search_media` is bound to typed search and never returns `roon_status`.
+  Pass `include_images: true` only for embedded cover data.
+- `roon_get_media_details` accepts a `result_id` from the same recent
+  `roon_search_media` session.
+- `roon_list_virtual_playlists` defaults to `include_tracks: false`; use
+  `limit`, `offset`, `track_limit` and `track_offset` for bounded payloads.
+- `roon_control_playback` treats `pause` on paused zones and `play` on playing
+  zones as successful idempotent states.
+- `roon_change_volume` validates output ranges and returns refreshed output
+  volume state after the command.
+
+## Safe Live Tests
+
+Automated tests do not perform audible playback and do not change real volume.
+Any future integration tests against a real Roon Core must be gated behind:
+
+```bash
+ROONIA_ENABLE_LIVE_TESTS=true
+```
+
+Live volume tests must not raise volume and must respect these maximums:
+Salon `35`, Despacho `35`, Cocina `19`. Destructive live tests should create
+temporary resources prefixed with `roonia_test_` and clean them in `finally`
+blocks.
 
 ## Administration Portal API
 

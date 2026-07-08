@@ -112,6 +112,7 @@ export class ApiError extends Error {
 
 export function sendError(res: Response, error: ApiError): void {
   res.status(error.status).json({
+    ok: false,
     error: {
       code: error.code,
       message: error.message,

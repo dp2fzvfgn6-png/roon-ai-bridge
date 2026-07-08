@@ -157,7 +157,11 @@ export function createPortalServer(context: ApiContext): express.Express {
 
   app.get("/api/dashboard", (_req, res) => {
     const zones = context.roonClient.getZones();
-    const playlists = context.playlistService.listPlaylists();
+    const playlists = context.playlistService.listPlaylists({
+      includeTracks: false,
+      limit: 100,
+      offset: 0
+    });
     const apiKeys = context.apiKeyService.list();
 
     res.json({
@@ -172,8 +176,8 @@ export function createPortalServer(context: ApiContext): express.Express {
       counts: {
         zones: zones.length,
         playing_zones: zones.filter((zone) => zone.state === "playing").length,
-        playlists: playlists.length,
-        playlist_tracks: playlists.reduce(
+        playlists: playlists.total,
+        playlist_tracks: playlists.playlists.reduce(
           (total, playlist) => total + playlist.tracks_count,
           0
         ),

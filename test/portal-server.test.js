@@ -50,7 +50,15 @@ test("serves portal assets publicly but protects every administration endpoint",
       isImageReady: () => false,
       getOutputs: () => []
     },
-    playlistService: { listPlaylists: () => [] },
+    playlistService: {
+      listPlaylists: () => ({
+        playlists: [],
+        total: 0,
+        limit: 100,
+        offset: 0,
+        include_tracks: false
+      })
+    },
     oauthService: {},
     mediaService: {},
     apiKeyService,

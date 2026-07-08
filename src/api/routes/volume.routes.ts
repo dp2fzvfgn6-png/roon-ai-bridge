@@ -24,23 +24,14 @@ export function createVolumeRouter(context: ApiContext): Router {
         );
       }
 
-      const outputs = await changeZoneVolume(
+      const result = await changeZoneVolume(
         context.roonClient,
         req.params.zone_id,
         mode,
         value
       );
 
-      res.json({
-        ok: true,
-        zone_id: req.params.zone_id,
-        mode,
-        value,
-        outputs_changed: outputs.map((output) => ({
-          output_id: output.output_id,
-          display_name: output.display_name
-        }))
-      });
+      res.json(result);
     } catch (error) {
       next(error);
     }

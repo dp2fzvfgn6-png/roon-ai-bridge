@@ -2,7 +2,13 @@ import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
 import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
 import { RoonClient } from "../roon/roonClient";
+import {
+  RoonMediaService,
+  scoreSearchResult,
+  SourcePreference
+} from "../roon/roonMediaService";
 import { ApiError } from "../utils/errors";
+import { Logger } from "../utils/logger";
 
 export const playlistServiceImplemented = true;
 
@@ -27,9 +33,36 @@ export type VirtualPlaylist = {
   name: string;
   description: string | null;
   tracks: VirtualPlaylistTrack[];
+  track_count: number;
   tracks_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type VirtualPlaylistListItem = Omit<VirtualPlaylist, "tracks"> & {
+  tracks?: VirtualPlaylistTrack[];
+  track_pagination?: {
+    limit: number;
+    offset: number;
+    returned: number;
+    total: number;
+  };
+};
+
+export type VirtualPlaylistListOptions = {
+  includeTracks?: boolean;
+  limit?: number;
+  offset?: number;
+  trackLimit?: number;
+  trackOffset?: number;
+};
+
+export type VirtualPlaylistListResult = {
+  playlists: VirtualPlaylistListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  include_tracks: boolean;
 };
 
 export type PlaylistPlayMode = "add_to_queue" | "add_next" | "play_now";
@@ -85,6 +118,27 @@ function optionalFiniteInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
 }
 
+function normalizePageNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) {
+    throw new ApiError("INVALID_PLAYLIST", "Invalid pagination value", {
+      value,
+      min,
+      max
+    });
+  }
+  return Math.max(min, Math.min(Math.floor(parsed), max));
+}
+
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -132,6 +186,23 @@ type NormalizedTrackInput = {
   created_at: string;
 };
 
+export type VirtualPlaylistResolutionStatus =
+  | "resolved"
+  | "unresolved"
+  | "low_confidence"
+  | "error";
+
+export type VirtualPlaylistResolutionResult = {
+  track_id: string;
+  query: string;
+  status: VirtualPlaylistResolutionStatus;
+  roon_item_key: string | null;
+  score: number | null;
+  reason: string;
+};
+
+const RESOLUTION_SCORE_THRESHOLD = 6500;
+
 function normalizeTrackInput(
   input: unknown,
   fallbackTrackId?: string,
@@ -143,9 +214,13 @@ function normalizeTrackInput(
     throw new ApiError("INVALID_PLAYLIST_TRACK", "Track must be an object");
   }
 
-  const query = nonEmptyString(payload.query);
+  const title = optionalString(payload.title);
+  const artist = optionalString(payload.artist);
+  const query =
+    nonEmptyString(payload.query) ||
+    [title, artist].filter(Boolean).join(" ").trim();
   if (!query) {
-    throw new ApiError("INVALID_PLAYLIST_TRACK", "Track query is required");
+    throw new ApiError("INVALID_PLAYLIST_TRACK", "Track query or title is required");
   }
 
   const metadata =
@@ -174,8 +249,8 @@ function normalizeTrackInput(
       track_id: nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`,
       query,
       roon_item_key: optionalString(payload.roon_item_key),
-      title: optionalString(payload.title),
-      artist: optionalString(payload.artist),
+      title,
+      artist,
       album: optionalString(payload.album),
       position: optionalFiniteInteger(payload.position) ?? fallbackPosition ?? null,
       metadata_json:
@@ -188,8 +263,8 @@ function normalizeTrackInput(
     track_id: nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`,
     query,
     roon_item_key: optionalString(payload.roon_item_key),
-    title: optionalString(payload.title),
-    artist: optionalString(payload.artist),
+    title,
+    artist,
     album: optionalString(payload.album),
     position: optionalFiniteInteger(payload.position) ?? fallbackPosition ?? null,
     metadata_json: serializeMetadata(metadata),
@@ -204,16 +279,35 @@ export class PlaylistService {
     this.database = database || createDatabase(config);
   }
 
-  listPlaylists(): VirtualPlaylist[] {
+  listPlaylists(options: VirtualPlaylistListOptions = {}): VirtualPlaylistListResult {
+    const limit = normalizePageNumber(options.limit, 25, 1, 100);
+    const offset = normalizePageNumber(options.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+    const includeTracks = Boolean(options.includeTracks);
+    const trackLimit = normalizePageNumber(options.trackLimit, 25, 1, 100);
+    const trackOffset = normalizePageNumber(options.trackOffset, 0, 0, Number.MAX_SAFE_INTEGER);
+    const total = this.countPlaylists();
     const playlistRows = this.database.db
       .prepare(
         `SELECT playlist_id, name, description, created_at, updated_at
          FROM virtual_playlists
-         ORDER BY updated_at DESC, name ASC`
+         ORDER BY updated_at DESC, name ASC
+         LIMIT ? OFFSET ?`
       )
-      .all() as PlaylistRow[];
+      .all(limit, offset) as PlaylistRow[];
 
-    return playlistRows.map((row) => this.getPlaylistFromRow(row));
+    return {
+      playlists: playlistRows.map((row) =>
+        this.getPlaylistListItem(row, {
+          includeTracks,
+          trackLimit,
+          trackOffset
+        })
+      ),
+      total,
+      limit,
+      offset,
+      include_tracks: includeTracks
+    };
   }
 
   getPlaylist(playlistId: string): VirtualPlaylist {
@@ -262,6 +356,24 @@ export class PlaylistService {
     return this.getPlaylistById(playlistId);
   }
 
+  async createPlaylistResolved(
+    input: {
+      playlist_id?: unknown;
+      name?: unknown;
+      description?: unknown;
+      tracks?: unknown;
+    },
+    options: {
+      mediaService: RoonMediaService;
+      logger?: Logger;
+      sourcePreference?: SourcePreference;
+    }
+  ): Promise<VirtualPlaylist> {
+    const playlist = this.createPlaylist(input);
+    await this.resolveVirtualPlaylistItems(playlist.playlist_id, options);
+    return this.getPlaylistById(playlist.playlist_id);
+  }
+
   updatePlaylist(
     playlistId: string,
     input: { name?: unknown; description?: unknown }
@@ -301,6 +413,24 @@ export class PlaylistService {
     const normalized = normalizeTrackInput(input, undefined, position);
     this.insertTrack(playlistId, normalized);
     this.touchPlaylist(playlistId);
+    return this.getPlaylistById(playlistId);
+  }
+
+  async addTrackResolved(
+    playlistId: string,
+    input: unknown,
+    options: {
+      mediaService: RoonMediaService;
+      logger?: Logger;
+      sourcePreference?: SourcePreference;
+    }
+  ): Promise<VirtualPlaylist> {
+    const playlist = this.addTrack(playlistId, input);
+    const track = playlist.tracks[playlist.tracks.length - 1];
+    await this.resolveVirtualPlaylistItems(playlistId, {
+      ...options,
+      trackIds: track ? [track.track_id] : undefined
+    });
     return this.getPlaylistById(playlistId);
   }
 
@@ -352,6 +482,53 @@ export class PlaylistService {
     });
 
     return this.getPlaylistById(playlistId);
+  }
+
+  async replaceTracksResolved(
+    playlistId: string,
+    tracks: unknown,
+    options: {
+      mediaService: RoonMediaService;
+      logger?: Logger;
+      sourcePreference?: SourcePreference;
+    }
+  ): Promise<VirtualPlaylist> {
+    this.replaceTracks(playlistId, tracks);
+    await this.resolveVirtualPlaylistItems(playlistId, options);
+    return this.getPlaylistById(playlistId);
+  }
+
+  async resolveVirtualPlaylistItems(
+    playlistId: string,
+    options: {
+      mediaService: RoonMediaService;
+      logger?: Logger;
+      sourcePreference?: SourcePreference;
+      trackIds?: string[];
+      force?: boolean;
+    }
+  ): Promise<{
+    playlist: VirtualPlaylist;
+    resolution: VirtualPlaylistResolutionResult[];
+  }> {
+    this.getPlaylistById(playlistId);
+    const trackIdFilter = options.trackIds ? new Set(options.trackIds) : null;
+    const rows = this.listTrackRows(playlistId).filter((track) => {
+      if (trackIdFilter && !trackIdFilter.has(track.track_id)) return false;
+      return options.force || !track.roon_item_key;
+    });
+    const resolution: VirtualPlaylistResolutionResult[] = [];
+
+    for (const row of rows) {
+      const result = await this.resolvePlaylistEntry(row, options);
+      resolution.push(result);
+    }
+
+    if (resolution.length > 0) this.touchPlaylist(playlistId);
+    return {
+      playlist: this.getPlaylistById(playlistId),
+      resolution
+    };
   }
 
   reorderTracks(playlistId: string, trackIds: unknown): VirtualPlaylist {
@@ -525,6 +702,13 @@ export class PlaylistService {
     return Boolean(row);
   }
 
+  private countPlaylists(): number {
+    const row = this.database.db
+      .prepare("SELECT COUNT(*) AS count FROM virtual_playlists")
+      .get() as { count?: number } | undefined;
+    return row?.count || 0;
+  }
+
   private getPlaylistById(playlistId: string): VirtualPlaylist {
     const row = this.database.db
       .prepare(
@@ -545,26 +729,77 @@ export class PlaylistService {
 
   private getPlaylistFromRow(row: PlaylistRow): VirtualPlaylist {
     const tracks = this.listTrackRows(row.playlist_id).map((track) => this.mapTrack(track));
+    const trackCount = tracks.length;
     return {
       playlist_id: row.playlist_id,
       name: row.name,
       description: row.description,
       tracks,
-      tracks_count: tracks.length,
+      track_count: trackCount,
+      tracks_count: trackCount,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
   }
 
-  private listTrackRows(playlistId: string): TrackRow[] {
-    return this.database.db
-      .prepare(
-        `SELECT track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
+  private getPlaylistListItem(
+    row: PlaylistRow,
+    options: { includeTracks: boolean; trackLimit: number; trackOffset: number }
+  ): VirtualPlaylistListItem {
+    const trackCount = this.countTrackRows(row.playlist_id);
+    const base = {
+      playlist_id: row.playlist_id,
+      name: row.name,
+      description: row.description,
+      track_count: trackCount,
+      tracks_count: trackCount,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+
+    if (!options.includeTracks) return base;
+
+    const tracks = this.listTrackRows(
+      row.playlist_id,
+      options.trackLimit,
+      options.trackOffset
+    ).map((track) => this.mapTrack(track));
+    return {
+      ...base,
+      tracks,
+      track_pagination: {
+        limit: options.trackLimit,
+        offset: options.trackOffset,
+        returned: tracks.length,
+        total: trackCount
+      }
+    };
+  }
+
+  private listTrackRows(
+    playlistId: string,
+    limit?: number,
+    offset?: number
+  ): TrackRow[] {
+    const sql = `SELECT track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
          FROM virtual_playlist_tracks
          WHERE playlist_id = ?
-         ORDER BY position ASC, created_at ASC, track_id ASC`
+         ORDER BY position ASC, created_at ASC, track_id ASC`;
+    if (typeof limit === "number") {
+      return this.database.db
+        .prepare(`${sql} LIMIT ? OFFSET ?`)
+        .all(playlistId, limit, offset || 0) as TrackRow[];
+    }
+    return this.database.db.prepare(sql).all(playlistId) as TrackRow[];
+  }
+
+  private countTrackRows(playlistId: string): number {
+    const row = this.database.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM virtual_playlist_tracks WHERE playlist_id = ?"
       )
-      .all(playlistId) as TrackRow[];
+      .get(playlistId) as { count?: number } | undefined;
+    return row?.count || 0;
   }
 
   private getTrackRowOrThrow(playlistId: string, trackId: string): TrackRow {
@@ -644,6 +879,174 @@ export class PlaylistService {
         metadata_json: track.metadata_json,
         created_at: track.created_at
       });
+  }
+
+  private async resolvePlaylistEntry(
+    row: TrackRow,
+    options: {
+      mediaService: RoonMediaService;
+      logger?: Logger;
+      sourcePreference?: SourcePreference;
+    }
+  ): Promise<VirtualPlaylistResolutionResult> {
+    const logger = options.logger;
+    const query = row.query || [row.title, row.artist].filter(Boolean).join(" ");
+    logger?.info("Virtual playlist entry resolution started", {
+      playlistId: row.playlist_id,
+      trackId: row.track_id,
+      query,
+      title: row.title,
+      artist: row.artist
+    });
+
+    try {
+      const payload = await options.mediaService.search({
+        query,
+        count: 10,
+        sourcePreference: options.sourcePreference || "highest_quality"
+      });
+      logger?.info("Virtual playlist entry search completed", {
+        playlistId: row.playlist_id,
+        trackId: row.track_id,
+        query,
+        results: payload.results.length,
+        warnings: payload.warnings
+      });
+
+      const candidates = payload.results
+        .map((result) => ({
+          result,
+          scoring: scoreSearchResult(result, {
+            query,
+            title: row.title,
+            artist: row.artist,
+            sourcePreference: options.sourcePreference || "highest_quality"
+          })
+        }))
+        .sort((a, b) => b.scoring.score - a.scoring.score);
+
+      const best = candidates[0];
+      if (!best) {
+        const unresolved = this.updateTrackResolution(row, {
+          status: "unresolved",
+          query,
+          roonItemKey: null,
+          score: null,
+          reason: "Roon search returned no results"
+        });
+        logger?.warn("Virtual playlist entry unresolved", unresolved);
+        return unresolved;
+      }
+
+      const roonItemKey = best.result.roon_item_key || best.result.result_id;
+      const accepted =
+        best.result.media_type === "track" &&
+        best.result.playable &&
+        best.scoring.score >= RESOLUTION_SCORE_THRESHOLD;
+      const status: VirtualPlaylistResolutionStatus = accepted
+        ? "resolved"
+        : "low_confidence";
+      const reason = best.scoring.reasons.join(", ") || "best available candidate";
+      const stored = this.updateTrackResolution(row, {
+        status,
+        query,
+        roonItemKey: accepted ? roonItemKey : null,
+        score: best.scoring.score,
+        reason,
+        result: best.result
+      });
+
+      const logMeta = {
+        ...stored,
+        candidate_title: best.result.title,
+        candidate_subtitle: best.result.subtitle,
+        candidate_type: best.result.media_type,
+        candidate_playable: best.result.playable
+      };
+      if (accepted) {
+        logger?.info("Virtual playlist entry resolved", logMeta);
+      } else {
+        logger?.warn("Virtual playlist entry low confidence", logMeta);
+      }
+      return stored;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = this.updateTrackResolution(row, {
+        status: "error",
+        query,
+        roonItemKey: null,
+        score: null,
+        reason: message
+      });
+      logger?.warn("Virtual playlist entry resolution failed", {
+        ...failed,
+        error: message
+      });
+      return failed;
+    }
+  }
+
+  private updateTrackResolution(
+    row: TrackRow,
+    resolution: {
+      status: VirtualPlaylistResolutionStatus;
+      query: string;
+      roonItemKey: string | null;
+      score: number | null;
+      reason: string;
+      result?: Record<string, unknown>;
+    }
+  ): VirtualPlaylistResolutionResult {
+    const metadata = parseMetadata(row.metadata_json) || {};
+    const nextMetadata: Record<string, unknown> = {
+      ...metadata,
+      resolution: {
+        status: resolution.status,
+        query: resolution.query,
+        score: resolution.score,
+        reason: resolution.reason,
+        resolved_at: nowIso(),
+        result: resolution.result
+          ? {
+              result_id: resolution.result.result_id,
+              media_type: resolution.result.media_type,
+              title: resolution.result.title,
+              subtitle: resolution.result.subtitle,
+              source: resolution.result.source,
+              quality: resolution.result.quality,
+              playable: resolution.result.playable
+            }
+          : null
+      }
+    };
+    const imageKey =
+      resolution.result && typeof resolution.result.image_key === "string"
+        ? resolution.result.image_key
+        : imageKeyFromMetadata(metadata);
+    if (imageKey) nextMetadata.image_key = imageKey;
+
+    this.database.db
+      .prepare(
+        `UPDATE virtual_playlist_tracks
+         SET roon_item_key = :roon_item_key,
+             metadata_json = :metadata_json
+         WHERE playlist_id = :playlist_id AND track_id = :track_id`
+      )
+      .run({
+        playlist_id: row.playlist_id,
+        track_id: row.track_id,
+        roon_item_key: resolution.roonItemKey,
+        metadata_json: JSON.stringify(nextMetadata)
+      });
+
+    return {
+      track_id: row.track_id,
+      query: resolution.query,
+      status: resolution.status,
+      roon_item_key: resolution.roonItemKey,
+      score: resolution.score,
+      reason: resolution.reason
+    };
   }
 
   private normalizeTrackPositions(playlistId: string): void {

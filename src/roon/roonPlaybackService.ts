@@ -10,6 +10,7 @@ export type PlaybackControlResult = {
   zone_id: string;
   zone_name: string;
   command: PlaybackCommand;
+  status: "changed" | "already_playing" | "already_paused" | "already_stopped" | "accepted";
   previous_state: string;
   state: string;
   state_verified: boolean;
@@ -29,6 +30,45 @@ export async function controlPlayback(
   const transport = requireTransport(roonClient);
   const zone = getZoneOrThrow(roonClient, zoneId);
   const previousState = zone.state;
+
+  if (command === "pause" && previousState === "paused") {
+    return {
+      ok: true,
+      zone_id: zone.zone_id,
+      zone_name: zone.display_name,
+      command,
+      status: "already_paused",
+      previous_state: previousState,
+      state: previousState,
+      state_verified: true
+    };
+  }
+
+  if (command === "play" && previousState === "playing") {
+    return {
+      ok: true,
+      zone_id: zone.zone_id,
+      zone_name: zone.display_name,
+      command,
+      status: "already_playing",
+      previous_state: previousState,
+      state: previousState,
+      state_verified: true
+    };
+  }
+
+  if (command === "stop" && previousState === "stopped") {
+    return {
+      ok: true,
+      zone_id: zone.zone_id,
+      zone_name: zone.display_name,
+      command,
+      status: "already_stopped",
+      previous_state: previousState,
+      state: previousState,
+      state_verified: true
+    };
+  }
 
   if (!commandAllowed(zone, command)) {
     throw new ApiError("UNSUPPORTED_COMMAND", "Command is not allowed for this zone", {
@@ -70,6 +110,7 @@ export async function controlPlayback(
           zone_id: zone.zone_id,
           zone_name: zone.display_name,
           command,
+          status: current.state === previousState ? "accepted" : "changed",
           previous_state: previousState,
           state: current.state,
           state_verified: true
@@ -98,6 +139,7 @@ export async function controlPlayback(
     zone_id: zone.zone_id,
     zone_name: zone.display_name,
     command,
+    status: "accepted",
     previous_state: previousState,
     state: roonClient.getZone(zoneId)?.state || zone.state,
     state_verified: false

@@ -5,7 +5,8 @@ const {
   inferConfiguredStreamingSource,
   inferMediaQuality,
   inferMediaSource,
-  mediaRelevanceScore
+  mediaRelevanceScore,
+  scoreSearchResult
 } = require("../dist/roon/roonMediaService");
 
 test("classifies TIDAL and high-resolution quality metadata", () => {
@@ -109,4 +110,39 @@ test("uses inherited browse section source context", () => {
       confidence: "high"
     }
   );
+});
+
+test("scores playable track matches above non-track candidates", () => {
+  const base = {
+    result_id: "media_one",
+    roon_item_key: "roon-key-one",
+    title: "Red Right Hand",
+    subtitle: "Nick Cave & the Bad Seeds",
+    image_key: null,
+    source: "tidal",
+    source_confidence: "medium",
+    quality: { label: "24-bit / 96 kHz / FLAC", bit_depth: 24, sample_rate_hz: 96000, format: "FLAC" },
+    expires_at: new Date().toISOString()
+  };
+
+  const trackScore = scoreSearchResult(
+    { ...base, media_type: "track", playable: true },
+    {
+      query: "Red Right Hand Nick Cave Bad Seeds",
+      title: "Red Right Hand",
+      artist: "Nick Cave & the Bad Seeds"
+    }
+  );
+  const albumScore = scoreSearchResult(
+    { ...base, result_id: "media_two", media_type: "album", playable: true },
+    {
+      query: "Red Right Hand Nick Cave Bad Seeds",
+      title: "Red Right Hand",
+      artist: "Nick Cave & the Bad Seeds"
+    }
+  );
+
+  assert.ok(trackScore.score > albumScore.score);
+  assert.ok(trackScore.reasons.includes("track result"));
+  assert.ok(trackScore.reasons.includes("playable"));
 });
