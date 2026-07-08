@@ -22,6 +22,16 @@ Remote MCP endpoint:
 https://roonia.ipchome.com/mcp
 ```
 
+The current ChatGPT App widget resource is:
+
+```text
+ui://roon-ai-bridge/control-v5.html
+```
+
+After changes to tool schemas, descriptions or widget resources, refresh the
+ChatGPT app configuration and use a new conversation so cached metadata is not
+reused.
+
 The remote endpoint accepts OAuth access tokens issued to ChatGPT. The administrative `API_TOKEN` remains valid for direct testing.
 
 Implemented tools:

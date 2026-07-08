@@ -5,12 +5,12 @@ const {
   roonControlWidgetUri
 } = require("../dist/mcp/appResources");
 
-test("serves widget v4 with artwork and initial ChatGPT tool output hydration", async () => {
+test("serves widget v5 with artwork and initial ChatGPT tool output hydration", async () => {
   let resourceHandler;
   const server = {
     registerResource(name, uri, options, handler) {
       assert.equal(name, "roon-control-widget");
-      assert.equal(uri, "ui://roon-ai-bridge/control-v4.html");
+      assert.equal(uri, "ui://roon-ai-bridge/control-v5.html");
       resourceHandler = handler;
     }
   };
@@ -19,7 +19,7 @@ test("serves widget v4 with artwork and initial ChatGPT tool output hydration", 
   const response = await resourceHandler();
   const resource = response.contents[0];
 
-  assert.equal(roonControlWidgetUri, "ui://roon-ai-bridge/control-v4.html");
+  assert.equal(roonControlWidgetUri, "ui://roon-ai-bridge/control-v5.html");
   assert.equal(resource.mimeType, "text/html;profile=mcp-app");
   assert.match(resource.text, /applyGlobals\(window\.openai\)/);
   assert.match(resource.text, /openai:set_globals/);

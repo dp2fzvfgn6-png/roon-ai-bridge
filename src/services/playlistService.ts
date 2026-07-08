@@ -498,34 +498,42 @@ export class PlaylistService {
       });
     }
     const normalized = normalizeTrackInput(input, row.track_id, row.position, row.created_at);
-    this.database.db
-      .prepare(
-        `UPDATE virtual_playlist_tracks
-         SET query = :query,
-             roon_item_key = :roon_item_key,
-             title = :title,
-             artist = :artist,
-             album = :album,
-             metadata_json = :metadata_json
-         WHERE playlist_id = :playlist_id AND track_id = :track_id`
-      )
-      .run({
-        playlist_id: playlistId,
-        track_id: trackId,
-        query: normalized.query,
-        roon_item_key: normalized.roon_item_key,
-        title: normalized.title,
-        artist: normalized.artist,
-        album: normalized.album,
-        metadata_json: normalized.metadata_json
-      });
-
+    const rows = this.listTrackRows(playlistId);
     if (requestedPosition !== null) {
-      this.moveTrackToPosition(playlistId, trackId, requestedPosition);
-    } else {
-      this.normalizeTrackPositions(playlistId);
+      this.validateTrackPositionRange(playlistId, trackId, requestedPosition, rows.length);
     }
-    this.touchPlaylist(playlistId);
+
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          `UPDATE virtual_playlist_tracks
+           SET query = :query,
+               roon_item_key = :roon_item_key,
+               title = :title,
+               artist = :artist,
+               album = :album,
+               metadata_json = :metadata_json
+           WHERE playlist_id = :playlist_id AND track_id = :track_id`
+        )
+        .run({
+          playlist_id: playlistId,
+          track_id: trackId,
+          query: normalized.query,
+          roon_item_key: normalized.roon_item_key,
+          title: normalized.title,
+          artist: normalized.artist,
+          album: normalized.album,
+          metadata_json: normalized.metadata_json
+        });
+
+      if (requestedPosition !== null) {
+        this.moveTrackToPositionUnchecked(playlistId, trackId, requestedPosition, rows);
+      } else {
+        this.normalizeTrackPositions(playlistId);
+      }
+      this.touchPlaylist(playlistId);
+    });
+
     return this.getPlaylistById(playlistId);
   }
 
@@ -954,6 +962,36 @@ export class PlaylistService {
     position: number
   ): void {
     const rows = this.listTrackRows(playlistId);
+    this.validateTrackPositionRange(playlistId, trackId, position, rows.length);
+
+    this.database.transaction(() => {
+      this.moveTrackToPositionUnchecked(playlistId, trackId, position, rows);
+    });
+  }
+
+  private validateTrackPositionRange(
+    playlistId: string,
+    trackId: string,
+    position: number,
+    trackCount: number
+  ): void {
+    if (position < 1 || position > trackCount) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track position is outside playlist range", {
+        playlist_id: playlistId,
+        track_id: trackId,
+        position,
+        min: 1,
+        max: trackCount
+      });
+    }
+  }
+
+  private moveTrackToPositionUnchecked(
+    playlistId: string,
+    trackId: string,
+    position: number,
+    rows: TrackRow[]
+  ): void {
     const currentIndex = rows.findIndex((track) => track.track_id === trackId);
     if (currentIndex < 0) {
       throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
@@ -961,31 +999,20 @@ export class PlaylistService {
         track_id: trackId
       });
     }
-    if (position < 1 || position > rows.length) {
-      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track position is outside playlist range", {
-        playlist_id: playlistId,
-        track_id: trackId,
-        position,
-        min: 1,
-        max: rows.length
-      });
-    }
 
     const [moving] = rows.splice(currentIndex, 1);
     rows.splice(position - 1, 0, moving);
 
-    this.database.transaction(() => {
-      const update = this.database.db.prepare(
-        `UPDATE virtual_playlist_tracks
-         SET position = :position
-         WHERE playlist_id = :playlist_id AND track_id = :track_id`
-      );
-      rows.forEach((track, index) => {
-        update.run({
-          playlist_id: playlistId,
-          track_id: track.track_id,
-          position: index + 1
-        });
+    const update = this.database.db.prepare(
+      `UPDATE virtual_playlist_tracks
+       SET position = :position
+       WHERE playlist_id = :playlist_id AND track_id = :track_id`
+    );
+    rows.forEach((track, index) => {
+      update.run({
+        playlist_id: playlistId,
+        track_id: track.track_id,
+        position: index + 1
       });
     });
   }

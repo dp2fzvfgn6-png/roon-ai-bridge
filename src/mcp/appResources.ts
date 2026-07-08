@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v4.html";
+const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v5.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const controlWidgetHtml = `

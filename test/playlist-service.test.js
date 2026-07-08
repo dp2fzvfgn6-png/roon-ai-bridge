@@ -322,6 +322,63 @@ test("update track position reorders only when position is provided", () => {
   );
 });
 
+test("invalid update track position leaves track fields unchanged", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Atomicity Mix",
+    tracks: [
+      { query: "one", title: "One" },
+      {
+        query: "two",
+        roon_item_key: "roon-two",
+        title: "Two",
+        artist: "Artist Two",
+        album: "Album Two",
+        metadata: {
+          image_key: "image-two",
+          note: "original"
+        }
+      },
+      { query: "three", title: "Three" }
+    ]
+  });
+  const target = playlist.tracks[1];
+
+  assert.throws(
+    () =>
+      service.updateTrack(playlist.playlist_id, target.track_id, {
+        query: "changed query",
+        roon_item_key: "changed-key",
+        title: "Changed",
+        artist: "Changed Artist",
+        album: "Changed Album",
+        metadata: {
+          image_key: "changed-image",
+          note: "changed"
+        },
+        position: 99
+      }),
+    (error) => error.code === "INVALID_PLAYLIST_TRACK"
+  );
+
+  const after = service.getPlaylist(playlist.playlist_id);
+  const unchanged = after.tracks.find((track) => track.track_id === target.track_id);
+  assert.ok(unchanged);
+  assert.equal(unchanged.position, target.position);
+  assert.equal(unchanged.query, target.query);
+  assert.equal(unchanged.roon_item_key, target.roon_item_key);
+  assert.equal(unchanged.title, target.title);
+  assert.equal(unchanged.artist, target.artist);
+  assert.equal(unchanged.album, target.album);
+  assert.equal(unchanged.image_key, target.image_key);
+  assert.deepEqual(unchanged.metadata, target.metadata);
+  assert.deepEqual(
+    after.tracks.map((track) => track.title),
+    ["One", "Two", "Three"]
+  );
+});
+
 test("runs virtual playlist CRUD cleanup without leaking temporary resources", () => {
   const config = tempConfig();
   const service = new PlaylistService(config);
