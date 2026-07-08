@@ -65,6 +65,15 @@ export type VirtualPlaylistListResult = {
   include_tracks: boolean;
 };
 
+export type VirtualPlaylistDetailResult = Omit<VirtualPlaylist, "tracks"> & {
+  tracks?: VirtualPlaylistTrack[];
+  include_tracks: boolean;
+  limit: number;
+  offset: number;
+  returned_count: number;
+  has_more: boolean;
+};
+
 export type PlaylistPlayMode = "add_to_queue" | "add_next" | "play_now";
 
 type PlaylistRow = {
@@ -116,6 +125,10 @@ function optionalString(value: unknown): string | null {
 
 function optionalFiniteInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : null;
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function normalizePageNumber(
@@ -314,6 +327,40 @@ export class PlaylistService {
     return this.getPlaylistById(playlistId);
   }
 
+  getPlaylistDetail(
+    playlistId: string,
+    options: {
+      includeTracks?: boolean;
+      limit?: unknown;
+      offset?: unknown;
+    } = {}
+  ): VirtualPlaylistDetailResult {
+    const row = this.getPlaylistRowOrThrow(playlistId);
+    const includeTracks = options.includeTracks !== false;
+    const limit = normalizePageNumber(options.limit, 50, 1, 500);
+    const offset = normalizePageNumber(options.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+    const trackCount = this.countTrackRows(playlistId);
+    const tracks = includeTracks
+      ? this.listTrackRows(playlistId, limit, offset).map((track) => this.mapTrack(track))
+      : undefined;
+    const result: VirtualPlaylistDetailResult = {
+      playlist_id: row.playlist_id,
+      name: row.name,
+      description: row.description,
+      track_count: trackCount,
+      tracks_count: trackCount,
+      include_tracks: includeTracks,
+      limit,
+      offset,
+      returned_count: tracks?.length || 0,
+      has_more: includeTracks ? offset + (tracks?.length || 0) < trackCount : false,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+    if (tracks) result.tracks = tracks;
+    return result;
+  }
+
   createPlaylist(input: {
     playlist_id?: unknown;
     name?: unknown;
@@ -436,6 +483,20 @@ export class PlaylistService {
 
   updateTrack(playlistId: string, trackId: string, input: unknown): VirtualPlaylist {
     const row = this.getTrackRowOrThrow(playlistId, trackId);
+    const payload = objectValue(input);
+    if (!payload) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track must be an object");
+    }
+    const requestedPosition = hasOwn(payload, "position")
+      ? optionalFiniteInteger(payload.position)
+      : null;
+    if (hasOwn(payload, "position") && requestedPosition === null) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track position must be a finite integer", {
+        playlist_id: playlistId,
+        track_id: trackId,
+        position: payload.position
+      });
+    }
     const normalized = normalizeTrackInput(input, row.track_id, row.position, row.created_at);
     this.database.db
       .prepare(
@@ -445,7 +506,6 @@ export class PlaylistService {
              title = :title,
              artist = :artist,
              album = :album,
-             position = :position,
              metadata_json = :metadata_json
          WHERE playlist_id = :playlist_id AND track_id = :track_id`
       )
@@ -457,11 +517,14 @@ export class PlaylistService {
         title: normalized.title,
         artist: normalized.artist,
         album: normalized.album,
-        position: normalized.position ?? row.position,
         metadata_json: normalized.metadata_json
       });
 
-    this.normalizeTrackPositions(playlistId);
+    if (requestedPosition !== null) {
+      this.moveTrackToPosition(playlistId, trackId, requestedPosition);
+    } else {
+      this.normalizeTrackPositions(playlistId);
+    }
     this.touchPlaylist(playlistId);
     return this.getPlaylistById(playlistId);
   }
@@ -710,6 +773,10 @@ export class PlaylistService {
   }
 
   private getPlaylistById(playlistId: string): VirtualPlaylist {
+    return this.getPlaylistFromRow(this.getPlaylistRowOrThrow(playlistId));
+  }
+
+  private getPlaylistRowOrThrow(playlistId: string): PlaylistRow {
     const row = this.database.db
       .prepare(
         `SELECT playlist_id, name, description, created_at, updated_at
@@ -724,7 +791,7 @@ export class PlaylistService {
       });
     }
 
-    return this.getPlaylistFromRow(row);
+    return row;
   }
 
   private getPlaylistFromRow(row: PlaylistRow): VirtualPlaylist {
@@ -879,6 +946,48 @@ export class PlaylistService {
         metadata_json: track.metadata_json,
         created_at: track.created_at
       });
+  }
+
+  private moveTrackToPosition(
+    playlistId: string,
+    trackId: string,
+    position: number
+  ): void {
+    const rows = this.listTrackRows(playlistId);
+    const currentIndex = rows.findIndex((track) => track.track_id === trackId);
+    if (currentIndex < 0) {
+      throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
+        playlist_id: playlistId,
+        track_id: trackId
+      });
+    }
+    if (position < 1 || position > rows.length) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "Track position is outside playlist range", {
+        playlist_id: playlistId,
+        track_id: trackId,
+        position,
+        min: 1,
+        max: rows.length
+      });
+    }
+
+    const [moving] = rows.splice(currentIndex, 1);
+    rows.splice(position - 1, 0, moving);
+
+    this.database.transaction(() => {
+      const update = this.database.db.prepare(
+        `UPDATE virtual_playlist_tracks
+         SET position = :position
+         WHERE playlist_id = :playlist_id AND track_id = :track_id`
+      );
+      rows.forEach((track, index) => {
+        update.run({
+          playlist_id: playlistId,
+          track_id: track.track_id,
+          position: index + 1
+        });
+      });
+    });
   }
 
   private async resolvePlaylistEntry(

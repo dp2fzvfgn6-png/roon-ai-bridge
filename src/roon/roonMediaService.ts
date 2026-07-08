@@ -13,7 +13,7 @@ import { RoonClient } from "./roonClient";
 import { getZoneOrThrow } from "./roonZoneService";
 
 export type MediaType = "track" | "album" | "artist" | "playlist";
-export type MediaSource = "tidal" | "qobuz" | "library" | "unknown";
+export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
 
@@ -32,12 +32,13 @@ export type MediaResult = {
   title: string;
   artist: string | null;
   album: string | null;
+  album_artist: string | null;
   subtitle: string | null;
   image_key: string | null;
   source: MediaSource;
   source_confidence: "high" | "medium" | "low";
   quality: MediaQuality | null;
-  is_library: boolean;
+  is_library: boolean | null;
   playable: boolean;
   expires_at: string;
 };
@@ -129,10 +130,51 @@ function itemText(item: BrowseItem): string {
   return JSON.stringify(item).toLowerCase();
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function pickString(item: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return null;
+}
+
+function pickNestedString(item: BrowseItem, keys: string[]): string | null {
+  const raw = objectValue(item) || {};
+  const media = objectValue(raw.media) || {};
+  return pickString(media, keys) || pickString(raw, keys);
+}
+
 export function inferMediaSource(item: BrowseItem): {
   source: MediaSource;
   confidence: "high" | "medium" | "low";
 } {
+  const raw = objectValue(item) || {};
+  const media = objectValue(raw.media) || {};
+  const explicit = [
+    pickString(raw, ["source", "source_context", "service", "provider"]),
+    pickString(media, ["source", "source_context", "service", "provider"])
+  ].find(Boolean);
+  const normalizedExplicit = explicit ? normalize(explicit) : "";
+  if (normalizedExplicit.includes("tidal")) return { source: "tidal", confidence: "high" };
+  if (normalizedExplicit.includes("qobuz")) return { source: "qobuz", confidence: "high" };
+  if (
+    normalizedExplicit.includes("library") ||
+    normalizedExplicit.includes("biblioteca") ||
+    normalizedExplicit.includes("local")
+  ) {
+    return { source: "library", confidence: "high" };
+  }
+  if (normalizedExplicit.includes("radio")) return { source: "radio", confidence: "high" };
+  if (normalizedExplicit.includes("playlist") || normalizedExplicit.includes("lista")) {
+    return { source: "playlist", confidence: "high" };
+  }
+
   const text = itemText(item);
   if (text.includes("tidal")) return { source: "tidal", confidence: "high" };
   if (text.includes("qobuz")) return { source: "qobuz", confidence: "high" };
@@ -143,6 +185,9 @@ export function inferMediaSource(item: BrowseItem): {
     text.includes("archivo local")
   ) {
     return { source: "library", confidence: "medium" };
+  }
+  if (text.includes("internet radio") || text.includes("live radio")) {
+    return { source: "radio", confidence: "medium" };
   }
   return { source: "unknown", confidence: "low" };
 }
@@ -168,6 +213,41 @@ export function inferConfiguredStreamingSource(
 }
 
 export function inferMediaQuality(item: BrowseItem): MediaQuality | null {
+  const raw = objectValue(item) || {};
+  const media = objectValue(raw.media) || {};
+  const qualityValue = media.quality ?? raw.quality ?? media.audio_quality ?? raw.audio_quality;
+  if (qualityValue && typeof qualityValue === "object" && !Array.isArray(qualityValue)) {
+    const qualityObject = qualityValue as Record<string, unknown>;
+    const label = pickString(qualityObject, ["label", "description", "name"]);
+    const bitDepth =
+      typeof qualityObject.bit_depth === "number"
+        ? qualityObject.bit_depth
+        : typeof qualityObject.bits_per_sample === "number"
+          ? qualityObject.bits_per_sample
+          : null;
+    const sampleRate =
+      typeof qualityObject.sample_rate_hz === "number"
+        ? qualityObject.sample_rate_hz
+        : typeof qualityObject.sample_rate === "number"
+          ? qualityObject.sample_rate
+          : null;
+    const format = pickString(qualityObject, ["format", "codec"]);
+    if (label || bitDepth || sampleRate || format) {
+      const parts = [
+        label,
+        !label && bitDepth ? `${bitDepth}-bit` : null,
+        !label && sampleRate ? `${sampleRate / 1000} kHz` : null,
+        !label ? format : null
+      ].filter(Boolean);
+      return {
+        label: parts.join(" / "),
+        bit_depth: bitDepth,
+        sample_rate_hz: sampleRate,
+        format: format ? format.toUpperCase() : null
+      };
+    }
+  }
+
   const text = itemText(item);
   const bitDepthMatch = text.match(/(\d{2})\s*[- ]?bit/);
   const sampleRateMatch = text.match(/(\d{2,3}(?:\.\d+)?)\s*khz/);
@@ -200,7 +280,7 @@ function qualityScore(quality: MediaQuality | null): number {
 }
 
 function sourceScore(source: MediaSource, preference: SourcePreference): number {
-  if (preference === "library_first") return source === "library" ? 30 : source === "tidal" ? 20 : 0;
+  if (preference === "library_first") return source === "library" ? 30 : source === "tidal" ? 20 : source === "qobuz" ? 20 : 0;
   if (preference === "streaming_first") {
     return source === "tidal" ? 30 : source === "qobuz" ? 25 : source === "library" ? 10 : 0;
   }
@@ -385,6 +465,12 @@ function itemsWithSourceContext(items: BrowseItem[]): BrowseItem[] {
       source_context: currentSource
     };
   });
+}
+
+function libraryFlag(source: MediaSource): boolean | null {
+  if (source === "library") return true;
+  if (source === "unknown") return null;
+  return false;
 }
 
 export class RoonMediaService {
@@ -621,20 +707,26 @@ export class RoonMediaService {
     const resultId = `media_${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + REFERENCE_TTL_MS).toISOString();
     const source = inferConfiguredStreamingSource(item, this.configuredStreamingSource);
+    const quality = inferMediaQuality(item);
+    const artist = pickNestedString(item, ["artist", "artist_name"]) ||
+      (typeof item.subtitle === "string" ? item.subtitle : null);
+    const album = pickNestedString(item, ["album", "album_name"]);
+    const albumArtist = pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"]);
     const reference: MediaReference = {
       result_id: resultId,
       type,
       media_type: type,
       title: String(item.title || ""),
       roon_item_key: typeof item.item_key === "string" ? item.item_key : null,
-      artist: typeof item.subtitle === "string" ? item.subtitle : null,
-      album: null,
+      artist,
+      album,
+      album_artist: albumArtist,
       subtitle: typeof item.subtitle === "string" ? item.subtitle : null,
       image_key: typeof item.image_key === "string" ? item.image_key : null,
       source: source.source,
       source_confidence: source.confidence,
-      quality: inferMediaQuality(item),
-      is_library: source.source === "library",
+      quality,
+      is_library: libraryFlag(source.source),
       playable: Boolean(item.item_key),
       expires_at: expiresAt,
       query,

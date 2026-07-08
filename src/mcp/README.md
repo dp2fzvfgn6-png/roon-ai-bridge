@@ -80,9 +80,15 @@ Contract notes:
 - `roon_list_zones` omits `image_data_url` unless `include_image_data` is true.
 - `roon_list_virtual_playlists` defaults to summaries only and supports
   `limit`, `offset`, `track_limit` and `track_offset`.
+- `roon_get_virtual_playlist` supports `include_tracks`, `limit`, and `offset`
+  so a single long playlist can be read in bounded pages.
+- `roon_update_virtual_playlist_track` reorders the playlist when a 1-based
+  `position` is supplied; omit `position` for metadata-only updates.
 - `roon_search_media` returns typed media results with `result_id`, `type`,
-  `title`, `artist`, `album`, `source`, `quality`, `is_library`,
-  `roon_item_key` and `image_key`.
+  `title`, `artist`, `album`, `album_artist`, `source`, `quality`,
+  `is_library`, `roon_item_key` and `image_key`. Missing source/quality stays
+  `unknown`/`null`; `is_library` is `null` when Roon does not expose enough
+  metadata.
 - `roon_get_media_details` reads a non-expired `result_id` from the current
   search session.
 - `roon_control_playback` is idempotent for already-paused pause requests and

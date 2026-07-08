@@ -3,8 +3,18 @@ const test = require("node:test");
 
 const { RoonMediaService } = require("../dist/roon/roonMediaService");
 
-function createSearchClient() {
+function createSearchClient(trackItems) {
   let stage = "root";
+  const items = trackItems || [
+    {
+      title: "Everything In Its Right Place",
+      subtitle: "Radiohead",
+      item_key: "track-key",
+      image_key: "image-key",
+      hint: "action_list",
+      source_context: "library"
+    }
+  ];
   const browse = {
     browse(opts, callback) {
       if (opts.input) {
@@ -29,16 +39,7 @@ function createSearchClient() {
       }
       callback(false, {
         list: { title: "Tracks", count: 1, level: 1 },
-        items: [
-          {
-            title: "Everything In Its Right Place",
-            subtitle: "Radiohead",
-            item_key: "track-key",
-            image_key: "image-key",
-            hint: "action_list",
-            source_context: "library"
-          }
-        ]
+        items
       });
     }
   };
@@ -80,4 +81,79 @@ test("media details fail clearly for expired or unknown result ids", () => {
     () => service.get("media_missing"),
     (error) => error.code === "SEARCH_NO_RESULTS"
   );
+});
+
+test("search_media preserves known source, quality and album metadata in details", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Known Track",
+        subtitle: "Known Artist",
+        item_key: "known-key",
+        hint: "action_list",
+        media: {
+          artist: "Known Artist",
+          album: "Known Album",
+          album_artist: "Known Album Artist",
+          source: "Qobuz",
+          quality: {
+            label: "24-bit / 192 kHz / FLAC",
+            bit_depth: 24,
+            sample_rate_hz: 192000,
+            format: "FLAC"
+          }
+        }
+      }
+    ]),
+    "tidal"
+  );
+
+  const search = await service.search({
+    query: "Known Track",
+    types: ["track"],
+    count: 1,
+    sourcePreference: "highest_quality"
+  });
+  const result = search.results[0];
+
+  assert.equal(result.source, "qobuz");
+  assert.equal(result.source_confidence, "high");
+  assert.equal(result.is_library, false);
+  assert.equal(result.artist, "Known Artist");
+  assert.equal(result.album, "Known Album");
+  assert.equal(result.album_artist, "Known Album Artist");
+  assert.deepEqual(result.quality, {
+    label: "24-bit / 192 kHz / FLAC",
+    bit_depth: 24,
+    sample_rate_hz: 192000,
+    format: "FLAC"
+  });
+  assert.deepEqual(service.get(result.result_id), result);
+});
+
+test("search_media leaves unavailable source and quality unknown without guessing", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Unknown Track",
+        subtitle: "Unknown Artist",
+        item_key: "unknown-key",
+        hint: "action_list"
+      }
+    ]),
+    null
+  );
+
+  const search = await service.search({
+    query: "Unknown Track",
+    types: ["track"],
+    count: 1
+  });
+  const result = search.results[0];
+
+  assert.equal(result.source, "unknown");
+  assert.equal(result.source_confidence, "low");
+  assert.equal(result.quality, null);
+  assert.equal(result.is_library, null);
+  assert.deepEqual(service.get(result.result_id), result);
 });

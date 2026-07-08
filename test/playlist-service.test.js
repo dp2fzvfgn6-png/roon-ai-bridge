@@ -158,6 +158,8 @@ test("enriches library items with normalized song metadata and cover payload", (
     release_year: 2020,
     roon_item_key: null,
     image_key: "cover-123",
+    source: null,
+    quality: null,
     cover: { image_key: "cover-123" }
   });
 });
@@ -205,6 +207,119 @@ test("lists virtual playlists without tracks by default and paginates tracks exp
   });
   assert.equal(outside.total, 2);
   assert.equal(outside.playlists.length, 0);
+});
+
+test("gets one virtual playlist with paginated tracks or summary only", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const empty = service.createPlaylist({ name: "Empty Detail" });
+  const short = service.createPlaylist({
+    name: "Short Detail",
+    tracks: [
+      { query: "one", title: "One" },
+      { query: "two", title: "Two" }
+    ]
+  });
+  const long = service.createPlaylist({
+    name: "Long Detail",
+    tracks: Array.from({ length: 80 }, (_, index) => ({
+      query: `long ${index + 1}`,
+      title: `Long ${index + 1}`
+    }))
+  });
+
+  const summary = service.getPlaylistDetail(long.playlist_id, {
+    includeTracks: false
+  });
+  assert.equal(summary.include_tracks, false);
+  assert.equal(summary.track_count, 80);
+  assert.equal(summary.returned_count, 0);
+  assert.equal(summary.has_more, false);
+  assert.equal("tracks" in summary, false);
+
+  const page = service.getPlaylistDetail(long.playlist_id, {
+    includeTracks: true,
+    limit: 25,
+    offset: 0
+  });
+  assert.equal(page.include_tracks, true);
+  assert.equal(page.tracks.length, 25);
+  assert.equal(page.returned_count, 25);
+  assert.equal(page.has_more, true);
+  assert.equal(page.tracks[0].position, 1);
+
+  const outside = service.getPlaylistDetail(long.playlist_id, {
+    includeTracks: true,
+    limit: 25,
+    offset: 999
+  });
+  assert.deepEqual(outside.tracks, []);
+  assert.equal(outside.returned_count, 0);
+  assert.equal(outside.has_more, false);
+
+  const emptyPage = service.getPlaylistDetail(empty.playlist_id);
+  assert.equal(emptyPage.track_count, 0);
+  assert.deepEqual(emptyPage.tracks, []);
+  assert.equal(emptyPage.has_more, false);
+
+  const shortPage = service.getPlaylistDetail(short.playlist_id);
+  assert.equal(shortPage.track_count, 2);
+  assert.equal(shortPage.tracks.length, 2);
+  assert.equal(shortPage.has_more, false);
+});
+
+test("update track position reorders only when position is provided", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Position Mix",
+    tracks: [
+      { query: "one", title: "One" },
+      { query: "two", title: "Two" },
+      { query: "three", title: "Three" }
+    ]
+  });
+  const [one, two, three] = playlist.tracks;
+
+  const movedToFront = service.updateTrack(playlist.playlist_id, three.track_id, {
+    query: three.query,
+    title: three.title,
+    position: 1
+  });
+  assert.deepEqual(
+    movedToFront.tracks.map((track) => track.title),
+    ["Three", "One", "Two"]
+  );
+
+  const movedToEnd = service.updateTrack(playlist.playlist_id, three.track_id, {
+    query: three.query,
+    title: "Three Updated",
+    position: 3
+  });
+  assert.deepEqual(
+    movedToEnd.tracks.map((track) => track.title),
+    ["One", "Two", "Three Updated"]
+  );
+
+  const metadataOnly = service.updateTrack(playlist.playlist_id, one.track_id, {
+    query: one.query,
+    title: "One Updated",
+    metadata: { note: "no position" }
+  });
+  assert.deepEqual(
+    metadataOnly.tracks.map((track) => track.title),
+    ["One Updated", "Two", "Three Updated"]
+  );
+
+  assert.throws(
+    () =>
+      service.updateTrack(playlist.playlist_id, two.track_id, {
+        query: two.query,
+        title: two.title,
+        position: 4
+      }),
+    (error) => error.code === "INVALID_PLAYLIST_TRACK"
+  );
 });
 
 test("runs virtual playlist CRUD cleanup without leaking temporary resources", () => {

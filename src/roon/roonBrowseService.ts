@@ -182,6 +182,7 @@ function coverPayload(imageKey: string | null): Record<string, unknown> | null {
 
 export function enrichBrowseItem(item: BrowseItem): BrowseItem {
   const raw = asObject(item) || {};
+  const rawMedia = asObject(raw.media) || {};
   const imageKey =
     typeof item.image_key === "string" && item.image_key.trim() !== ""
       ? item.image_key.trim()
@@ -190,9 +191,9 @@ export function enrichBrowseItem(item: BrowseItem): BrowseItem {
   const media = {
     title: pickString(raw, ["title"]) || null,
     subtitle: pickString(raw, ["subtitle"]) || null,
-    artist: pickString(raw, ["artist", "artist_name"]) || null,
-    album: pickString(raw, ["album", "album_name"]) || null,
-    album_artist: pickString(raw, ["album_artist", "albumartist"]) || null,
+    artist: pickString(rawMedia, ["artist", "artist_name"]) || pickString(raw, ["artist", "artist_name"]) || null,
+    album: pickString(rawMedia, ["album", "album_name"]) || pickString(raw, ["album", "album_name"]) || null,
+    album_artist: pickString(rawMedia, ["album_artist", "albumartist"]) || pickString(raw, ["album_artist", "albumartist"]) || null,
     composer: pickString(raw, ["composer"]) || null,
     genre: raw.genre ?? raw.genres ?? null,
     track_number: pickNumber(raw, ["track_number", "track"]) ?? null,
@@ -202,6 +203,8 @@ export function enrichBrowseItem(item: BrowseItem): BrowseItem {
     release_year: pickNumber(raw, ["release_year", "year"]) ?? null,
     roon_item_key: pickString(raw, ["item_key"]) || null,
     image_key: imageKey || null,
+    source: rawMedia.source ?? raw.source ?? raw.source_context ?? null,
+    quality: rawMedia.quality ?? raw.quality ?? raw.audio_quality ?? null,
     cover: coverPayload(imageKey || null)
   };
 

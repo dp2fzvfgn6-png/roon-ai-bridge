@@ -51,7 +51,13 @@ export function createPlaylistsRouter(context: ApiContext): Router {
 
   router.get("/playlists/:playlist_id", (req, res, next) => {
     try {
-      res.json(context.playlistService.getPlaylist(req.params.playlist_id));
+      res.json(
+        context.playlistService.getPlaylistDetail(req.params.playlist_id, {
+          includeTracks: parseBoolean(req.query.include_tracks, true),
+          limit: parsePageNumber(req.query.limit, 50),
+          offset: parsePageNumber(req.query.offset, 0)
+        })
+      );
     } catch (error) {
       next(error);
     }

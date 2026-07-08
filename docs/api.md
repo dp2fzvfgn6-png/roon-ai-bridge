@@ -183,10 +183,12 @@ curl -X POST "http://localhost:3000/roon/media/<RESULT_ID>/play" \
 ```
 
 Stable result fields include `result_id`, `type`, `media_type`, `title`,
-`artist`, `album`, `source`, `quality`, `is_library`, `image_key`,
-`roon_item_key`, `playable` and `expires_at`. Unknown or expired result IDs
-return `SEARCH_NO_RESULTS`; they are scoped to the current in-memory search
-session.
+`artist`, `album`, `album_artist`, `source`, `quality`, `is_library`,
+`image_key`, `roon_item_key`, `playable` and `expires_at`. `source` and
+`quality` are extracted from Roon browse metadata when available; otherwise
+`source` remains `unknown`, `quality` remains `null`, and `is_library` remains
+`null` instead of guessing. Unknown or expired result IDs return
+`SEARCH_NO_RESULTS`; they are scoped to the current in-memory search session.
 
 Playback modes:
 
@@ -327,7 +329,26 @@ reason.
 Get one virtual playlist:
 
 ```bash
-curl http://localhost:3000/playlists/bad-bunny-test
+curl "http://localhost:3000/playlists/bad-bunny-test?include_tracks=true&limit=50&offset=0"
+```
+
+Set `include_tracks=false` to read only playlist metadata. Detail responses
+always include `track_count`, `limit`, `offset`, `returned_count` and
+`has_more`; offsets outside the track range return an empty track list with
+`has_more:false`.
+
+```json
+{
+  "playlist_id": "bad-bunny-test",
+  "name": "Bad Bunny Test",
+  "track_count": 194,
+  "include_tracks": true,
+  "limit": 50,
+  "offset": 0,
+  "returned_count": 50,
+  "has_more": true,
+  "tracks": []
+}
 ```
 
 Add a track:
@@ -369,6 +390,10 @@ curl -X PATCH http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID> \
   -H "Content-Type: application/json" \
   -d '{"query":"bad bunny monaco live","title":"MONACO (Live)","position":1}'
 ```
+
+When `position` is provided, the track is moved to that 1-based position and
+the remaining tracks are renumbered. Metadata-only updates without `position`
+do not reorder the playlist.
 
 Reorder tracks:
 
@@ -478,6 +503,10 @@ Important MCP contracts:
   `roon_search_media` session.
 - `roon_list_virtual_playlists` defaults to `include_tracks: false`; use
   `limit`, `offset`, `track_limit` and `track_offset` for bounded payloads.
+- `roon_get_virtual_playlist` defaults to `include_tracks: true`, `limit: 50`
+  and `offset: 0`; use `include_tracks: false` for metadata only.
+- `roon_update_virtual_playlist_track` moves a track when `position` is
+  supplied; use `roon_reorder_virtual_playlist_tracks` for full-order updates.
 - `roon_control_playback` treats `pause` on paused zones and `play` on playing
   zones as successful idempotent states.
 - `roon_change_volume` validates output ranges and returns refreshed output

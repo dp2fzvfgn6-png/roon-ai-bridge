@@ -551,17 +551,24 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_get_virtual_playlist",
     {
       title: "Get Virtual Playlist",
-      description: "Read one local virtual playlist with all tracks and metadata.",
+      description: "Read one local virtual playlist with paginated tracks and metadata.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta,
       inputSchema: {
-        playlist_id: z.string().min(1)
+        playlist_id: z.string().min(1),
+        include_tracks: z.boolean().default(true),
+        limit: z.number().int().min(1).max(500).default(50),
+        offset: z.number().int().min(0).default(0)
       }
     },
-    async ({ playlist_id }) =>
+    async ({ playlist_id, include_tracks, limit, offset }) =>
       runTool(context, "roon_get_virtual_playlist", () =>
-        context.playlistService.getPlaylist(playlist_id)
+        context.playlistService.getPlaylistDetail(playlist_id, {
+          includeTracks: include_tracks,
+          limit,
+          offset
+        })
       )
   );
 
