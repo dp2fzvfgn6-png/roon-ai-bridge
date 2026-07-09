@@ -12,6 +12,9 @@ import { createPlaylistsRouter } from "../api/routes/playlists.routes";
 import { createLibraryRouter } from "../api/routes/library.routes";
 import { createMediaRouter } from "../api/routes/media.routes";
 import { createAdvancedRouter } from "../api/routes/advanced.routes";
+import { createZonePresetsRouter } from "../api/routes/zonePresets.routes";
+import { createVolumeLimitsRouter } from "../api/routes/volumeLimits.routes";
+import { createWidgetsRouter } from "../api/routes/widgets.routes";
 import { ApiError, sendError } from "../utils/errors";
 import { APP_VERSION } from "../config/version";
 
@@ -315,7 +318,12 @@ export function createPortalServer(context: ApiContext): express.Express {
       res.json(
         await context.zonePresetService.apply(
           context.roonClient,
-          req.params.preset_id
+          req.params.preset_id,
+          {
+            dryRun: req.body?.dry_run === true,
+            confirm: req.body?.confirm === true,
+            volumeLimitService: context.volumeLimitService
+          }
         )
       );
     } catch (error) {
@@ -366,7 +374,13 @@ export function createPortalServer(context: ApiContext): express.Express {
   app.use("/api/roon", createMediaRouter(context));
   app.use("/api/roon", createQueueRouter(context));
   app.use("/api/roon", createAdvancedRouter(context));
+  app.use("/api", createWidgetsRouter(context));
   app.use("/api", createPlaylistsRouter(context));
+  app.use("/api", createZonePresetsRouter(context));
+  app.use("/api", createVolumeLimitsRouter(context));
+
+  app.use("/api/admin", createZonePresetsRouter(context));
+  app.use("/api/admin", createVolumeLimitsRouter(context));
 
   app.use("/api", (req, _res, next) => {
     next(

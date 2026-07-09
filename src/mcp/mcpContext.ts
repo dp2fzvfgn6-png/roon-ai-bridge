@@ -4,6 +4,8 @@ import { PlaylistService } from "../services/playlistService";
 import { OAuthService } from "../services/oauthService";
 import { RoonMediaService } from "../roon/roonMediaService";
 import { Logger } from "../utils/logger";
+import { ZonePresetService } from "../services/zonePresetService";
+import { VolumeLimitService } from "../services/volumeLimitService";
 
 export type McpContext = {
   config: AppConfig;
@@ -12,4 +14,6 @@ export type McpContext = {
   playlistService: PlaylistService;
   oauthService: OAuthService;
   mediaService: RoonMediaService;
+  zonePresetService: ZonePresetService;
+  volumeLimitService: VolumeLimitService;
 };

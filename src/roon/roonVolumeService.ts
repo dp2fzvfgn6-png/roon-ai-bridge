@@ -3,6 +3,16 @@ import { RoonClient } from "./roonClient";
 import { RoonOutput, RoonZone } from "./roonTypes";
 import { getZoneOrThrow } from "./roonZoneService";
 import { requireTransport } from "./roonTransportService";
+import {
+  evaluateZoneVolumePolicy,
+  VolumeSafetyLimit,
+  ZoneVolumePolicy
+} from "../safety/volumeSafety";
+import {
+  confirmationRequiredResponse,
+  dryRunResponse,
+  getToolClassification
+} from "../safety/actionSafety";
 
 export type VolumeOutputState = {
   output_id: string;
@@ -12,11 +22,15 @@ export type VolumeOutputState = {
 
 export type VolumeChangeResult = {
   ok: true;
+  action?: "roon_change_volume";
+  dry_run?: false;
+  classification?: ReturnType<typeof getToolClassification>;
   zone_id: string;
   zone_name: string;
   mode: "relative" | "absolute" | "relative_step";
   value: number;
   outputs: VolumeOutputState[];
+  volume_policy: ZoneVolumePolicy;
 };
 
 function volumeCapableOutputs(zone: RoonZone): RoonOutput[] {
@@ -105,14 +119,69 @@ export async function changeZoneVolume(
   roonClient: RoonClient,
   zoneId: string,
   mode: "relative" | "absolute" | "relative_step",
-  value: number
-): Promise<VolumeChangeResult> {
-  const transport = requireTransport(roonClient);
+  value: number,
+  options: { dryRun?: boolean; confirm?: boolean; volumeLimits?: VolumeSafetyLimit[] } = {}
+): Promise<VolumeChangeResult | Record<string, unknown>> {
   const zone = getZoneOrThrow(roonClient, zoneId);
   const outputs = volumeCapableOutputs(zone);
 
   validateVolume(outputs, mode, value);
+  const volumePolicy = evaluateZoneVolumePolicy(zone, outputs, mode, value, options.volumeLimits);
+  const before = {
+    zone_id: zone.zone_id,
+    zone_name: zone.display_name,
+    outputs: outputs.map(outputState)
+  };
+  const after = {
+    zone_id: zone.zone_id,
+    zone_name: zone.display_name,
+    outputs: outputs.map((output) => ({
+      ...outputState(output),
+      projected_value: volumePolicy.outputs.find(
+        (policy) => policy.output_id === output.output_id
+      )?.projected_value ?? null
+    }))
+  };
 
+  if (options.dryRun) {
+    return dryRunResponse(
+      "roon_change_volume",
+      { before, after, volume_policy: volumePolicy },
+      {
+        before,
+        after,
+        extra: { volume_policy: volumePolicy }
+      }
+    );
+  }
+
+  if (volumePolicy.requires_confirmation && !options.confirm) {
+    const primaryPolicy =
+      volumePolicy.outputs.find((policy) => policy.requires_confirmation) ||
+      volumePolicy.outputs[0];
+    return confirmationRequiredResponse(
+      "roon_change_volume",
+      "volume_above_safe_limit",
+      "Requested volume exceeds the configured safe limit.",
+      {
+        zone_id: zoneId,
+        mode,
+        requested_value: value,
+        safe_limit: primaryPolicy?.safe_limit ?? volumePolicy.safe_limit,
+        current_value: primaryPolicy?.current_value ?? null,
+        projected_value: primaryPolicy?.projected_value ?? null,
+        hard_limit: primaryPolicy?.hard_limit ?? volumePolicy.hard_limit
+      },
+      {
+        zone_id: zoneId,
+        mode,
+        value
+      },
+      "Requested volume exceeds the configured safe limit."
+    );
+  }
+
+  const transport = requireTransport(roonClient);
   await Promise.all(
     outputs.map(
       (output) =>
@@ -137,10 +206,14 @@ export async function changeZoneVolume(
   const refreshedZone = roonClient.getZone(zoneId) || zone;
   return {
     ok: true,
+    action: "roon_change_volume",
+    dry_run: false,
+    classification: getToolClassification("roon_change_volume"),
     zone_id: zoneId,
     zone_name: refreshedZone.display_name,
     mode,
     value,
-    outputs: volumeCapableOutputs(refreshedZone).map(outputState)
+    outputs: volumeCapableOutputs(refreshedZone).map(outputState),
+    volume_policy: volumePolicy
   };
 }

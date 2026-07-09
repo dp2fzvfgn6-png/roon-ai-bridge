@@ -12,6 +12,7 @@ import { PortalAuthService } from "./services/portalAuthService";
 import { SystemManagementService } from "./services/systemManagementService";
 import { ZonePresetService } from "./services/zonePresetService";
 import { OutputVolumeSettingsService } from "./services/outputVolumeSettingsService";
+import { VolumeLimitService } from "./services/volumeLimitService";
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
@@ -42,6 +43,7 @@ const outputVolumeSettingsService = new OutputVolumeSettingsService(
   config,
   database
 );
+const volumeLimitService = new VolumeLimitService(config, database);
 const context = {
   config,
   logger,
@@ -53,7 +55,8 @@ const context = {
   portalAuthService,
   systemManagementService,
   zonePresetService,
-  outputVolumeSettingsService
+  outputVolumeSettingsService,
+  volumeLimitService
 };
 const app = createServer(context);
 

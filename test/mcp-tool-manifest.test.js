@@ -8,6 +8,7 @@ const { createServer } = require("../dist/api/server");
 const { registerRoonMcpTools } = require("../dist/mcp/mcpTools");
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
+const { VolumeLimitService } = require("../dist/services/volumeLimitService");
 const { roonControlWidgetUriForTool } = require("../dist/mcp/appResources");
 
 function createConfig(dataDir) {
@@ -76,12 +77,19 @@ test("registers tool-specific descriptions instead of reusing roon_status copy",
   assert.match(tools.get("roon_get_queue").options.description, /queue/i);
   assert.match(tools.get("roon_change_volume").options.description, /volume/i);
   assert.match(tools.get("roon_get_virtual_playlist").options.description, /paginated tracks/i);
+  assert.ok(tools.has("roon_validate_virtual_playlist"));
+  assert.ok(tools.has("roon_expand_media_search"));
+  assert.ok(tools.has("roon_set_virtual_playlist_track_match"));
+  assert.ok(tools.has("roon_get_now_playing_widget"));
+  assert.ok(tools.has("roon_get_playlists_widget"));
+  assert.ok(tools.has("roon_get_media_search_widget"));
 });
 
 test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-manifest-"));
   const config = createConfig(dataDir);
   const database = createDatabase(config);
+  const volumeLimitService = new VolumeLimitService(config, database);
   const noop = () => {};
   const context = {
     config,
@@ -102,7 +110,8 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
     portalAuthService: {},
     systemManagementService: {},
     zonePresetService: {},
-    outputVolumeSettingsService: {}
+    outputVolumeSettingsService: {},
+    volumeLimitService
   };
   const server = createServer(context).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
@@ -132,13 +141,27 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
     assert.ok(getPlaylist.inputSchema.properties.include_tracks);
     assert.ok(getPlaylist.inputSchema.properties.limit);
     assert.ok(getPlaylist.inputSchema.properties.offset);
+    for (const name of [
+      "roon_validate_virtual_playlist",
+      "roon_resolve_virtual_playlist",
+      "roon_deduplicate_virtual_playlist",
+      "roon_sort_virtual_playlist",
+      "roon_export_virtual_playlist",
+      "roon_import_virtual_playlist",
+      "roon_expand_media_search",
+      "roon_set_virtual_playlist_track_match",
+      "roon_add_search_result_to_virtual_playlist"
+    ]) {
+      assert.ok(tools.has(name), `${name} should be exposed`);
+      assert.ok(tools.get(name).inputSchema, `${name} should expose a schema`);
+    }
     assert.equal(
       getPlaylist._meta["openai/outputTemplate"],
       roonControlWidgetUriForTool("roon_get_virtual_playlist")
     );
     assert.equal(
       getPlaylist._meta["openai/outputTemplate"],
-      "ui://roon-ai-bridge/control-v6/roon_get_virtual_playlist.html"
+      "ui://roon-ai-bridge/control-v7/roon_get_virtual_playlist.html"
     );
     assert.notEqual(
       tools.get("roon_status")._meta["openai/outputTemplate"],
@@ -150,6 +173,20 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
       if (name !== "roon_status") {
         assert.notEqual(tool.description, statusDescription);
       }
+    }
+    for (const name of [
+      "roon_get_now_playing_widget",
+      "roon_now_playing_widget_action",
+      "roon_get_playlists_widget",
+      "roon_get_playlist_detail_widget",
+      "roon_playlist_widget_action",
+      "roon_get_media_search_widget",
+      "roon_media_search_widget_action",
+      "roon_open_media_entity_widget",
+      "roon_get_image_url"
+    ]) {
+      assert.ok(tools.has(name), `${name} should be exposed`);
+      assert.ok(tools.get(name).inputSchema, `${name} should expose a schema`);
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));

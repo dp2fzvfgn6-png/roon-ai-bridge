@@ -118,9 +118,24 @@ CREATE TABLE IF NOT EXISTS portal_sessions (
 CREATE TABLE IF NOT EXISTS zone_presets (
   preset_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  primary_output_id TEXT NOT NULL,
-  output_ids_json TEXT NOT NULL,
+  description TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  config_json TEXT,
+  primary_output_id TEXT,
+  output_ids_json TEXT,
   volume_values_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS volume_limits (
+  limit_id TEXT PRIMARY KEY,
+  target_type TEXT NOT NULL,
+  target_value TEXT NOT NULL,
+  name TEXT NOT NULL,
+  safe_max REAL NOT NULL,
+  schedule_json TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -207,6 +222,7 @@ export class SqliteDatabase {
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec(SCHEMA_SQL);
+    this.migrateSchema();
     this.migrateLegacyPlaylistsIfNeeded();
   }
 
@@ -226,6 +242,34 @@ export class SqliteDatabase {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  private migrateSchema(): void {
+    const zoneColumns = this.db.prepare("PRAGMA table_info(zone_presets)").all() as Array<{ name: string }>;
+    const zoneColumnNames = new Set(zoneColumns.map((column) => column.name));
+    const addZoneColumn = (name: string, sql: string) => {
+      if (!zoneColumnNames.has(name)) this.db.exec(`ALTER TABLE zone_presets ADD COLUMN ${sql}`);
+    };
+    addZoneColumn("description", "description TEXT");
+    addZoneColumn("enabled", "enabled INTEGER NOT NULL DEFAULT 1");
+    addZoneColumn("config_json", "config_json TEXT");
+    addZoneColumn("primary_output_id", "primary_output_id TEXT");
+    addZoneColumn("output_ids_json", "output_ids_json TEXT");
+    addZoneColumn("volume_values_json", "volume_values_json TEXT");
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS volume_limits (
+        limit_id TEXT PRIMARY KEY,
+        target_type TEXT NOT NULL,
+        target_value TEXT NOT NULL,
+        name TEXT NOT NULL,
+        safe_max REAL NOT NULL,
+        schedule_json TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
   }
 
   private migrateLegacyPlaylistsIfNeeded(): void {

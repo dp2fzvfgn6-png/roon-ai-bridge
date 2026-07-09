@@ -517,3 +517,140 @@ test("resolves virtual playlist entries with the best playable track", async () 
   assert.equal(playlist.tracks[0].metadata.resolution.result.result_id, "media_track");
   assert.equal(playlist.tracks[0].image_key, "cover-key");
 });
+
+test("phase 2 metadata model preserves user metadata and exposes audio metadata separately", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    playlist_id: "peaky_blinders_soundtrack_complete",
+    name: "Peaky Blinders",
+    tracks: [
+      {
+        query: "Red Right Hand Nick Cave",
+        title: "Red Right Hand",
+        artist: "Nick Cave & The Bad Seeds",
+        metadata: {
+          season: 1,
+          episode: 1,
+          scene: "bar fight",
+          notes: "Tema usado en escena de transicion",
+          release_year: 1994
+        }
+      }
+    ]
+  });
+
+  const track = playlist.tracks[0];
+  assert.equal(track.user_metadata.season, 1);
+  assert.equal(track.user_metadata.episode, 1);
+  assert.equal(track.audio_metadata.release_year, 1994);
+  assert.equal(track.metadata.season, 1);
+  assert.equal(track.metadata.release_year, 1994);
+});
+
+test("phase 2 validation, dedupe, sort and export work without modifying on dry run", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Phase 2 Mix",
+    tracks: [
+      {
+        query: "Song B Artist",
+        title: "Song B",
+        artist: "Artist",
+        roon_item_key: "roon-1",
+        user_metadata: { season: 2, episode: 1 }
+      },
+      {
+        query: "Song A Artist",
+        title: "Song A",
+        artist: "Artist",
+        roon_item_key: "roon-1",
+        user_metadata: { season: 1, episode: 2 }
+      },
+      {
+        query: "Missing Metadata"
+      }
+    ]
+  });
+
+  const validation = service.validatePlaylist(playlist.playlist_id);
+  assert.equal(validation.summary.unresolved, 1);
+  assert.equal(validation.summary.missing_metadata, 1);
+  assert.ok(validation.issues.some((issue) => issue.type === "duplicates"));
+
+  const dedupe = service.deduplicatePlaylist(playlist.playlist_id, { dry_run: true });
+  assert.equal(dedupe.groups.length, 1);
+
+  const sorted = service.sortPlaylist(playlist.playlist_id, {
+    dry_run: true,
+    sort_by: [
+      { field: "user_metadata.season", direction: "asc" },
+      { field: "user_metadata.episode", direction: "asc" }
+    ]
+  });
+  assert.deepEqual(sorted.tracks.slice(0, 2).map((track) => track.old_position), [2, 1]);
+
+  const csv = service.exportPlaylist(playlist.playlist_id, "csv");
+  assert.match(csv, /user_metadata.season/);
+  assert.match(csv, /Song A/);
+});
+
+test("phase 2 manual selection and add-from-result keep user metadata", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Manual Match",
+    tracks: [
+      {
+        query: "Red Right Hand Nick Cave",
+        user_metadata: { season: 1, episode: 1 }
+      }
+    ]
+  });
+  const mediaResult = {
+    result_id: "media_manual",
+    roon_item_key: "roon-manual",
+    type: "track",
+    media_type: "track",
+    title: "Red Right Hand",
+    artist: "Nick Cave & The Bad Seeds",
+    album: "Let Love In",
+    album_artist: "Nick Cave & The Bad Seeds",
+    subtitle: "Nick Cave & The Bad Seeds",
+    version_hint: "studio",
+    image_key: "cover",
+    source: "library",
+    source_confidence: "high",
+    quality: null,
+    is_library: true,
+    playable: true,
+    match_score: 94,
+    confidence: "high",
+    match_reasons: ["exact_title"],
+    match_penalties: [],
+    warnings: [],
+    expires_at: new Date(Date.now() + 10000).toISOString()
+  };
+  const mediaService = { get: () => mediaResult };
+
+  const matched = service.setTrackMatch(
+    playlist.playlist_id,
+    playlist.tracks[0].track_id,
+    "media_manual",
+    { mediaService, selectionReason: "manual_user_selection" }
+  );
+  assert.equal(matched.tracks[0].roon_item_key, "roon-manual");
+  assert.equal(matched.tracks[0].resolution.status, "manual");
+  assert.equal(matched.tracks[0].user_metadata.season, 1);
+  assert.equal(matched.tracks[0].audio_metadata.album, "Let Love In");
+
+  const added = service.addSearchResultToPlaylist(
+    playlist.playlist_id,
+    { result_id: "media_manual", user_metadata: { mood: "dark" } },
+    mediaService
+  );
+  assert.equal(added.tracks_count, 2);
+  assert.equal(added.tracks[1].user_metadata.mood, "dark");
+  assert.equal(added.tracks[1].resolution.status, "manual");
+});

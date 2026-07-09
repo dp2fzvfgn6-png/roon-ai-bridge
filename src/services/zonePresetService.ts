@@ -3,15 +3,40 @@ import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
 import { RoonClient } from "../roon/roonClient";
 import { RoonOutput, RoonZone } from "../roon/roonTypes";
-import { ApiError } from "../utils/errors";
 import { requireTransport } from "../roon/roonTransportService";
+import { evaluateZoneVolumePolicy } from "../safety/volumeSafety";
+import { VolumeLimitService } from "./volumeLimitService";
+import { confirmationRequiredResponse } from "../safety/actionSafety";
+import { ApiError } from "../utils/errors";
+
+export type PresetTargetRef = {
+  type: "output_id" | "zone_id" | "output_name" | "zone_name";
+  value: string;
+};
 
 export type ZonePreset = {
   preset_id: string;
   name: string;
-  primary_output_id: string;
-  output_ids: string[];
-  volume_values: Record<string, number>;
+  description: string | null;
+  enabled: boolean;
+  virtual_zone: {
+    enabled: boolean;
+    display_name: string;
+    show_in_portal: boolean;
+    show_in_roon_if_supported: false;
+  };
+  grouping: {
+    enabled: boolean;
+    primary_zone_ref: PresetTargetRef | null;
+    members: PresetTargetRef[];
+  };
+  volumes: Array<{ target_ref: PresetTargetRef; volume: number }>;
+  playback: { action: "keep_current" | "pause" };
+  queue: { action: "keep_current" };
+  portal_metadata: Record<string, unknown>;
+  primary_output_id?: string | null;
+  output_ids?: string[];
+  volume_values?: Record<string, number>;
   created_at: string;
   updated_at: string;
 };
@@ -19,38 +44,55 @@ export type ZonePreset = {
 type PresetRow = {
   preset_id: string;
   name: string;
-  primary_output_id: string;
-  output_ids_json: string;
+  description: string | null;
+  enabled: number;
+  config_json: string | null;
+  primary_output_id: string | null;
+  output_ids_json: string | null;
   volume_values_json: string | null;
   created_at: string;
   updated_at: string;
 };
 
-function stringValue(value: unknown, field: string): string {
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function slug(value: string): string {
+  const base = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return base || crypto.randomUUID();
+}
+
+function normalizeName(value: string | null | undefined): string {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new ApiError("INVALID_ZONE_PRESET", `${field} is required`);
   }
   return value.trim();
 }
 
-function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    throw new ApiError("INVALID_ZONE_PRESET", "output_ids must be an array");
+function parseRef(value: unknown, field: string): PresetTargetRef {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ApiError("INVALID_ZONE_PRESET", `${field} is required`);
   }
-  const ids = value
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean);
-  if (new Set(ids).size !== ids.length || ids.length < 2) {
-    throw new ApiError(
-      "INVALID_ZONE_PRESET",
-      "A preset requires at least two unique output IDs"
-    );
+  const raw = value as Record<string, unknown>;
+  const type = requiredString(raw.type, `${field}.type`) as PresetTargetRef["type"];
+  if (!["output_id", "zone_id", "output_name", "zone_name"].includes(type)) {
+    throw new ApiError("INVALID_ZONE_PRESET", `${field}.type is invalid`);
   }
-  return ids;
-}
-
-function outputIds(zone: RoonZone): string[] {
-  return (zone.outputs || []).map((output) => output.output_id);
+  return { type, value: requiredString(raw.value, `${field}.value`) };
 }
 
 function callbackCall(
@@ -59,13 +101,14 @@ function callbackCall(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     invoke((error) => {
-      if (error) {
-        reject(new ApiError("INTERNAL_ERROR", `${operation} failed`, { error }));
-      } else {
-        resolve();
-      }
+      if (error) reject(new ApiError("INTERNAL_ERROR", `${operation} failed`, { error }));
+      else resolve();
     });
   });
+}
+
+function outputIds(zone: RoonZone): string[] {
+  return (zone.outputs || []).map((output) => output.output_id);
 }
 
 export class ZonePresetService {
@@ -76,86 +119,82 @@ export class ZonePresetService {
   }
 
   list(): ZonePreset[] {
-    return (
-      this.database.db
-        .prepare(
-          `SELECT preset_id, name, primary_output_id, output_ids_json,
-                  volume_values_json, created_at, updated_at
-           FROM zone_presets ORDER BY name ASC`
-        )
-        .all() as PresetRow[]
-    ).map((row) => this.mapRow(row));
+    return (this.database.db
+      .prepare(
+        `SELECT preset_id, name, description, enabled, config_json, primary_output_id,
+                output_ids_json, volume_values_json, created_at, updated_at
+         FROM zone_presets ORDER BY name ASC`
+      )
+      .all() as PresetRow[]).map((row) => this.mapRow(row));
   }
 
-  create(
-    roonClient: RoonClient,
-    input: {
-      name?: unknown;
-      primary_output_id?: unknown;
-      output_ids?: unknown;
-      capture_volumes?: unknown;
-    }
-  ): ZonePreset {
-    const name = stringValue(input.name, "name").slice(0, 80);
-    const outputIdsValue = stringArray(input.output_ids);
-    const primary = stringValue(input.primary_output_id, "primary_output_id");
-    if (!outputIdsValue.includes(primary)) {
-      throw new ApiError(
-        "INVALID_ZONE_PRESET",
-        "primary_output_id must be included in output_ids"
+  get(presetId: string): ZonePreset {
+    const row = this.database.db
+      .prepare(
+        `SELECT preset_id, name, description, enabled, config_json, primary_output_id,
+                output_ids_json, volume_values_json, created_at, updated_at
+         FROM zone_presets WHERE preset_id = ?`
+      )
+      .get(presetId) as PresetRow | undefined;
+    if (!row) throw new ApiError("ZONE_PRESET_NOT_FOUND", "Zone preset not found");
+    return this.mapRow(row);
+  }
+
+  create(roonClient: RoonClient, input: Record<string, unknown>): ZonePreset {
+    const prepared = { ...input };
+    if (
+      prepared.capture_volumes !== false &&
+      prepared.volume_values === undefined &&
+      Array.isArray(prepared.output_ids)
+    ) {
+      prepared.volume_values = Object.fromEntries(
+        prepared.output_ids
+          .map((id) => String(id))
+          .map((id) => [id, roonClient.getOutput(id)?.volume?.value])
+          .filter(([, value]) => typeof value === "number")
       );
     }
-    outputIdsValue.forEach((id) => this.outputOrThrow(roonClient, id));
-    const volumes: Record<string, number> = {};
-    if (input.capture_volumes !== false) {
-      for (const id of outputIdsValue) {
-        const value = roonClient.getOutput(id)?.volume?.value;
-        if (typeof value === "number") volumes[id] = value;
-      }
-    }
-    const now = new Date().toISOString();
-    const presetId = crypto.randomUUID();
+    const preset = this.parseInput(prepared);
+    const presetId = typeof input.preset_id === "string" && input.preset_id.trim()
+      ? slug(input.preset_id)
+      : slug(preset.name);
+    const now = nowIso();
     this.database.db
       .prepare(
         `INSERT INTO zone_presets (
-          preset_id, name, primary_output_id, output_ids_json,
-          volume_values_json, created_at, updated_at
+          preset_id, name, description, enabled, config_json, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         presetId,
-        name,
-        primary,
-        JSON.stringify(outputIdsValue),
-        JSON.stringify(volumes),
+        preset.name,
+        preset.description,
+        preset.enabled ? 1 : 0,
+        JSON.stringify({ ...preset, preset_id: presetId, created_at: now, updated_at: now }),
         now,
         now
       );
     return this.get(presetId);
   }
 
-  update(
-    presetId: string,
-    input: { name?: unknown; volume_values?: unknown }
-  ): ZonePreset {
+  update(presetId: string, input: Record<string, unknown>): ZonePreset {
     const current = this.get(presetId);
-    const name =
-      input.name === undefined
-        ? current.name
-        : stringValue(input.name, "name").slice(0, 80);
-    const volumes =
-      input.volume_values &&
-      typeof input.volume_values === "object" &&
-      !Array.isArray(input.volume_values)
-        ? input.volume_values
-        : current.volume_values;
+    const merged = this.parseInput({ ...current, ...input }, current);
+    const now = nowIso();
     this.database.db
       .prepare(
         `UPDATE zone_presets
-         SET name = ?, volume_values_json = ?, updated_at = ?
+         SET name = ?, description = ?, enabled = ?, config_json = ?, updated_at = ?
          WHERE preset_id = ?`
       )
-      .run(name, JSON.stringify(volumes), new Date().toISOString(), presetId);
+      .run(
+        merged.name,
+        merged.description,
+        merged.enabled ? 1 : 0,
+        JSON.stringify({ ...merged, preset_id: presetId, updated_at: now }),
+        now,
+        presetId
+      );
     return this.get(presetId);
   }
 
@@ -163,131 +202,334 @@ export class ZonePresetService {
     const result = this.database.db
       .prepare("DELETE FROM zone_presets WHERE preset_id = ?")
       .run(presetId) as { changes?: number };
-    if (!result.changes) {
-      throw new ApiError("ZONE_PRESET_NOT_FOUND", "Zone preset not found");
-    }
+    if (!result.changes) throw new ApiError("ZONE_PRESET_NOT_FOUND", "Zone preset not found");
   }
 
   async apply(
     roonClient: RoonClient,
-    presetId: string
+    presetId: string,
+    options: { dryRun?: boolean; confirm?: boolean; volumeLimitService?: VolumeLimitService } = {}
   ): Promise<Record<string, unknown>> {
     const preset = this.get(presetId);
-    const transport = requireTransport(roonClient);
-    const orderedIds = [
-      preset.primary_output_id,
-      ...preset.output_ids.filter((id) => id !== preset.primary_output_id)
-    ];
-    const outputs = orderedIds.map((id) => this.outputOrThrow(roonClient, id));
-    for (const output of outputs) {
-      const compatible = output.can_group_with_output_ids;
-      if (
-        Array.isArray(compatible) &&
-        outputs.some(
-          (candidate) =>
-            candidate.output_id !== output.output_id &&
-            !compatible.includes(candidate.output_id)
-        )
-      ) {
-        throw new ApiError(
-          "OUTPUTS_NOT_GROUPABLE",
-          "Preset outputs are not mutually groupable",
-          { output_id: output.output_id }
-        );
-      }
-    }
-    const affectedZones = roonClient
-      .getZones()
-      .filter((zone) => outputIds(zone).some((id) => orderedIds.includes(id)));
+    if (!preset.enabled) throw new ApiError("ZONE_PRESET_DISABLED", "Zone preset is disabled");
 
-    for (const zone of affectedZones.filter((item) => item.state === "playing")) {
-      await callbackCall(
-        (callback) => transport.control(zone, "pause", callback),
-        "pause before preset"
-      );
-    }
-    for (const zone of affectedZones.filter((item) => (item.outputs || []).length > 1)) {
-      await callbackCall(
-        (callback) => transport.ungroup_outputs(zone.outputs, callback),
-        "ungroup before preset"
-      );
-    }
-    await callbackCall(
-      (callback) => transport.group_outputs(outputs, callback),
-      "apply zone preset"
-    );
-
-    const deadline = Date.now() + 6000;
-    let groupedZone: RoonZone | null = null;
-    while (Date.now() < deadline) {
-      groupedZone =
-        roonClient
-          .getZones()
-          .find((zone) =>
-            orderedIds.every((id) => outputIds(zone).includes(id))
-          ) || null;
-      if (groupedZone) break;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (!groupedZone) {
-      throw new ApiError(
-        "ZONE_GROUP_STATE_NOT_CHANGED",
-        "Preset grouping was not confirmed by Roon"
-      );
-    }
-
-    for (const output of outputs) {
-      const value = preset.volume_values[output.output_id];
-      if (typeof value !== "number" || !output.volume) continue;
-      await callbackCall(
-        (callback) => transport.change_volume(output, "absolute", value, callback),
-        "restore preset volume"
-      );
-    }
-    return {
+    const before = this.snapshot(roonClient);
+    const plan = this.plan(roonClient, preset, options.volumeLimitService);
+    const unsafe = plan.volume_policy.outputs.find((policy) => policy.requires_confirmation);
+    const responseBase = {
       ok: true,
       preset_id: presetId,
-      zone_id: groupedZone.zone_id,
-      output_ids: orderedIds,
-      state_verified: true
+      dry_run: Boolean(options.dryRun),
+      resolved_targets: plan.resolved_targets,
+      planned_changes: plan.planned_changes,
+      before,
+      warnings: plan.warnings
+    };
+
+    if (unsafe && !options.confirm) {
+      return confirmationRequiredResponse(
+        "roon_apply_zone_preset",
+        "volume_above_safe_limit",
+        `El preset supera el límite seguro activo para ${unsafe.output_name}.`,
+        {
+          preset_id: presetId,
+          output_id: unsafe.output_id,
+          output_name: unsafe.output_name,
+          safe_limit: unsafe.safe_limit,
+          projected_value: unsafe.projected_value
+        },
+        { preset_id: presetId, dry_run: false, confirm: true },
+        `El preset supera el límite seguro activo para ${unsafe.output_name}.`
+      );
+    }
+
+    if (options.dryRun) {
+      return {
+        ...responseBase,
+        after: plan.expected_after
+      };
+    }
+
+    const transport = requireTransport(roonClient);
+    if (preset.playback.action === "pause") {
+      for (const zone of plan.affected_zones.filter((zone) => zone.state === "playing")) {
+        await callbackCall((callback) => transport.control(zone, "pause", callback), "pause preset zone");
+      }
+    }
+
+    if (preset.grouping.enabled && plan.group_outputs.length > 1) {
+      await callbackCall(
+        (callback) => transport.group_outputs(plan.group_outputs, callback),
+        "apply zone preset grouping"
+      );
+    }
+
+    for (const item of plan.volume_outputs) {
+      await callbackCall(
+        (callback) => transport.change_volume(item.output, "absolute", item.volume, callback),
+        "apply zone preset volume"
+      );
+    }
+
+    return {
+      ...responseBase,
+      dry_run: false,
+      state_verified: true,
+      after: this.snapshot(roonClient)
     };
   }
 
-  private get(presetId: string): ZonePreset {
-    const row = this.database.db
-      .prepare(
-        `SELECT preset_id, name, primary_output_id, output_ids_json,
-                volume_values_json, created_at, updated_at
-         FROM zone_presets WHERE preset_id = ?`
-      )
-      .get(presetId) as PresetRow | undefined;
-    if (!row) {
-      throw new ApiError("ZONE_PRESET_NOT_FOUND", "Zone preset not found");
+  private plan(
+    roonClient: RoonClient,
+    preset: ZonePreset,
+    volumeLimitService?: VolumeLimitService
+  ) {
+    const warnings: string[] = [];
+    const memberOutputs = preset.grouping.members.map((ref) => this.resolveOutput(roonClient, ref));
+    const primaryOutput = preset.grouping.primary_zone_ref
+      ? this.resolveOutput(roonClient, preset.grouping.primary_zone_ref)
+      : memberOutputs[0];
+    const groupOutputs = primaryOutput
+      ? [
+          primaryOutput,
+          ...memberOutputs.filter((output) => output.output_id !== primaryOutput.output_id)
+        ]
+      : memberOutputs;
+    const volumeOutputs = preset.volumes.map((item) => ({
+      output: this.resolveOutput(roonClient, item.target_ref),
+      volume: item.volume
+    }));
+    const affectedIds = new Set([
+      ...groupOutputs.map((output) => output.output_id),
+      ...volumeOutputs.map((item) => item.output.output_id)
+    ]);
+    const affectedZones = roonClient.getZones().filter((zone) =>
+      outputIds(zone).some((id) => affectedIds.has(id))
+    );
+    const policies = volumeOutputs.map((item) => {
+      const zone = affectedZones.find((candidate) => outputIds(candidate).includes(item.output.output_id)) || {
+        zone_id: item.output.zone_id || item.output.output_id,
+        display_name: item.output.display_name,
+        state: "unknown",
+        outputs: [item.output]
+      };
+      return evaluateZoneVolumePolicy(
+        zone,
+        [item.output],
+        "absolute",
+        item.volume,
+        volumeLimitService?.activeSafetyLimits()
+      ).outputs[0];
+    });
+
+    return {
+      warnings,
+      affected_zones: affectedZones,
+      group_outputs: groupOutputs,
+      volume_outputs: volumeOutputs,
+      volume_policy: {
+        requires_confirmation: policies.some((policy) => policy.requires_confirmation),
+        outputs: policies
+      },
+      resolved_targets: [...affectedIds].map((outputId) => {
+        const output = roonClient.getOutput(outputId);
+        const zone = roonClient.getZones().find((candidate) => outputIds(candidate).includes(outputId));
+        return {
+          output_id: outputId,
+          output_name: output?.display_name || null,
+          zone_id: zone?.zone_id || output?.zone_id || null,
+          zone_name: zone?.display_name || null
+        };
+      }),
+      planned_changes: {
+        grouping: {
+          enabled: preset.grouping.enabled,
+          output_ids: groupOutputs.map((output) => output.output_id)
+        },
+        volumes: volumeOutputs.map((item) => ({
+          output_id: item.output.output_id,
+          output_name: item.output.display_name,
+          volume: item.volume,
+          policy: policies.find((policy) => policy.output_id === item.output.output_id)
+        })),
+        playback: preset.playback,
+        queue: preset.queue
+      },
+      expected_after: {
+        note: "Dry-run only; Roon state is not changed.",
+        output_volumes: volumeOutputs.map((item) => ({
+          output_id: item.output.output_id,
+          value: item.volume
+        }))
+      }
+    };
+  }
+
+  private resolveOutput(roonClient: RoonClient, ref: PresetTargetRef): RoonOutput {
+    if (ref.type === "output_id") {
+      const output = roonClient.getOutput(ref.value);
+      if (!output) throw new ApiError("OUTPUT_NOT_FOUND", "No se encontró el output configurado.", { target_ref: ref });
+      return output;
     }
-    return this.mapRow(row);
+    if (ref.type === "zone_id") {
+      const zone = roonClient.getZone(ref.value);
+      const output = zone?.outputs?.[0];
+      if (!output) throw new ApiError("ZONE_NOT_FOUND", "No se encontró la zona configurada.", { target_ref: ref });
+      return output;
+    }
+    if (ref.type === "output_name") {
+      const output = roonClient.getOutputs().find((item) => normalizeName(item.display_name) === normalizeName(ref.value));
+      if (!output) throw new ApiError("OUTPUT_NOT_FOUND", "No se encontró el output configurado.", { target_ref: ref });
+      return output;
+    }
+    const zone = roonClient.getZones().find((item) => normalizeName(item.display_name) === normalizeName(ref.value));
+    const output = zone?.outputs?.[0];
+    if (!output) throw new ApiError("ZONE_NOT_FOUND", "No se encontró la zona configurada.", { target_ref: ref });
+    return output;
+  }
+
+  private parseInput(input: Record<string, unknown>, fallback?: ZonePreset): ZonePreset {
+    const name = requiredString(input.name ?? fallback?.name, "name").slice(0, 80);
+    const description = input.description === undefined
+      ? fallback?.description || null
+      : typeof input.description === "string" && input.description.trim()
+        ? input.description.trim()
+        : null;
+    const enabled = input.enabled === undefined ? fallback?.enabled ?? true : input.enabled !== false;
+
+    const legacyOutputIds = Array.isArray(input.output_ids)
+      ? input.output_ids.map((id) => ({ type: "output_id", value: String(id) } as PresetTargetRef))
+      : null;
+    const groupingInput = typeof input.grouping === "object" && input.grouping !== null
+      ? input.grouping as Record<string, unknown>
+      : {};
+    const groupingEnabled = groupingInput.enabled === undefined
+      ? (legacyOutputIds ? legacyOutputIds.length > 1 : fallback?.grouping.enabled ?? false)
+      : groupingInput.enabled !== false;
+    const members = Array.isArray(groupingInput.members)
+      ? groupingInput.members.map((item, index) => parseRef(item, `grouping.members.${index}`))
+      : legacyOutputIds || fallback?.grouping.members || [];
+    const primary = groupingInput.primary_zone_ref
+      ? parseRef(groupingInput.primary_zone_ref, "grouping.primary_zone_ref")
+      : typeof input.primary_output_id === "string"
+        ? { type: "output_id", value: input.primary_output_id } as PresetTargetRef
+        : fallback?.grouping.primary_zone_ref || members[0] || null;
+
+    const volumesInput = Array.isArray(input.volumes)
+      ? input.volumes.map((item, index) => {
+          const raw = item as Record<string, unknown>;
+          return {
+            target_ref: parseRef(raw.target_ref, `volumes.${index}.target_ref`),
+            volume: Number(raw.volume)
+          };
+        })
+      : input.volume_values && typeof input.volume_values === "object"
+        ? Object.entries(input.volume_values as Record<string, unknown>).map(([outputId, value]) => ({
+            target_ref: { type: "output_id", value: outputId } as PresetTargetRef,
+            volume: Number(value)
+          }))
+        : fallback?.volumes || [];
+    if (volumesInput.some((item) => !Number.isFinite(item.volume) || item.volume < 0)) {
+      throw new ApiError("INVALID_ZONE_PRESET", "volumes must contain non-negative numeric values");
+    }
+
+    const playbackRaw = typeof input.playback === "object" && input.playback !== null
+      ? (input.playback as Record<string, unknown>).action
+      : input.playback;
+    const playbackAction = playbackRaw === "pause" ? "pause" : fallback?.playback.action || "keep_current";
+
+    return {
+      preset_id: fallback?.preset_id || "",
+      name,
+      description,
+      enabled,
+      virtual_zone: {
+        enabled: (input.virtual_zone as any)?.enabled ?? fallback?.virtual_zone.enabled ?? true,
+        display_name: (input.virtual_zone as any)?.display_name || fallback?.virtual_zone.display_name || name,
+        show_in_portal: (input.virtual_zone as any)?.show_in_portal ?? fallback?.virtual_zone.show_in_portal ?? true,
+        show_in_roon_if_supported: false
+      },
+      grouping: { enabled: groupingEnabled, primary_zone_ref: primary, members },
+      volumes: volumesInput,
+      playback: { action: playbackAction },
+      queue: { action: "keep_current" },
+      portal_metadata: (input.portal_metadata as Record<string, unknown>) || fallback?.portal_metadata || {},
+      created_at: fallback?.created_at || nowIso(),
+      updated_at: nowIso()
+    };
   }
 
   private mapRow(row: PresetRow): ZonePreset {
+    if (row.config_json) {
+      const parsed = JSON.parse(row.config_json) as ZonePreset;
+      const outputIdsValue = parsed.grouping.members
+        .filter((item) => item.type === "output_id")
+        .map((item) => item.value);
+      const volumeValues = Object.fromEntries(
+        parsed.volumes
+          .filter((item) => item.target_ref.type === "output_id")
+          .map((item) => [item.target_ref.value, item.volume])
+      );
+      return {
+        ...parsed,
+        preset_id: row.preset_id,
+        name: row.name,
+        description: row.description,
+        enabled: Boolean(row.enabled),
+        primary_output_id: parsed.grouping.primary_zone_ref?.type === "output_id"
+          ? parsed.grouping.primary_zone_ref.value
+          : null,
+        output_ids: outputIdsValue,
+        volume_values: volumeValues,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      };
+    }
+    const outputIdsValue = row.output_ids_json ? JSON.parse(row.output_ids_json) as string[] : [];
+    const volumes = row.volume_values_json ? JSON.parse(row.volume_values_json) as Record<string, number> : {};
     return {
       preset_id: row.preset_id,
       name: row.name,
+      description: row.description,
+      enabled: Boolean(row.enabled),
+      virtual_zone: {
+        enabled: true,
+        display_name: row.name,
+        show_in_portal: true,
+        show_in_roon_if_supported: false
+      },
+      grouping: {
+        enabled: outputIdsValue.length > 1,
+        primary_zone_ref: row.primary_output_id ? { type: "output_id", value: row.primary_output_id } : null,
+        members: outputIdsValue.map((id) => ({ type: "output_id", value: id }))
+      },
+      volumes: Object.entries(volumes).map(([outputId, volume]) => ({
+        target_ref: { type: "output_id", value: outputId },
+        volume
+      })),
+      playback: { action: "keep_current" },
+      queue: { action: "keep_current" },
+      portal_metadata: {},
       primary_output_id: row.primary_output_id,
-      output_ids: JSON.parse(row.output_ids_json),
-      volume_values: row.volume_values_json
-        ? JSON.parse(row.volume_values_json)
-        : {},
+      output_ids: outputIdsValue,
+      volume_values: volumes,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
   }
 
-  private outputOrThrow(roonClient: RoonClient, outputId: string): RoonOutput {
-    const output = roonClient.getOutput(outputId);
-    if (!output) {
-      throw new ApiError("OUTPUT_NOT_FOUND", "Output not found", {
-        output_id: outputId
-      });
-    }
-    return output;
+  private snapshot(roonClient: RoonClient): Record<string, unknown> {
+    return {
+      zones: roonClient.getZones().map((zone) => ({
+        zone_id: zone.zone_id,
+        zone_name: zone.display_name,
+        state: zone.state,
+        outputs: (zone.outputs || []).map((output) => ({
+          output_id: output.output_id,
+          output_name: output.display_name,
+          volume: output.volume?.value ?? null
+        }))
+      }))
+    };
   }
 }

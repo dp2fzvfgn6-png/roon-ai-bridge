@@ -65,6 +65,7 @@ main { padding: 0 4.5vw 60px; min-width: 0; }
 .card-grid, .zone-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .now-card, .zone-card, .info-card { border: 1px solid var(--line); background: var(--surface); border-radius: 18px; padding: 22px; }
 .now-card .album-art, .zone-art { width: 48px; height: 48px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(145deg, #473b26, #1d2025); color: var(--accent); font-size: 20px; margin-bottom: 34px; }
+.now-card .album-art img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .now-card h4, .zone-card h3 { margin: 0 0 6px; font-size: 16px; }
 .now-card p { margin: 0; color: var(--muted); font-size: 13px; }
 .empty-state { padding: 38px; border: 1px dashed var(--line); border-radius: 18px; color: var(--muted); text-align: center; grid-column: 1 / -1; }
@@ -102,6 +103,7 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .split-layout { display: grid; grid-template-columns: minmax(320px, .85fr) minmax(420px, 1.4fr); gap: 22px; align-items: start; }
 .playlist-list { display: grid; gap: 10px; }
 .playlist-row { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 14px; padding: 17px; display: flex; justify-content: space-between; align-items: center; }
+.playlist-item { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 14px; padding: 17px; display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-bottom: 10px; }
 .playlist-row:hover, .playlist-row.active { border-color: #655334; background: #191814; }
 .playlist-row small { display: block; color: var(--muted); margin-top: 4px; }
 .playlist-row .count { color: var(--accent); font: 600 12px ui-monospace, monospace; }

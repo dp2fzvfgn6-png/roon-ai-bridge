@@ -47,6 +47,7 @@
         <button class="nav-item active" data-view="dashboard"><span>◫</span> Inicio</button>
         <button class="nav-item" data-view="zones"><span>▶</span> Reproducción</button>
         <button class="nav-item" data-view="library"><span>⌕</span> Explorar</button>
+        <button class="nav-item" data-view="widgets"><span>◧</span> Widgets</button>
         <button class="nav-item" data-view="playlists"><span>≡</span> Playlists</button>
         <button class="nav-item" data-view="presets"><span>◇</span> Presets</button>
         <button class="nav-item" data-view="keys"><span>⌁</span> API keys</button>
@@ -114,6 +115,40 @@
         </div>
         <div id="browse-heading" class="section-heading"></div>
         <div id="browse-list" class="browse-list"></div>
+      </section>
+
+      <section id="view-widgets" class="view">
+        <div class="section-toolbar">
+          <div><p class="muted">Contratos interactivos compartidos con ChatGPT Apps.</p></div>
+          <div class="top-actions">
+            <select id="widget-zone"></select>
+            <button id="widget-refresh" class="button ghost">Refrescar</button>
+          </div>
+        </div>
+        <div id="widget-now-playing" class="card-grid"></div>
+        <div class="section-toolbar">
+          <div><p class="eyebrow">Playlists virtuales</p><h3>Navegación</h3></div>
+        </div>
+        <div id="widget-playlists" class="playlist-list"></div>
+        <aside id="widget-playlist-detail" class="editor-panel empty-panel">
+          <span class="empty-icon">♫</span>
+          <h3>Abre una playlist</h3>
+          <p class="muted">El detalle usa el mismo contrato de ChatGPT.</p>
+        </aside>
+        <div class="section-toolbar">
+          <div><p class="eyebrow">Búsqueda musical</p><h3>Canciones, álbumes y artistas</h3></div>
+          <div class="top-actions">
+            <input id="widget-search-query" placeholder="Everything In Its Right Place Radiohead">
+            <select id="widget-search-type">
+              <option value="track">Canción</option>
+              <option value="album">Álbum</option>
+              <option value="artist">Artista</option>
+              <option value="">Todo</option>
+            </select>
+            <button id="widget-search-submit" class="button primary">Buscar</button>
+          </div>
+        </div>
+        <div id="widget-search-results" class="playlist-list"></div>
       </section>
 
       <section id="view-playlists" class="view">

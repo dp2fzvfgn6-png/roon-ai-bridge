@@ -1,5 +1,10 @@
 import { Router } from "express";
 import { ApiContext } from "../server";
+import {
+  confirmationRequiredResponse,
+  dryRunResponse,
+  mutationSuccess
+} from "../../safety/actionSafety";
 
 function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (value === undefined) return fallback;
@@ -65,7 +70,32 @@ export function createPlaylistsRouter(context: ApiContext): Router {
 
   router.delete("/playlists/:playlist_id", (req, res, next) => {
     try {
-      res.json(context.playlistService.deletePlaylist(req.params.playlist_id));
+      const dryRun = parseBoolean(req.query.dry_run ?? req.body?.dry_run, false);
+      const confirm = parseBoolean(req.query.confirm ?? req.body?.confirm, false);
+      if (dryRun) {
+        const before = context.playlistService.getPlaylist(req.params.playlist_id);
+        res.json(dryRunResponse("roon_delete_virtual_playlist", {
+          before,
+          after: null
+        }, { before }));
+        return;
+      }
+      if (!confirm) {
+        res.json(
+          confirmationRequiredResponse(
+            "roon_delete_virtual_playlist",
+            "destructive_action",
+            "This action deletes a virtual playlist and requires confirmation.",
+            { playlist_id: req.params.playlist_id },
+            { playlist_id: req.params.playlist_id },
+            "Delete virtual playlist."
+          )
+        );
+        return;
+      }
+      const before = context.playlistService.getPlaylist(req.params.playlist_id);
+      const result = context.playlistService.deletePlaylist(req.params.playlist_id);
+      res.json(mutationSuccess("roon_delete_virtual_playlist", result, { before, after: null }));
     } catch (error) {
       next(error);
     }
@@ -104,10 +134,41 @@ export function createPlaylistsRouter(context: ApiContext): Router {
 
   router.put("/playlists/:playlist_id/tracks", async (req, res, next) => {
     try {
+      const dryRun = parseBoolean(req.body?.dry_run, false);
+      const confirm = parseBoolean(req.body?.confirm, false);
+      const tracks = req.body?.tracks ?? req.body;
+      const before = context.playlistService.getPlaylist(req.params.playlist_id);
+      if (dryRun) {
+        res.json(dryRunResponse("roon_replace_virtual_playlist_tracks", {
+          before,
+          after: {
+            playlist_id: req.params.playlist_id,
+            tracks_count: Array.isArray(tracks) ? tracks.length : 0,
+            tracks
+          }
+        }, { before }));
+        return;
+      }
+      if (!confirm) {
+        res.json(
+          confirmationRequiredResponse(
+            "roon_replace_virtual_playlist_tracks",
+            "destructive_action",
+            "This action replaces all tracks in a virtual playlist and requires confirmation.",
+            {
+              playlist_id: req.params.playlist_id,
+              replacement_track_count: Array.isArray(tracks) ? tracks.length : null
+            },
+            { playlist_id: req.params.playlist_id, tracks },
+            "Replace all tracks in virtual playlist."
+          )
+        );
+        return;
+      }
       res.json(
         await context.playlistService.replaceTracksResolved(
           req.params.playlist_id,
-          req.body?.tracks ?? req.body,
+          tracks,
           {
             mediaService: context.mediaService,
             logger: context.logger
@@ -119,7 +180,7 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
-  router.post("/playlists/:playlist_id/resolve", async (req, res, next) => {
+  router.post(["/playlists/:playlist_id/resolve", "/virtual-playlists/:playlist_id/resolve"], async (req, res, next) => {
     try {
       context.logger.info("Virtual playlist resolution retry received", {
         playlistId: req.params.playlist_id,
@@ -136,6 +197,80 @@ export function createPlaylistsRouter(context: ApiContext): Router {
           }
         )
       );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get(["/playlists/:playlist_id/validate", "/virtual-playlists/:playlist_id/validate"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.validatePlaylist(req.params.playlist_id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/deduplicate", "/virtual-playlists/:playlist_id/deduplicate"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.deduplicatePlaylist(req.params.playlist_id, req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/sort", "/virtual-playlists/:playlist_id/sort"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.sortPlaylist(req.params.playlist_id, req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get(["/playlists/:playlist_id/export", "/virtual-playlists/:playlist_id/export"], (req, res, next) => {
+    try {
+      const format = String(req.query.format || "json");
+      const payload = context.playlistService.exportPlaylist(req.params.playlist_id, format);
+      if (typeof payload === "string") {
+        res.type(format === "csv" ? "text/csv" : "audio/x-mpegurl").send(payload);
+        return;
+      }
+      res.json(payload);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/import", "/virtual-playlists/import"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.importPlaylist(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/tracks/:track_id/match", "/virtual-playlists/:playlist_id/tracks/:track_id/match"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.setTrackMatch(
+        req.params.playlist_id,
+        req.params.track_id,
+        req.body?.result_id,
+        {
+          mediaService: context.mediaService,
+          selectionReason: req.body?.selection_reason
+        }
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/tracks/from-search-result", "/virtual-playlists/:playlist_id/tracks/from-search-result"], (req, res, next) => {
+    try {
+      res.json(context.playlistService.addSearchResultToPlaylist(
+        req.params.playlist_id,
+        req.body || {},
+        context.mediaService
+      ));
     } catch (error) {
       next(error);
     }
@@ -170,12 +305,45 @@ export function createPlaylistsRouter(context: ApiContext): Router {
 
   router.delete("/playlists/:playlist_id/tracks/:track_id", (req, res, next) => {
     try {
-      res.json(
-        context.playlistService.removeTrack(
-          req.params.playlist_id,
-          req.params.track_id
-        )
+      const dryRun = parseBoolean(req.query.dry_run ?? req.body?.dry_run, false);
+      const confirm = parseBoolean(req.query.confirm ?? req.body?.confirm, false);
+      const before = context.playlistService.getPlaylist(req.params.playlist_id);
+      if (dryRun) {
+        res.json(dryRunResponse("roon_remove_virtual_playlist_track", {
+          before,
+          after: {
+            ...before,
+            tracks: before.tracks.filter((track) => track.track_id !== req.params.track_id),
+            tracks_count: Math.max(0, before.tracks_count - 1),
+            track_count: Math.max(0, before.track_count - 1)
+          }
+        }, { before }));
+        return;
+      }
+      if (!confirm) {
+        res.json(
+          confirmationRequiredResponse(
+            "roon_remove_virtual_playlist_track",
+            "destructive_action",
+            "This action deletes a track from a virtual playlist and requires confirmation.",
+            {
+              playlist_id: req.params.playlist_id,
+              track_id: req.params.track_id
+            },
+            {
+              playlist_id: req.params.playlist_id,
+              track_id: req.params.track_id
+            },
+            "Remove track from virtual playlist."
+          )
+        );
+        return;
+      }
+      const result = context.playlistService.removeTrack(
+        req.params.playlist_id,
+        req.params.track_id
       );
+      res.json(mutationSuccess("roon_remove_virtual_playlist_track", result, { before, after: result }));
     } catch (error) {
       next(error);
     }

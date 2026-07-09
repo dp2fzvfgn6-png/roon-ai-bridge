@@ -26,7 +26,12 @@ import { PortalAuthService } from "../services/portalAuthService";
 import { SystemManagementService } from "../services/systemManagementService";
 import { ZonePresetService } from "../services/zonePresetService";
 import { OutputVolumeSettingsService } from "../services/outputVolumeSettingsService";
+import { VolumeLimitService } from "../services/volumeLimitService";
 import { createAdvancedRouter } from "./routes/advanced.routes";
+import { createSafetyRouter } from "./routes/safety.routes";
+import { createZonePresetsRouter } from "./routes/zonePresets.routes";
+import { createVolumeLimitsRouter } from "./routes/volumeLimits.routes";
+import { createWidgetsRouter } from "./routes/widgets.routes";
 
 export type ApiContext = {
   config: AppConfig;
@@ -40,6 +45,7 @@ export type ApiContext = {
   systemManagementService: SystemManagementService;
   zonePresetService: ZonePresetService;
   outputVolumeSettingsService: OutputVolumeSettingsService;
+  volumeLimitService: VolumeLimitService;
 };
 
 export function createServer(context: ApiContext): express.Express {
@@ -62,6 +68,8 @@ export function createServer(context: ApiContext): express.Express {
       ].join("\n"));
   });
   app.use(createAuthMiddleware(context));
+  app.use(createSafetyRouter(context));
+  app.use("/", createWidgetsRouter(context));
 
   app.all("/mcp", async (req, res, next) => {
     try {
@@ -101,6 +109,8 @@ export function createServer(context: ApiContext): express.Express {
   app.use("/roon", createQueueRouter(context));
   app.use("/roon", createAdvancedRouter(context));
   app.use("/", createPlaylistsRouter(context));
+  app.use("/", createZonePresetsRouter(context));
+  app.use("/", createVolumeLimitsRouter(context));
 
   app.get("/history", (req, res, next) => {
     context.logger.warn("History endpoint is not implemented yet");

@@ -1,6 +1,6 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_VERSION = "v6";
+const ROON_CONTROL_WIDGET_VERSION = "v7";
 const ROON_CONTROL_WIDGET_URI = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/default.html`;
 const ROON_CONTROL_WIDGET_TEMPLATE = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/{tool}.html`;
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -110,6 +110,15 @@ const controlWidgetHtml = `
     cursor: pointer;
     font-weight: 700;
   }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .secondary {
+    background: #596579;
+  }
 </style>
 <script type="module">
   const result = document.getElementById("result");
@@ -133,6 +142,156 @@ const controlWidgetHtml = `
       method: "tools/call",
       params: { name, arguments: args }
     }, "*");
+  }
+
+  function button(label, tool, args, secondary = false) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.textContent = label;
+    if (secondary) el.className = "secondary";
+    el.addEventListener("click", () => callTool(tool, args));
+    return el;
+  }
+
+  function renderNowPlayingWidget(payload) {
+    if (payload?.widget_type !== "now_playing" || !Array.isArray(payload.zones)) return false;
+    resultTitle.textContent = "Now Playing";
+    cards.className = "cards";
+    cards.replaceChildren();
+    for (const zone of payload.zones) {
+      const card = document.createElement("div");
+      card.className = "card with-art";
+      const art = document.createElement("img");
+      art.className = "art";
+      art.alt = "";
+      if (zone.now_playing?.image_url) art.src = zone.now_playing.image_url;
+      const copy = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "title";
+      title.textContent = zone.display_name || zone.zone_id;
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = [
+        zone.state,
+        zone.now_playing?.title,
+        zone.now_playing?.artist,
+        zone.volume?.value === null ? null : "Vol " + zone.volume?.value
+      ].filter(Boolean).join(" | ");
+      copy.append(title, meta);
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.append(
+        button("Play/Pause", "roon_now_playing_widget_action", { action: "play_pause", zone_id: zone.zone_id }),
+        button("Prev", "roon_now_playing_widget_action", { action: "previous", zone_id: zone.zone_id }, true),
+        button("Next", "roon_now_playing_widget_action", { action: "next", zone_id: zone.zone_id }, true),
+        button("Vol -", "roon_now_playing_widget_action", { action: "volume_down", zone_id: zone.zone_id }, true),
+        button("Vol +", "roon_now_playing_widget_action", { action: "volume_up", zone_id: zone.zone_id }, true),
+        button("Mute", "roon_now_playing_widget_action", { action: "mute_toggle", zone_id: zone.zone_id }, true)
+      );
+      card.append(art, copy, actions);
+      cards.append(card);
+    }
+    result.hidden = true;
+    return true;
+  }
+
+  function renderPlaylistWidget(payload) {
+    if (payload?.widget_type !== "virtual_playlists" && payload?.widget_type !== "playlist_created") return false;
+    resultTitle.textContent = payload.view === "playlist_detail" ? "Playlist" : "Virtual Playlists";
+    cards.className = "cards";
+    cards.replaceChildren();
+    if (payload.view === "playlist_detail") {
+      const zoneId = latestInput.zone_id;
+      for (const track of payload.tracks || []) {
+        const card = document.createElement("div");
+        card.className = "card with-art";
+        const art = document.createElement("img");
+        art.className = "art";
+        art.alt = "";
+        if (track.image_url) art.src = track.image_url;
+        const copy = document.createElement("div");
+        const title = document.createElement("p");
+        title.className = "title";
+        title.textContent = track.title || track.track_id;
+        const meta = document.createElement("p");
+        meta.className = "meta";
+        meta.textContent = [track.artist, track.album, track.resolution_status].filter(Boolean).join(" | ");
+        copy.append(title, meta);
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        if (zoneId) {
+          actions.append(
+            button("Play", "roon_playlist_widget_action", { action: "play_track", playlist_id: payload.playlist.playlist_id, track_id: track.track_id, zone_id: zoneId }),
+            button("Queue", "roon_playlist_widget_action", { action: "add_track_to_queue", playlist_id: payload.playlist.playlist_id, track_id: track.track_id, zone_id: zoneId }, true)
+          );
+        }
+        card.append(art, copy, actions);
+        cards.append(card);
+      }
+    } else {
+      for (const playlist of payload.playlists || []) {
+        const card = document.createElement("div");
+        card.className = "card with-art";
+        const art = document.createElement("img");
+        art.className = "art";
+        art.alt = "";
+        if (playlist.image_url) art.src = playlist.image_url;
+        const copy = document.createElement("div");
+        const title = document.createElement("p");
+        title.className = "title";
+        title.textContent = playlist.name;
+        const meta = document.createElement("p");
+        meta.className = "meta";
+        meta.textContent = [playlist.track_count + " tracks", playlist.description].filter(Boolean).join(" | ");
+        copy.append(title, meta);
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        actions.append(button("Open", "roon_get_playlist_detail_widget", { playlist_id: playlist.playlist_id }, true));
+        card.append(art, copy, actions);
+        cards.append(card);
+      }
+    }
+    result.hidden = true;
+    return true;
+  }
+
+  function renderSearchWidget(payload) {
+    if (payload?.widget_type !== "media_search") return false;
+    resultTitle.textContent = "Music Search";
+    cards.className = "cards";
+    cards.replaceChildren();
+    const zoneId = latestInput.zone_id;
+    for (const media of payload.results || payload.popular_tracks || payload.albums || []) {
+      const card = document.createElement("div");
+      card.className = "card with-art";
+      const art = document.createElement("img");
+      art.className = "art";
+      art.alt = "";
+      if (media.image_url) art.src = media.image_url;
+      const copy = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "title";
+      title.textContent = media.title || media.name || media.result_id;
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = [media.media_type || media.type, media.artist, media.album, media.source, media.confidence].filter(Boolean).join(" | ");
+      copy.append(title, meta);
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      if (zoneId && media.result_id) {
+        actions.append(
+          button("Play", "roon_media_search_widget_action", { action: "play", result_id: media.result_id, zone_id: zoneId }),
+          button("Queue", "roon_media_search_widget_action", { action: "add_to_queue", result_id: media.result_id, zone_id: zoneId }, true)
+        );
+      }
+      if (media.result_id) {
+        actions.append(button("Open", "roon_open_media_entity_widget", { result_id: media.result_id }, true));
+      }
+      card.append(art, copy, actions);
+      cards.append(card);
+    }
+    result.hidden = true;
+    return true;
   }
 
   function renderMediaSearch(payload) {
@@ -261,6 +420,7 @@ const controlWidgetHtml = `
     cards.className = "";
     result.hidden = false;
     resultTitle.textContent = "Latest Tool Result";
+    if (renderNowPlayingWidget(payload) || renderPlaylistWidget(payload) || renderSearchWidget(payload)) return;
     if (renderMediaSearch(payload) || renderZones(payload) || renderPlayback(payload) || renderImage(payload)) return;
     result.textContent = JSON.stringify(payload, null, 2);
   }

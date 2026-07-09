@@ -85,6 +85,7 @@ const viewCopy = {
   dashboard: ["Vista general", "El bridge, de un vistazo"],
   zones: ["Roon Core", "Reproducción"],
   library: ["Roon Browse", "Explorar"],
+  widgets: ["ChatGPT Apps", "Widgets"],
   playlists: ["Biblioteca local", "Playlists"],
   presets: ["Configuración de audio", "Presets y volúmenes"],
   keys: ["Acceso seguro", "API keys"],
@@ -102,6 +103,7 @@ async function navigate(view) {
     if (view === "dashboard") await loadDashboard();
     if (view === "zones") await loadZones();
     if (view === "library") await loadBrowse(true);
+    if (view === "widgets") await loadWidgets();
     if (view === "playlists") await loadPlaylists();
     if (view === "presets") await loadPresets();
     if (view === "keys") await loadKeys();
@@ -150,6 +152,96 @@ async function loadDashboard() {
         <p>${escapeHtml(item.artist || "Artista desconocido")} · ${escapeHtml(item.display_name)}</p>
       </article>`).join("")
     : `<div class="empty-state">Ninguna zona está reproduciendo ahora mismo.</div>`;
+}
+
+async function loadWidgets() {
+  const [nowPlaying, playlists] = await Promise.all([
+    api("/api/widgets/now-playing"),
+    api("/api/widgets/playlists")
+  ]);
+  renderWidgetNowPlaying(nowPlaying);
+  renderWidgetPlaylists(playlists);
+  const select = $("#widget-zone");
+  select.innerHTML = (nowPlaying.zones || []).map((zone) =>
+    `<option value="${escapeHtml(zone.zone_id)}">${escapeHtml(zone.display_name)}</option>`
+  ).join("");
+  if (nowPlaying.selected_zone_id) select.value = nowPlaying.selected_zone_id;
+}
+
+function widgetSelectedZone() {
+  return $("#widget-zone")?.value || state.zones[0]?.zone_id || "";
+}
+
+function renderWidgetNowPlaying(payload) {
+  $("#widget-now-playing").innerHTML = (payload.zones || []).map((zone) => `
+    <article class="now-card" data-zone="${escapeHtml(zone.zone_id)}">
+      <div class="album-art">${zone.now_playing?.image_url ? `<img alt="" src="${escapeHtml(zone.now_playing.image_url)}">` : "♫"}</div>
+      <h4>${escapeHtml(zone.display_name)}</h4>
+      <p>${escapeHtml([zone.state, zone.now_playing?.title, zone.now_playing?.artist].filter(Boolean).join(" · ") || "Sin reproducción")}</p>
+      <p class="muted">${zone.volume?.value === null ? "Volumen no disponible" : `Vol. ${escapeHtml(zone.volume?.value)}${zone.volume?.safe_limit ? ` · límite ${escapeHtml(zone.volume.safe_limit)}` : ""}`}</p>
+      <div class="top-actions">
+        <button class="small-button" data-widget-now="previous">Anterior</button>
+        <button class="small-button" data-widget-now="play_pause">Play/Pausa</button>
+        <button class="small-button" data-widget-now="next">Siguiente</button>
+        <button class="small-button" data-widget-now="volume_down">Vol -</button>
+        <button class="small-button" data-widget-now="volume_up">Vol +</button>
+      </div>
+    </article>
+  `).join("") || `<div class="empty-state">No hay zonas disponibles.</div>`;
+}
+
+function renderWidgetPlaylists(payload) {
+  $("#widget-playlists").innerHTML = (payload.playlists || []).map((playlist) => `
+    <article class="playlist-item" data-playlist="${escapeHtml(playlist.playlist_id)}">
+      <div>
+        <strong>${escapeHtml(playlist.name)}</strong>
+        <p class="muted">${escapeHtml(playlist.track_count)} pistas${playlist.description ? ` · ${escapeHtml(playlist.description)}` : ""}</p>
+      </div>
+      <button class="button ghost" data-widget-open-playlist="${escapeHtml(playlist.playlist_id)}">Abrir</button>
+    </article>
+  `).join("") || `<div class="empty-state">No hay playlists virtuales.</div>`;
+}
+
+function renderWidgetPlaylistDetail(payload) {
+  $("#widget-playlist-detail").classList.remove("empty-panel");
+  $("#widget-playlist-detail").innerHTML = `
+    <div class="section-toolbar">
+      <div><p class="eyebrow">Playlist</p><h3>${escapeHtml(payload.playlist.name)}</h3></div>
+      <div class="top-actions">
+        <button class="button ghost" data-widget-playlist-action="add_playlist_to_queue">A cola</button>
+        <button class="button primary" data-widget-playlist-action="play_playlist">Reproducir</button>
+      </div>
+    </div>
+    <div class="playlist-track-list">
+      ${(payload.tracks || []).map((track) => `
+        <article class="track-row" data-track="${escapeHtml(track.track_id)}">
+          <span>${escapeHtml(track.position)}</span>
+          <div>
+            <strong>${escapeHtml(track.title || track.track_id)}</strong>
+            <p class="muted">${escapeHtml([track.artist, track.album, track.resolution_status].filter(Boolean).join(" · "))}</p>
+          </div>
+          <button class="small-button" data-widget-track="add_track_to_queue">Cola</button>
+          <button class="small-button" data-widget-track="play_track">Play</button>
+        </article>
+      `).join("")}
+    </div>`;
+  $("#widget-playlist-detail").dataset.playlist = payload.playlist.playlist_id;
+}
+
+function renderWidgetSearch(payload) {
+  $("#widget-search-results").innerHTML = (payload.results || []).map((result) => `
+    <article class="playlist-item" data-result="${escapeHtml(result.result_id)}">
+      <div>
+        <strong>${escapeHtml(result.title)}</strong>
+        <p class="muted">${escapeHtml([result.type, result.artist, result.album, result.source, result.confidence].filter(Boolean).join(" · "))}</p>
+      </div>
+      <div class="top-actions">
+        <button class="small-button" data-widget-search="open_entity">Abrir</button>
+        <button class="small-button" data-widget-search="add_to_queue">Cola</button>
+        <button class="small-button" data-widget-search="play">Play</button>
+      </div>
+    </article>
+  `).join("") || `<div class="empty-state">Sin resultados.</div>`;
 }
 
 function outputVolume(zone) {
@@ -406,10 +498,11 @@ $("#browse-hierarchy").addEventListener("change", async (event) => {
 });
 
 async function loadPlaylists() {
-  const [playlists, zones] = await Promise.all([
-    api("/api/playlists"),
+  const [playlistPayload, zones] = await Promise.all([
+    api("/api/playlists?include_tracks=true&track_limit=100"),
     state.zones.length ? Promise.resolve(state.zones) : api("/api/roon/zones")
   ]);
+  const playlists = Array.isArray(playlistPayload) ? playlistPayload : (playlistPayload.playlists || []);
   state.playlists = playlists;
   state.zones = zones;
   $("#playlist-list").innerHTML = playlists.length
@@ -455,6 +548,20 @@ function renderPlaylistEditor() {
       <select data-play-mode aria-label="Modo"><option value="play_now">Reproducir ahora</option><option value="add_next">Añadir siguiente</option><option value="add_to_queue">Añadir a cola</option></select>
       <button class="button primary" data-play-playlist>▶ Play</button>
     </div>`;
+  const titleActions = $(".editor-title > div:last-child", editor);
+  if (titleActions && !titleActions.querySelector("[data-validate-playlist]")) {
+    titleActions.insertAdjacentHTML("afterbegin", `<button class="small-button" data-validate-playlist title="Validar">?</button><button class="small-button" data-dedupe-playlist title="Duplicados">D</button><button class="small-button" data-export-playlist title="Exportar CSV">CSV</button>`);
+  }
+  const addButton = $("[data-add-track]", editor);
+  if (addButton && !editor.querySelector("[data-search-add-track]")) {
+    addButton.insertAdjacentHTML("afterend", `<button class="button ghost wide" data-search-add-track>Buscar y elegir candidato</button>`);
+  }
+  $$(".track-row", editor).forEach((row) => {
+    const actions = $(".track-actions", row);
+    if (actions && !actions.querySelector("[data-edit-user-metadata]")) {
+      actions.insertAdjacentHTML("afterbegin", `<button class="small-button" data-edit-user-metadata title="Metadata">M</button><button class="small-button" data-match-track title="Seleccionar candidato">S</button>`);
+    }
+  });
 }
 
 function openForm({ eyebrow, title, fields, submitLabel = "Guardar", onSubmit }) {
@@ -520,6 +627,103 @@ function addTrackDialog(playlist) {
   });
 }
 
+function showPlaylistPanel(html) {
+  const panel = $("#playlist-issues") || (() => {
+    const node = document.createElement("div");
+    node.id = "playlist-issues";
+    node.className = "queue-panel";
+    $("#playlist-editor .editor-title")?.after(node);
+    return node;
+  })();
+  panel.hidden = false;
+  panel.innerHTML = html;
+}
+
+async function validateSelectedPlaylist(playlist) {
+  const result = await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/validate`);
+  showPlaylistPanel(`
+    <p class="eyebrow">Validacion</p>
+    <div class="setting-row"><span>Resolved</span><strong>${escapeHtml(result.summary.resolved)}</strong></div>
+    <div class="setting-row"><span>Unresolved</span><strong>${escapeHtml(result.summary.unresolved)}</strong></div>
+    <div class="setting-row"><span>Ambiguous</span><strong>${escapeHtml(result.summary.ambiguous)}</strong></div>
+    ${result.issues?.slice(0, 12).map((issue) => `<div class="queue-item"><span>${escapeHtml(issue.severity)}</span><span><strong>${escapeHtml(issue.type)}</strong><small>${escapeHtml(issue.message)}</small></span></div>`).join("") || `<p class="muted">Sin incidencias.</p>`}`);
+}
+
+async function dedupeSelectedPlaylist(playlist) {
+  const result = await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/deduplicate`, {
+    method: "POST",
+    body: JSON.stringify({ dry_run: true })
+  });
+  showPlaylistPanel(result.groups?.length
+    ? result.groups.map((group) => `<div class="queue-item"><span>${escapeHtml(group.tracks.length)}</span><span><strong>${escapeHtml(group.match_key)}</strong><small>Conservar: ${escapeHtml(group.suggested_keep_track_id)}</small></span></div>`).join("")
+    : `<p class="muted">No se detectaron duplicados probables.</p>`);
+}
+
+async function exportSelectedPlaylist(playlist) {
+  const response = await fetch(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/export?format=csv`, {
+    headers: { Authorization: `Bearer ${state.token}` }
+  });
+  if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+  const csv = await response.text();
+  showPlaylistPanel(`<p class="eyebrow">CSV</p><textarea readonly rows="8">${escapeHtml(csv)}</textarea>`);
+}
+
+function editUserMetadataDialog(playlist, track) {
+  openForm({
+    eyebrow: "Metadata libre",
+    title: track.title || track.query,
+    fields: `<label>JSON<textarea name="json" rows="8">${escapeHtml(JSON.stringify(track.user_metadata || {}, null, 2))}</textarea></label>`,
+    submitLabel: "Guardar metadata",
+    onSubmit: async (data) => {
+      await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/tracks/${encodeURIComponent(track.track_id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...track, user_metadata: JSON.parse(data.json || "{}") })
+      });
+      toast("Metadata guardada");
+      await loadPlaylists();
+    }
+  });
+}
+
+function searchCandidateDialog(playlist, track = null) {
+  openForm({
+    eyebrow: "Busqueda avanzada",
+    title: track ? `Seleccionar para ${track.title || track.query}` : `Anadir a ${playlist.name}`,
+    fields: `<label>Query<input name="query" required value="${escapeHtml(track?.query || "")}"></label><label>User metadata JSON<textarea name="user_metadata" rows="4">{}</textarea></label><div id="candidate-results" class="playlist-list"></div>`,
+    submitLabel: "Buscar",
+    onSubmit: async (data) => {
+      const search = await api("/api/roon/media/search", {
+        method: "POST",
+        body: JSON.stringify({ query: data.query, types: ["track"], count: 10 })
+      });
+      const results = search.results || [];
+      $("#candidate-results").innerHTML = results.length
+        ? results.map((result) => `<button type="button" class="playlist-row" data-result="${escapeHtml(result.result_id)}"><span><strong>${escapeHtml(result.title)}</strong><small>${escapeHtml([result.artist, result.album, result.version_hint, result.source].filter(Boolean).join(" / "))}</small></span><span class="count">${escapeHtml(result.match_score)} ${escapeHtml(result.confidence)}</span></button>`).join("")
+        : `<div class="empty-state">Sin candidatos. Prueba una busqueda mas amplia.</div>`;
+      $("#candidate-results").onclick = async (event) => {
+        const row = event.target.closest("[data-result]");
+        if (!row) return;
+        const userMetadata = JSON.parse(data.user_metadata || "{}");
+        if (track) {
+          await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/tracks/${encodeURIComponent(track.track_id)}/match`, {
+            method: "POST",
+            body: JSON.stringify({ result_id: row.dataset.result, selection_reason: "portal_manual_selection" })
+          });
+        } else {
+          await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/tracks/from-search-result`, {
+            method: "POST",
+            body: JSON.stringify({ result_id: row.dataset.result, user_metadata: userMetadata })
+          });
+        }
+        $("#form-dialog").close();
+        toast("Candidato aplicado");
+        await loadPlaylists();
+      };
+      throw new Error("Elige un candidato de la lista para aplicar.");
+    }
+  });
+}
+
 async function reorderTrack(playlist, trackId, direction) {
   const ids = playlist.tracks.map((track) => track.track_id);
   const index = ids.indexOf(trackId);
@@ -548,6 +752,165 @@ async function loadKeys() {
 }
 
 async function loadPresets() {
+  const [presets, limits, outputs, zones] = await Promise.all([
+    api("/api/zone-presets"),
+    api("/api/volume-limits"),
+    api("/api/roon/outputs"),
+    state.zones.length ? Promise.resolve(state.zones) : api("/api/roon/zones")
+  ]);
+  state.presets = presets;
+  state.volumeLimits = limits;
+  state.outputs = outputs;
+  state.zones = zones;
+  $("#preset-list").innerHTML = presets.length
+    ? presets.map((preset) => {
+      const volumeText = preset.volumes?.map((item) => `${item.target_ref.value}: ${item.volume}`).join(" · ") || "Sin volúmenes";
+      return `
+      <div class="preset-card" data-preset="${escapeHtml(preset.preset_id)}">
+        <span><strong>${escapeHtml(preset.virtual_zone?.display_name || preset.name)}</strong><small>${escapeHtml(preset.description || volumeText)}</small></span>
+        <span class="track-actions"><button class="small-button" data-preview-preset>Preview</button><button class="button primary" data-apply-preset>Aplicar</button><button class="small-button" data-edit-preset>Editar</button><button class="small-button" data-delete-preset>×</button></span>
+      </div>`;
+    }).join("")
+    : `<div class="empty-state">No hay presets. Crea uno con una o mÃ¡s zonas u outputs.</div>`;
+  $("#output-volume-list").innerHTML = `
+    <div class="section-toolbar"><div><p class="muted">LÃ­mites generales y con horario. Se aplican a cambios de volumen y presets.</p></div><button class="button primary" data-new-volume-limit>+ Nuevo lÃ­mite</button></div>
+    ${limits.length ? limits.map((limit) => `
+      <div class="volume-settings-row" data-volume-limit="${escapeHtml(limit.limit_id)}">
+        <strong>${escapeHtml(limit.name)}</strong>
+        <span class="muted">${escapeHtml(limit.target_ref.type)} · ${escapeHtml(limit.target_ref.value)} · max ${escapeHtml(limit.safe_max)}</span>
+        <span class="muted">${limit.schedule ? `${escapeHtml(limit.schedule.days.join(","))} ${escapeHtml(limit.schedule.from)}-${escapeHtml(limit.schedule.to)}` : "General"}</span>
+        <span><button class="small-button" data-test-volume-limit>Probar</button><button class="small-button" data-edit-volume-limit>Editar</button><button class="small-button" data-delete-volume-limit>×</button></span>
+      </div>`).join("") : `<div class="empty-state">TodavÃ­a no hay lÃ­mites configurados.</div>`}`;
+}
+
+function targetOptions(includeGlobal = false) {
+  const outputOptions = (state.outputs || []).map((output) =>
+    `<option value="output_id:${escapeHtml(output.output_id)}">Output · ${escapeHtml(output.display_name)}</option>`
+  );
+  const zoneOptions = (state.zones || []).map((zone) =>
+    `<option value="zone_id:${escapeHtml(zone.zone_id)}">Zona · ${escapeHtml(zone.display_name)}</option>`
+  );
+  return [
+    ...(includeGlobal ? [`<option value="global:global">Global</option>`] : []),
+    ...outputOptions,
+    ...zoneOptions
+  ].join("");
+}
+
+function splitTarget(value) {
+  const [type, ...rest] = String(value || "").split(":");
+  return { type, value: rest.join(":") };
+}
+
+function presetDialog(preset = null) {
+  const editing = Boolean(preset);
+  const members = new Set((preset?.grouping?.members || []).map((item) => `${item.type}:${item.value}`));
+  const primaryValue = preset?.grouping?.primary_zone_ref
+    ? `${preset.grouping.primary_zone_ref.type}:${preset.grouping.primary_zone_ref.value}`
+    : "";
+  const volumeRows = (preset?.volumes?.length ? preset.volumes : [{ target_ref: null, volume: "" }])
+    .map((item) => `<div class="wide-row preset-volume-row">
+      <select name="volume_target">${targetOptions(false)}</select>
+      <input name="volume_value" type="number" min="0" step="1" value="${escapeHtml(item.volume ?? "")}" placeholder="Volumen">
+    </div>`)
+    .join("");
+  openForm({
+    eyebrow: "Zona virtual",
+    title: editing ? "Editar preset" : "Crear preset de zonas",
+    fields: `<label>Nombre<input name="name" required maxlength="80" value="${escapeHtml(preset?.name || "")}"></label>
+      <label>DescripciÃ³n<textarea name="description" maxlength="240">${escapeHtml(preset?.description || "")}</textarea></label>
+      <label><span><input type="checkbox" name="grouping_enabled" value="yes" ${preset?.grouping?.enabled === false ? "" : "checked"}> Agrupar al aplicar</span></label>
+      <label>Zona/output principal<select name="primary">${targetOptions(false)}</select></label>
+      <fieldset><legend>Miembros</legend><div class="check-list">${(state.outputs || []).map((output) => {
+        const value = `output_id:${output.output_id}`;
+        return `<label><input type="checkbox" name="member_${escapeHtml(value)}" value="yes" ${members.has(value) ? "checked" : ""}> ${escapeHtml(output.display_name)}</label>`;
+      }).join("")}</div></fieldset>
+      <fieldset><legend>VolÃºmenes</legend>${volumeRows}<p class="muted">Este preset no reproducirÃ¡ mÃºsica; solo ajustarÃ¡ zonas/volumen.</p></fieldset>`,
+    submitLabel: editing ? "Actualizar preset" : "Guardar preset",
+    onSubmit: async (data) => {
+      const memberRefs = Object.keys(data)
+        .filter((key) => key.startsWith("member_") && data[key] === "yes")
+        .map((key) => splitTarget(key.slice("member_".length)));
+      const volumeTargets = $$("select[name=volume_target]", $("#dialog-fields"));
+      const volumeValues = $$("input[name=volume_value]", $("#dialog-fields"));
+      const volumes = volumeTargets.map((select, index) => ({
+        target_ref: splitTarget(select.value),
+        volume: Number(volumeValues[index].value)
+      })).filter((item) => Number.isFinite(item.volume));
+      const payload = {
+        name: data.name,
+        description: data.description,
+        virtual_zone: { enabled: true, display_name: data.name, show_in_portal: true, show_in_roon_if_supported: false },
+        grouping: {
+          enabled: data.grouping_enabled === "yes",
+          primary_zone_ref: splitTarget(data.primary),
+          members: memberRefs.length ? memberRefs : [splitTarget(data.primary)]
+        },
+        volumes,
+        playback: { action: "keep_current" },
+        queue: { action: "keep_current" }
+      };
+      await api(editing ? `/api/zone-presets/${encodeURIComponent(preset.preset_id)}` : "/api/zone-presets", {
+        method: editing ? "PUT" : "POST",
+        body: JSON.stringify(payload)
+      });
+      toast(editing ? "Preset actualizado" : "Preset creado");
+      await loadPresets();
+    }
+  });
+  if (primaryValue) $("#dialog-fields select[name=primary]").value = primaryValue;
+  (preset?.volumes || []).forEach((item, index) => {
+    const select = $$("select[name=volume_target]", $("#dialog-fields"))[index];
+    if (select) select.value = `${item.target_ref.type}:${item.target_ref.value}`;
+  });
+}
+
+function volumeLimitDialog(limit = null) {
+  const editing = Boolean(limit);
+  openForm({
+    eyebrow: "LÃ­mite seguro",
+    title: editing ? "Editar lÃ­mite" : "Crear lÃ­mite de volumen",
+    fields: `<label>Nombre<input name="name" required maxlength="80" value="${escapeHtml(limit?.name || "General")}"></label>
+      <label>Target<select name="target">${targetOptions(true)}</select></label>
+      <label>Safe max<input name="safe_max" type="number" min="1" step="1" required value="${escapeHtml(limit?.safe_max || "")}"></label>
+      <label><span><input type="checkbox" name="scheduled" value="yes" ${limit?.schedule ? "checked" : ""}> LÃ­mite con horario</span></label>
+      <label>DÃ­as<input name="days" placeholder="mon,tue,wed,thu,fri,sat,sun" value="${escapeHtml(limit?.schedule?.days?.join(",") || "mon,tue,wed,thu,fri,sat,sun")}"></label>
+      <label>Desde<input name="from" placeholder="22:30" value="${escapeHtml(limit?.schedule?.from || "")}"></label>
+      <label>Hasta<input name="to" placeholder="08:00" value="${escapeHtml(limit?.schedule?.to || "")}"></label>`,
+    submitLabel: editing ? "Actualizar lÃ­mite" : "Guardar lÃ­mite",
+    onSubmit: async (data) => {
+      const schedule = data.scheduled === "yes"
+        ? { timezone: "Europe/Madrid", days: data.days.split(",").map((item) => item.trim()).filter(Boolean), from: data.from, to: data.to }
+        : null;
+      const payload = {
+        name: data.name,
+        target_ref: splitTarget(data.target),
+        safe_max: Number(data.safe_max),
+        schedule,
+        enabled: true
+      };
+      await api(editing ? `/api/volume-limits/${encodeURIComponent(limit.limit_id)}` : "/api/volume-limits", {
+        method: editing ? "PUT" : "POST",
+        body: JSON.stringify(payload)
+      });
+      toast(editing ? "LÃ­mite actualizado" : "LÃ­mite creado");
+      await loadPresets();
+    }
+  });
+  if (limit) $("#dialog-fields select[name=target]").value = `${limit.target_ref.type}:${limit.target_ref.value}`;
+}
+
+async function testVolumeLimit(limit) {
+  const requested = Number(prompt("Volumen solicitado a probar", String(limit.safe_max)));
+  if (!Number.isFinite(requested)) return;
+  const result = await api("/api/volume-limits/evaluate", {
+    method: "POST",
+    body: JSON.stringify({ target_ref: limit.target_ref, requested_volume: requested })
+  });
+  toast(result.policy_result === "allowed" ? "PolÃ­tica permitida" : `PolÃ­tica: ${result.policy_result}`, result.policy_result === "allowed" ? "ok" : "error");
+}
+
+async function loadLegacyOutputVolumeSettingsUnused() {
   const [presets, volumes, outputs] = await Promise.all([
     api("/api/admin/zone-presets"),
     api("/api/admin/output-volumes"),
@@ -578,6 +941,11 @@ async function loadPresets() {
 }
 
 function newPresetDialog() {
+  if (state.volumeLimits !== undefined) {
+    if (!state.outputs?.length) { toast("No hay outputs disponibles", "error"); return; }
+    presetDialog();
+    return;
+  }
   if (!state.outputs?.length) {
     toast("No hay outputs disponibles", "error");
     return;
@@ -614,6 +982,34 @@ $("#preset-list").addEventListener("click", async (event) => {
   const card = event.target.closest("[data-preset]");
   if (!card) return;
   try {
+    const preset = state.presets.find((item) => item.preset_id === card.dataset.preset);
+    if (event.target.closest("[data-preview-preset]")) {
+      const result = await api(`/api/zone-presets/${encodeURIComponent(card.dataset.preset)}/dry-run`, {
+        method: "POST", body: "{}"
+      });
+      const blocked = result?.planned_changes?.volumes?.find((item) => item.policy?.requires_confirmation);
+      toast(blocked ? `Este preset supera el limite seguro activo para ${blocked.output_name}.` : "Preview correcto: no reproducira musica.", blocked ? "error" : "ok");
+      return;
+    }
+    if (event.target.closest("[data-edit-preset]")) {
+      presetDialog(preset);
+      return;
+    }
+    if (state.volumeLimits !== undefined && event.target.closest("[data-apply-preset]")) {
+      if (!confirm("Este preset no reproducira musica; solo ajustara zonas/volumen. Aplicar?")) return;
+      const result = await api(`/api/zone-presets/${encodeURIComponent(card.dataset.preset)}/apply`, {
+        method: "POST", body: "{}"
+      });
+      toast(result.requires_confirmation ? result.human_summary : "Preset aplicado");
+      return;
+    }
+    if (state.volumeLimits !== undefined && event.target.closest("[data-delete-preset]")) {
+      if (!confirm("Eliminar este preset?")) return;
+      await api(`/api/zone-presets/${encodeURIComponent(card.dataset.preset)}`, { method: "DELETE" });
+      toast("Preset eliminado");
+      await loadPresets();
+      return;
+    }
     if (event.target.closest("[data-apply-preset]")) {
       if (!confirm("RoonIA pausará las zonas afectadas y restaurará la agrupación del preset. ¿Aplicar?")) return;
       await api(`/api/admin/zone-presets/${encodeURIComponent(card.dataset.preset)}/apply`, {
@@ -632,6 +1028,25 @@ $("#preset-list").addEventListener("click", async (event) => {
   } catch (error) { toast(error.message, "error"); }
 });
 $("#output-volume-list").addEventListener("click", async (event) => {
+  if (event.target.closest("[data-new-volume-limit]")) {
+    volumeLimitDialog();
+    return;
+  }
+  const limitRow = event.target.closest("[data-volume-limit]");
+  if (limitRow) {
+    const limit = state.volumeLimits.find((item) => item.limit_id === limitRow.dataset.volumeLimit);
+    try {
+      if (event.target.closest("[data-test-volume-limit]")) await testVolumeLimit(limit);
+      if (event.target.closest("[data-edit-volume-limit]")) volumeLimitDialog(limit);
+      if (event.target.closest("[data-delete-volume-limit]")) {
+        if (!confirm("Eliminar este limite?")) return;
+        await api(`/api/volume-limits/${encodeURIComponent(limit.limit_id)}`, { method: "DELETE" });
+        toast("Limite eliminado");
+        await loadPresets();
+      }
+    } catch (error) { toast(error.message, "error"); }
+    return;
+  }
   const row = event.target.closest("[data-volume-output]");
   if (!row) return;
   const outputId = row.dataset.volumeOutput;
@@ -946,6 +1361,87 @@ $("#group-submit").addEventListener("click", async () => {
   finally { setBusy($("#group-submit"), false); }
 });
 
+$("#widget-refresh")?.addEventListener("click", async () => {
+  try { await loadWidgets(); toast("Widgets actualizados"); }
+  catch (error) { toast(error.message, "error"); }
+});
+$("#widget-now-playing")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-widget-now]");
+  const card = event.target.closest("[data-zone]");
+  if (!button || !card) return;
+  try {
+    const result = await api("/api/widgets/now-playing/action", {
+      method: "POST",
+      body: JSON.stringify({ action: button.dataset.widgetNow, zone_id: card.dataset.zone })
+    });
+    if (result.requires_confirmation) {
+      toast(result.human_summary || "La acción requiere confirmación", "error");
+      return;
+    }
+    toast("Acción enviada");
+    await loadWidgets();
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#widget-playlists")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-widget-open-playlist]");
+  if (!button) return;
+  try {
+    const detail = await api(`/api/widgets/playlists/${encodeURIComponent(button.dataset.widgetOpenPlaylist)}`);
+    renderWidgetPlaylistDetail(detail);
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#widget-playlist-detail")?.addEventListener("click", async (event) => {
+  const playlistId = $("#widget-playlist-detail").dataset.playlist;
+  if (!playlistId) return;
+  const playlistAction = event.target.closest("[data-widget-playlist-action]");
+  const trackAction = event.target.closest("[data-widget-track]");
+  const trackRow = event.target.closest("[data-track]");
+  if (!playlistAction && !trackAction) return;
+  try {
+    await api("/api/widgets/playlists/action", {
+      method: "POST",
+      body: JSON.stringify({
+        action: playlistAction?.dataset.widgetPlaylistAction || trackAction.dataset.widgetTrack,
+        playlist_id: playlistId,
+        track_id: trackRow?.dataset.track,
+        zone_id: widgetSelectedZone()
+      })
+    });
+    toast("Playlist enviada a Roon");
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#widget-search-submit")?.addEventListener("click", async () => {
+  try {
+    const type = $("#widget-search-type").value;
+    const payload = await api("/api/widgets/search", {
+      method: "POST",
+      body: JSON.stringify({
+        query: $("#widget-search-query").value,
+        types: type ? [type] : undefined,
+        zone_id: widgetSelectedZone()
+      })
+    });
+    renderWidgetSearch(payload);
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#widget-search-results")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-widget-search]");
+  const row = event.target.closest("[data-result]");
+  if (!button || !row) return;
+  try {
+    const result = await api("/api/widgets/search/action", {
+      method: "POST",
+      body: JSON.stringify({
+        action: button.dataset.widgetSearch,
+        result_id: row.dataset.result,
+        zone_id: widgetSelectedZone()
+      })
+    });
+    if (result.widget) renderWidgetSearch(result.widget);
+    toast("Acción de búsqueda completada");
+  } catch (error) { toast(error.message, "error"); }
+});
+
 $("#new-playlist").addEventListener("click", newPlaylistDialog);
 $("#playlist-list").addEventListener("click", (event) => {
   const row = event.target.closest("[data-playlist]");
@@ -960,6 +1456,10 @@ $("#playlist-editor").addEventListener("click", async (event) => {
   try {
     if (event.target.closest("[data-edit-playlist]")) editPlaylistDialog(playlist);
     if (event.target.closest("[data-add-track]")) addTrackDialog(playlist);
+    if (event.target.closest("[data-validate-playlist]")) await validateSelectedPlaylist(playlist);
+    if (event.target.closest("[data-dedupe-playlist]")) await dedupeSelectedPlaylist(playlist);
+    if (event.target.closest("[data-export-playlist]")) await exportSelectedPlaylist(playlist);
+    if (event.target.closest("[data-search-add-track]")) searchCandidateDialog(playlist);
     if (event.target.closest("[data-delete-playlist]")) {
       if (!confirm(`¿Eliminar “${playlist.name}” y todas sus pistas?`)) return;
       await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}`, { method: "DELETE" });
@@ -969,6 +1469,9 @@ $("#playlist-editor").addEventListener("click", async (event) => {
     }
     const trackRow = event.target.closest("[data-track]");
     const move = event.target.closest("[data-move]");
+    const track = trackRow ? playlist.tracks.find((item) => item.track_id === trackRow.dataset.track) : null;
+    if (trackRow && event.target.closest("[data-edit-user-metadata]") && track) editUserMetadataDialog(playlist, track);
+    if (trackRow && event.target.closest("[data-match-track]") && track) searchCandidateDialog(playlist, track);
     if (trackRow && move) await reorderTrack(playlist, trackRow.dataset.track, Number(move.dataset.move));
     if (trackRow && event.target.closest("[data-delete-track]")) {
       await api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}/tracks/${encodeURIComponent(trackRow.dataset.track)}`, { method: "DELETE" });

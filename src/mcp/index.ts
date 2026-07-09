@@ -7,6 +7,8 @@ import { createStderrLogger } from "../utils/logger";
 import { startMcpServer } from "./server";
 import { createDatabase } from "../db/database";
 import { SystemManagementService } from "../services/systemManagementService";
+import { ZonePresetService } from "../services/zonePresetService";
+import { VolumeLimitService } from "../services/volumeLimitService";
 
 const config = {
   ...loadConfig(),
@@ -27,6 +29,8 @@ const database = createDatabase(config);
 const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
+const zonePresetService = new ZonePresetService(config, database);
+const volumeLimitService = new VolumeLimitService(config, database);
 
 roonClient.start();
 
@@ -36,7 +40,9 @@ startMcpServer({
   roonClient,
   playlistService,
   oauthService,
-  mediaService
+  mediaService,
+  zonePresetService,
+  volumeLimitService
 }).catch((error) => {
   logger.error("MCP server failed", {
     message: error instanceof Error ? error.message : String(error),

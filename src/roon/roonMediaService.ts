@@ -16,6 +16,8 @@ export type MediaType = "track" | "album" | "artist" | "playlist";
 export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
+export type SearchStrategy = "broaden" | "remove_context" | "artist_only" | "title_only" | "fuzzy" | "all";
+export type VersionHint = "studio" | "live" | "remix" | "cover" | "unknown";
 
 export type MediaQuality = {
   label: string;
@@ -33,6 +35,7 @@ export type MediaResult = {
   artist: string | null;
   album: string | null;
   album_artist: string | null;
+  version_hint: VersionHint;
   subtitle: string | null;
   image_key: string | null;
   source: MediaSource;
@@ -40,6 +43,11 @@ export type MediaResult = {
   quality: MediaQuality | null;
   is_library: boolean | null;
   playable: boolean;
+  match_score: number;
+  confidence: "high" | "medium" | "low";
+  match_reasons: string[];
+  match_penalties: string[];
+  warnings: string[];
   expires_at: string;
 };
 
@@ -55,6 +63,15 @@ export type SearchMediaRequest = {
   zoneId?: string;
   count?: number;
   sourcePreference?: SourcePreference;
+  strategy?: SearchStrategyOptions;
+};
+
+export type SearchStrategyOptions = {
+  source_preference?: SourcePreference;
+  avoid_live?: boolean;
+  avoid_remix?: boolean;
+  avoid_cover?: boolean;
+  prefer_original_album?: boolean;
 };
 
 const CATEGORY_TITLE: Record<MediaType, string[]> = {
@@ -287,6 +304,20 @@ function sourceScore(source: MediaSource, preference: SourcePreference): number 
   return source === "tidal" ? 20 : source === "qobuz" ? 15 : source === "library" ? 10 : 0;
 }
 
+function confidenceFromScore(score: number): "high" | "medium" | "low" {
+  if (score >= 75) return "high";
+  if (score >= 60) return "medium";
+  return "low";
+}
+
+function inferVersionHint(title: string, subtitle: string | null): VersionHint {
+  const text = normalize(`${title} ${subtitle || ""}`);
+  if (/\blive\b|\ben vivo\b|\bdirecto\b/.test(text)) return "live";
+  if (/\bremix\b|\bmix\b|\brework\b/.test(text)) return "remix";
+  if (/\bcover\b|\bversion\b|\btribute\b/.test(text)) return "cover";
+  return "studio";
+}
+
 export function mediaRelevanceScore(result: MediaResult, query: string): number {
   const normalizedQuery = normalize(query);
   const title = normalize(result.title);
@@ -327,80 +358,117 @@ export function scoreSearchResult(
     title?: string | null;
     artist?: string | null;
     sourcePreference?: SourcePreference;
+    strategy?: SearchStrategyOptions;
   }
-): { score: number; reasons: string[] } {
+): { score: number; confidence: "high" | "medium" | "low"; reasons: string[]; penalties: string[] } {
   const preference = request.sourcePreference || "highest_quality";
+  const strategy = request.strategy || {};
   const query = normalize(request.query);
   const title = request.title ? normalize(request.title) : "";
   const artist = request.artist ? normalize(request.artist) : "";
   const resultTitle = normalize(result.title);
   const resultSubtitle = normalize(result.subtitle || "");
   const reasons: string[] = [];
+  const penalties: string[] = [];
   let score = 0;
 
   if (result.media_type === "track") {
-    score += 3000;
-    reasons.push("track result");
+    score += 18;
+    reasons.push("type_match", "track result");
   }
 
   if (result.playable) {
-    score += 2500;
+    score += 18;
     reasons.push("playable");
   }
 
   if (title) {
     if (resultTitle === title) {
-      score += 2500;
-      reasons.push("exact title");
+      score += 28;
+      reasons.push("exact_title", "exact title");
     } else if (resultTitle.includes(title) || title.includes(resultTitle)) {
-      score += 1400;
-      reasons.push("partial title");
+      score += 14;
+      reasons.push("partial_title", "partial title");
+      penalties.push("title_partial");
     }
   }
 
   if (artist) {
     if (resultSubtitle === artist || resultSubtitle.includes(artist)) {
-      score += 1800;
-      reasons.push("artist match");
+      score += 20;
+      reasons.push("artist_match", "artist match");
     } else {
       const artistTokens = artist.split(" ").filter((token) => token.length > 2);
       const matched = artistTokens.filter((token) => resultSubtitle.includes(token)).length;
       if (matched > 0) {
-        score += matched * 250;
-        reasons.push("artist token match");
+        score += Math.min(10, matched * 3);
+        reasons.push("artist_token_match");
+      } else {
+        score -= 15;
+        penalties.push("artist_mismatch");
       }
     }
   }
 
   if (query) {
     const relevance = mediaRelevanceScore(result, query);
-    score += relevance;
-    if (relevance > 0) reasons.push("query relevance");
+    const normalizedRelevance = Math.min(18, Math.round(relevance / 180));
+    score += normalizedRelevance;
+    if (relevance > 0) reasons.push("query_relevance");
+    const queryTokens = query.split(" ").filter((token) => token.length > 2);
+    const titleMatches = queryTokens.filter((token) => resultTitle.includes(token)).length;
+    const subtitleMatches = queryTokens.filter((token) => resultSubtitle.includes(token)).length;
+    const tokenScore = result.media_type === "track"
+      ? Math.min(45, titleMatches * 7 + subtitleMatches * 6)
+      : Math.min(18, titleMatches * 3 + subtitleMatches * 2);
+    if (tokenScore > 0) {
+      score += tokenScore;
+      reasons.push("query_token_match");
+    }
   }
 
   const quality = qualityScore(result.quality);
   if (quality > 0) {
-    score += quality;
-    reasons.push("quality metadata");
+    score += Math.min(6, Math.round(quality / 500));
+    reasons.push("quality_metadata");
   }
 
   const source = sourceScore(result.source, preference);
   if (source > 0) {
-    score += source;
-    reasons.push(`${result.source} source`);
+    score += Math.min(5, source);
+    reasons.push(`${result.source}_source`);
   }
 
   if (result.media_type !== "track") {
-    score -= 1500;
-    reasons.push("non-track penalty");
+    score -= 25;
+    penalties.push("non_track");
   }
 
   if (!result.playable) {
-    score -= 3000;
-    reasons.push("not playable penalty");
+    score -= 30;
+    penalties.push("not_playable");
   }
 
-  return { score, reasons };
+  if (strategy.avoid_live && result.version_hint === "live") {
+    score -= 18;
+    penalties.push("live_version");
+  }
+  if (strategy.avoid_remix && result.version_hint === "remix") {
+    score -= 18;
+    penalties.push("remix_version");
+  }
+  if (strategy.avoid_cover && result.version_hint === "cover") {
+    score -= 18;
+    penalties.push("cover_version");
+  }
+
+  const bounded = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    score: bounded,
+    confidence: confidenceFromScore(bounded),
+    reasons,
+    penalties
+  };
 }
 
 function titleMatchesCategory(title: string, type: MediaType): boolean {
@@ -485,6 +553,9 @@ export class RoonMediaService {
     query: string;
     source_preference: SourcePreference;
     results: MediaResult[];
+    ambiguous: boolean;
+    recommended_result_id: string | null;
+    selection_required: boolean;
     warnings: string[];
   }> {
     const query = request.query.trim().replace(/\s+/g, " ");
@@ -524,12 +595,106 @@ export class RoonMediaService {
         mediaResultScore(b, preference, query) -
         mediaResultScore(a, preference, query)
     );
+    const scored = results.map((result) => this.withMatchScoring(result, {
+      query,
+      sourcePreference: preference,
+      strategy: request.strategy
+    }));
+    scored.sort((a, b) => b.match_score - a.match_score);
+    const best = scored[0] || null;
+    const second = scored[1] || null;
+    const ambiguous = Boolean(
+      best &&
+      second &&
+      second.match_score >= 60 &&
+      Math.abs(best.match_score - second.match_score) <= 30
+    );
 
     return {
       query,
       source_preference: preference,
-      results,
+      results: scored,
+      ambiguous,
+      recommended_result_id: best?.result_id || null,
+      selection_required: ambiguous || Boolean(best && best.confidence !== "high"),
       warnings
+    };
+  }
+
+  async expandSearch(request: {
+    originalQuery: string;
+    previousQuery?: string;
+    types?: MediaType[];
+    strategy?: SearchStrategy;
+    count?: number;
+    zoneId?: string;
+    sourcePreference?: SourcePreference;
+  }): Promise<{
+    ok: true;
+    original_query: string;
+    attempts: Array<{ query: string; strategy: SearchStrategy; results_count: number; results: MediaResult[] }>;
+    best_candidates: MediaResult[];
+  }> {
+    const original = request.originalQuery.trim().replace(/\s+/g, " ");
+    const strategies: SearchStrategy[] = request.strategy && request.strategy !== "all"
+      ? [request.strategy]
+      : ["broaden", "remove_context", "title_only", "artist_only", "fuzzy"];
+    const queries = new Map<string, SearchStrategy>();
+    const add = (query: string, strategy: SearchStrategy) => {
+      const normalizedQuery = query.trim().replace(/\s+/g, " ");
+      if (normalizedQuery) queries.set(normalizedQuery, strategy);
+    };
+
+    for (const strategy of strategies) {
+      if (strategy === "broaden") add(request.previousQuery || original, strategy);
+      if (strategy === "remove_context") {
+        add(original.replace(/\b(peaky blinders|soundtrack|episode|scene|temporada|capitulo|capítulo)\b/gi, " "), strategy);
+      }
+      if (strategy === "title_only") {
+        add(original.replace(/\b(by|de|feat\.?|featuring|peaky blinders|soundtrack)\b.*$/i, " "), strategy);
+      }
+      if (strategy === "artist_only") {
+        const words = original.split(/\s+/);
+        if (words.length > 2) add(words.slice(-3).join(" "), strategy);
+      }
+      if (strategy === "fuzzy") add(original.replace(/[^\p{L}\p{N}\s]/gu, " "), strategy);
+    }
+
+    const attempts: Array<{ query: string; strategy: SearchStrategy; results_count: number; results: MediaResult[] }> = [];
+    const allResults: MediaResult[] = [];
+    for (const [query, strategy] of queries.entries()) {
+      const payload = await this.search({
+        query,
+        types: request.types,
+        zoneId: request.zoneId,
+        count: request.count || 25,
+        sourcePreference: request.sourcePreference
+      });
+      attempts.push({
+        query,
+        strategy,
+        results_count: payload.results.length,
+        results: payload.results
+      });
+      allResults.push(...payload.results);
+    }
+
+    const seen = new Set<string>();
+    const bestCandidates = allResults
+      .sort((a, b) => b.match_score - a.match_score)
+      .filter((result) => {
+        const key = result.roon_item_key || `${result.title}|${result.subtitle}|${result.source}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, request.count || 25);
+
+    return {
+      ok: true,
+      original_query: original,
+      attempts,
+      best_candidates: bestCandidates
     };
   }
 
@@ -712,6 +877,7 @@ export class RoonMediaService {
       (typeof item.subtitle === "string" ? item.subtitle : null);
     const album = pickNestedString(item, ["album", "album_name"]);
     const albumArtist = pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"]);
+    const subtitle = typeof item.subtitle === "string" ? item.subtitle : null;
     const reference: MediaReference = {
       result_id: resultId,
       type,
@@ -721,13 +887,19 @@ export class RoonMediaService {
       artist,
       album,
       album_artist: albumArtist,
-      subtitle: typeof item.subtitle === "string" ? item.subtitle : null,
+      version_hint: inferVersionHint(String(item.title || ""), subtitle),
+      subtitle,
       image_key: typeof item.image_key === "string" ? item.image_key : null,
       source: source.source,
       source_confidence: source.confidence,
       quality,
       is_library: libraryFlag(source.source),
       playable: Boolean(item.item_key),
+      match_score: 0,
+      confidence: "low",
+      match_reasons: [],
+      match_penalties: [],
+      warnings: [],
       expires_at: expiresAt,
       query,
       ordinal,
@@ -737,6 +909,31 @@ export class RoonMediaService {
     return this.publicReference(reference);
   }
 
+  private withMatchScoring(
+    result: MediaResult,
+    request: {
+      query: string;
+      title?: string | null;
+      artist?: string | null;
+      sourcePreference?: SourcePreference;
+      strategy?: SearchStrategyOptions;
+    }
+  ): MediaResult {
+    const scoring = scoreSearchResult(result, request);
+    return {
+      ...result,
+      match_score: scoring.score,
+      confidence: scoring.confidence,
+      match_reasons: scoring.reasons,
+      match_penalties: scoring.penalties,
+      warnings: [
+        ...(result.source === "unknown" ? ["source_unknown"] : []),
+        ...(result.quality === null ? ["quality_unknown"] : []),
+        ...(result.is_library === null ? ["library_status_unknown"] : [])
+      ]
+    };
+  }
+
   private getReference(resultId: string): MediaReference {
     this.get(resultId);
     return this.references.get(resultId) as MediaReference;
@@ -744,12 +941,15 @@ export class RoonMediaService {
 
   private publicReference(reference: MediaReference): MediaResult {
     const {
-      query: _query,
+      query,
       ordinal: _ordinal,
       hierarchy: _hierarchy,
       ...result
     } = reference;
-    return result;
+    return this.withMatchScoring(result, {
+      query,
+      sourcePreference: "highest_quality"
+    });
   }
 
   private async resolveItem(

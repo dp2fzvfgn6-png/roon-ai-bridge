@@ -91,6 +91,41 @@ export function createMediaRouter(context: ApiContext): Router {
     }
   });
 
+  router.post("/media/search", async (req, res, next) => {
+    try {
+      res.json(
+        await context.mediaService.search({
+          query: optionalString(req.body?.query) || "",
+          types: Array.isArray(req.body?.types) ? req.body.types : parseTypes(req.body?.types),
+          zoneId: optionalString(req.body?.zone_id),
+          count: parseCount(req.body?.count, 10, 25),
+          sourcePreference: parseSourcePreference(req.body?.source_preference),
+          strategy: req.body?.strategy
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/media/search/expand", async (req, res, next) => {
+    try {
+      res.json(
+        await context.mediaService.expandSearch({
+          originalQuery: optionalString(req.body?.original_query) || "",
+          previousQuery: optionalString(req.body?.previous_query),
+          types: Array.isArray(req.body?.types) ? req.body.types : parseTypes(req.body?.types),
+          strategy: req.body?.strategy || "all",
+          count: parseCount(req.body?.count, 25, 25),
+          zoneId: optionalString(req.body?.zone_id),
+          sourcePreference: parseSourcePreference(req.body?.source_preference)
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/media/:result_id", (req, res, next) => {
     try {
       res.json(context.mediaService.get(req.params.result_id));

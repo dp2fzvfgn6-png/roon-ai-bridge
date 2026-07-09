@@ -79,6 +79,45 @@ Response:
 }
 ```
 
+## Phase 2 Virtual Playlists And Candidate Search
+
+Media search can now return scored candidates for manual selection:
+
+```bash
+curl -X POST http://localhost:3000/roon/media/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Red Right Hand Nick Cave","types":["track"],"count":10}'
+```
+
+Responses include `ambiguous`, `recommended_result_id`, `selection_required`,
+and per-result `match_score`, `confidence`, `match_reasons`,
+`match_penalties`, `version_hint`, `source`, `quality`, and `is_library`.
+Unknown Roon metadata is returned as `unknown`, `low`, `null`, or omitted
+rather than guessed.
+
+Broaden a search when the right candidate is missing:
+
+```bash
+curl -X POST http://localhost:3000/roon/media/search/expand \
+  -H "Content-Type: application/json" \
+  -d '{"original_query":"Red Right Hand Nick Cave Peaky Blinders soundtrack","types":["track"],"strategy":"all","count":25}'
+```
+
+Advanced playlist endpoints:
+
+- `GET /virtual-playlists/:playlist_id/validate`
+- `POST /virtual-playlists/:playlist_id/resolve`
+- `POST /virtual-playlists/:playlist_id/deduplicate`
+- `POST /virtual-playlists/:playlist_id/sort`
+- `GET /virtual-playlists/:playlist_id/export?format=json|csv|m3u`
+- `POST /virtual-playlists/import`
+- `POST /virtual-playlists/:playlist_id/tracks/:track_id/match`
+- `POST /virtual-playlists/:playlist_id/tracks/from-search-result`
+
+The existing `/playlists/...` routes expose the same behavior for portal
+compatibility. Track payloads preserve legacy `metadata` while also exposing
+separate `audio_metadata`, `user_metadata`, and `resolution` objects.
+
 ## Privacy Notice
 
 ```bash
@@ -110,6 +149,28 @@ Response:
 ```bash
 curl http://localhost:3000/roon/capabilities
 ```
+
+## Safety Policy
+
+The portal and external clients can inspect operational safety metadata:
+
+```bash
+curl http://localhost:3000/safety/policy
+```
+
+The response includes `version`, `volume_limits`, `tool_classification` and
+`confirmation_policy`. Volume limit entries already expose a `limits[]` shape so
+future time-windowed limits can be added without changing clients.
+
+Playback, queue, grouping, transfer and normal volume changes do not require
+confirmation. Confirmation is required only for destructive virtual playlist
+operations and for volume increases above the configured safe limit.
+
+Mutating MCP tools accept `dry_run:true` where supported. A dry run does not
+execute the action and returns a structured plan with `classification`,
+`planned_changes` and `warnings`. Destructive operations and unsafe volume
+raises return `requires_confirmation:true` with `confirm_payload` suitable for a
+portal confirmation modal.
 
 ## Library Browse
 
@@ -375,6 +436,10 @@ curl -X PUT http://localhost:3000/playlists/bad-bunny-test/tracks \
   -d '{"tracks":[{"query":"bad bunny dakiti","title":"Dákiti"},{"query":"bad bunny monaco","title":"MONACO"}]}'
 ```
 
+Full replacement is destructive and returns `requires_confirmation:true` unless
+`confirm:true` is supplied in the JSON body. Pass `dry_run:true` to preview the
+replacement without changing the playlist.
+
 Retry resolution for unresolved entries, or force re-resolution of all entries:
 
 ```bash
@@ -408,6 +473,10 @@ Remove a track:
 ```bash
 curl -X DELETE http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID>
 ```
+
+Deleting a playlist or removing a track requires confirmation. Without
+`confirm:true`, the response includes `confirmation_reason`, `human_summary`,
+`planned_action` and `confirm_payload`.
 
 Play or enqueue a virtual playlist:
 
@@ -666,6 +735,62 @@ curl -X POST http://localhost:3000/roon/zones/<ZONE_ID>/volume \
 ```
 
 The API checks whether the zone has outputs with Roon volume control.
+It always enforces Roon/device hard limits. RoonIA safe limits are evaluated in
+this order: stable `output_id`, output name, zone name, then global fallback.
+
+Initial safe limits:
+
+- Salon / Salón: `35`
+- Despacho: `35`
+- Cocina: `19`
+
+Volume responses include `volume_policy`:
+
+```json
+{
+  "safe_limit_applied": true,
+  "safe_limit": 35,
+  "hard_limit": 60,
+  "requires_confirmation": false,
+  "reason": "within_safe_limit"
+}
+```
+
+Increasing above the safe limit returns `requires_confirmation:true` unless
+`confirm:true` is supplied. Decreases and increases within the safe limit
+execute directly. Use `dry_run:true` to preview a volume change without sending
+it to Roon.
+
+## Zone Presets
+
+Presets are RoonIA-owned entities and portal-only virtual zones. They do not
+create real Roon zones.
+
+- `GET /zone-presets`
+- `POST /zone-presets`
+- `GET /zone-presets/:preset_id`
+- `PUT /zone-presets/:preset_id`
+- `DELETE /zone-presets/:preset_id`
+- `POST /zone-presets/:preset_id/apply`
+- `POST /zone-presets/:preset_id/dry-run`
+
+`apply` accepts `dry_run` and `confirm`. It returns resolved targets, planned
+grouping/volume changes, before/after snapshots and safe-volume warnings or
+confirmation requirements. Applying a preset does not start music or replace
+queues.
+
+## Volume Limits
+
+- `GET /volume-limits`
+- `POST /volume-limits`
+- `GET /volume-limits/:limit_id`
+- `PUT /volume-limits/:limit_id`
+- `DELETE /volume-limits/:limit_id`
+- `POST /volume-limits/evaluate`
+
+Limits resolve by `output_id`, `zone_id`, `output_name`, `zone_name`, then
+global fallback. Scheduled limits have priority over general limits for the
+same target. Overlapping schedules for the same target are rejected.
 
 ## Prepared 501 Endpoints
 
@@ -714,3 +839,47 @@ Planned error codes:
 - `INVALID_VOLUME_VALUE`
 - `NOT_IMPLEMENTED`
 - `INTERNAL_ERROR`
+## Widget endpoints
+
+RoonIA v0.15.0 exposes reusable widget contracts for ChatGPT Apps and the portal.
+These endpoints return JSON state/action contracts and never embed artwork as base64
+by default.
+
+- `GET /widgets/now-playing`
+- `POST /widgets/now-playing/action`
+- `GET /widgets/playlists`
+- `GET /widgets/playlists/:playlist_id`
+- `POST /widgets/playlists/action`
+- `GET /widgets/search`
+- `POST /widgets/search`
+- `POST /widgets/search/action`
+- `GET /media/albums/:result_id`
+- `GET /media/artists/:result_id`
+- `GET /roon/images/:image_key`
+- `GET /media/images/:image_key`
+
+The same contracts are available in the portal API under `/api/widgets/*`.
+
+Example now-playing payload:
+
+```json
+{
+  "widget_type": "now_playing",
+  "selected_zone_id": "1601...",
+  "zones": [
+    {
+      "zone_id": "1601...",
+      "display_name": "Despacho",
+      "state": "playing",
+      "now_playing": {
+        "title": "Everything In Its Right Place",
+        "artist": "Radiohead",
+        "album": "Kid A",
+        "image_key": "...",
+        "image_url": "/roon/images/..."
+      },
+      "actions": ["play_pause", "previous", "next", "volume_down", "volume_up"]
+    }
+  ]
+}
+```

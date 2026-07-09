@@ -3,6 +3,10 @@ import { ApiContext } from "../server";
 import { changeZoneVolume } from "../../roon/roonVolumeService";
 import { parseVolumeMode, parseVolumeValue } from "../../utils/validation";
 
+function parseBoolean(value: unknown): boolean {
+  return value === true || value === "true" || value === "1";
+}
+
 export function createVolumeRouter(context: ApiContext): Router {
   const router = Router();
 
@@ -28,7 +32,12 @@ export function createVolumeRouter(context: ApiContext): Router {
         context.roonClient,
         req.params.zone_id,
         mode,
-        value
+        value,
+        {
+          dryRun: parseBoolean(req.body?.dry_run),
+          confirm: parseBoolean(req.body?.confirm),
+          volumeLimits: context.volumeLimitService.activeSafetyLimits()
+        }
       );
 
       res.json(result);

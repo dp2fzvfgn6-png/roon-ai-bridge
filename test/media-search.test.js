@@ -157,3 +157,67 @@ test("search_media leaves unavailable source and quality unknown without guessin
   assert.equal(result.is_library, null);
   assert.deepEqual(service.get(result.result_id), result);
 });
+
+test("search_media returns scored candidates and marks ambiguous close matches", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Red Right Hand",
+        subtitle: "Nick Cave & The Bad Seeds",
+        item_key: "studio-key",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Red Right Hand - Live",
+        subtitle: "Nick Cave & The Bad Seeds",
+        item_key: "live-key",
+        hint: "action_list",
+        source_context: "library"
+      }
+    ]),
+    "tidal"
+  );
+
+  const search = await service.search({
+    query: "Red Right Hand Nick Cave",
+    types: ["track"],
+    count: 5,
+    sourcePreference: "library_first"
+  });
+
+  assert.equal(search.results.length, 2);
+  assert.equal(search.ambiguous, true);
+  assert.equal(search.selection_required, true);
+  assert.ok(search.recommended_result_id);
+  assert.equal(search.results[0].confidence, "high");
+  assert.ok(search.results[0].match_reasons.includes("playable"));
+  assert.equal(search.results[1].version_hint, "live");
+});
+
+test("expand_media_search tries context-stripped searches and returns best candidates", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Red Right Hand",
+        subtitle: "Nick Cave & The Bad Seeds",
+        item_key: "red-key",
+        hint: "action_list"
+      }
+    ]),
+    null
+  );
+
+  const expanded = await service.expandSearch({
+    originalQuery: "Red Right Hand Nick Cave Peaky Blinders soundtrack episode",
+    types: ["track"],
+    strategy: "remove_context",
+    count: 5
+  });
+
+  assert.equal(expanded.ok, true);
+  assert.equal(expanded.attempts.length, 1);
+  assert.match(expanded.attempts[0].query, /Red Right Hand/);
+  assert.doesNotMatch(expanded.attempts[0].query, /Peaky Blinders/i);
+  assert.equal(expanded.best_candidates[0].title, "Red Right Hand");
+});

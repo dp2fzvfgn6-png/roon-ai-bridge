@@ -1,4 +1,4 @@
-﻿# MCP Server
+# MCP Server
 
 v0.10 adds SQLite-backed virtual playlist management, alongside the typed media tools, structured results and interactive widget from v0.9.
 
@@ -103,7 +103,47 @@ Contract notes:
   search session.
 - `roon_control_playback` is idempotent for already-paused pause requests and
   already-playing play requests.
+- Priority mutating tools accept `dry_run:true` and return a structured plan
+  instead of executing. This includes playback, queue, volume, grouping,
+  transfer and virtual playlist mutations.
+- `roon_delete_virtual_playlist`, `roon_remove_virtual_playlist_track` and
+  `roon_replace_virtual_playlist_tracks` require `confirm:true` unless
+  `dry_run:true` is supplied.
+- `roon_change_volume` accepts `confirm:true` only for the case where an
+  increase exceeds the configured RoonIA safe limit. Decreases and changes
+  within the safe limit execute directly. Device/Roon hard limits are always
+  enforced.
 - `roon_change_volume` validates supported volume ranges and returns refreshed
-  output state.
+  output state plus `volume_policy`.
+
+Safety metadata for portal and app clients is available from:
+
+```text
+GET /safety/policy
+```
+
+The policy includes per-tool classification, confirmation rules and initial
+safe volume limits for Salon/Salón (`35`), Despacho (`35`) and Cocina (`19`).
 
 Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.
+## ChatGPT widget tools
+
+v0.15.0 adds renderable, reusable widget contracts for ChatGPT Apps and the
+RoonIA portal. The widget resource URI is cache-busted as
+`ui://roon-ai-bridge/control-v7/{tool}.html`.
+
+Tools:
+
+- `roon_get_now_playing_widget`
+- `roon_now_playing_widget_action`
+- `roon_get_playlists_widget`
+- `roon_get_playlist_detail_widget`
+- `roon_playlist_widget_action`
+- `roon_get_media_search_widget`
+- `roon_media_search_widget_action`
+- `roon_open_media_entity_widget`
+- `roon_get_image_url`
+
+Widget payloads include `widget_type`, `view` where relevant, explicit
+`actions`, and `navigation`. Artwork is exposed through `image_key` and
+`image_url`; large base64 images are not included in widget state.
