@@ -48,6 +48,19 @@ export const TOOL_CLASSIFICATION: Record<string, ToolClassification> = {
   roon_list_outputs: readOnly,
   roon_list_virtual_playlists: readOnly,
   roon_get_virtual_playlist: readOnly,
+  roon_extension_manager_status: readOnly,
+  roon_list_extensions: readOnly,
+  roon_get_extension_details: readOnly,
+  roon_get_extension_logs: readOnly,
+  roon_list_action_logs: readOnly,
+  roon_get_action_log: readOnly,
+  roon_get_recent_logs: readOnly,
+  roon_get_error_summary: readOnly,
+  roon_diagnostics_bundle: readOnly,
+  roon_healthcheck: readOnly,
+  roon_readiness: readOnly,
+  roon_version: readOnly,
+  roon_get_tools_manifest: readOnly,
 
   roon_control_playback: { ...safeMutation, audible: true },
   roon_change_volume: { ...safeMutation, volume_mutation: true },
@@ -76,6 +89,51 @@ export const TOOL_CLASSIFICATION: Record<string, ToolClassification> = {
   roon_change_playback_settings: safeMutation,
   roon_restart_queue: { ...safeMutation, audible: true, queue_mutation: true },
   roon_run_browse_action: safeMutation,
+  roon_restart_extension: {
+    read_only: false,
+    safe_mutation: false,
+    destructive: false,
+    audible: false,
+    queue_mutation: false,
+    volume_mutation: false,
+    requires_confirmation_by_default: true
+  },
+  roon_enable_extension: {
+    read_only: false,
+    safe_mutation: false,
+    destructive: false,
+    audible: false,
+    queue_mutation: false,
+    volume_mutation: false,
+    requires_confirmation_by_default: true
+  },
+  roon_disable_extension: {
+    read_only: false,
+    safe_mutation: false,
+    destructive: false,
+    audible: false,
+    queue_mutation: false,
+    volume_mutation: false,
+    requires_confirmation_by_default: true
+  },
+  roon_update_extension: {
+    read_only: false,
+    safe_mutation: false,
+    destructive: false,
+    audible: false,
+    queue_mutation: false,
+    volume_mutation: false,
+    requires_confirmation_by_default: true
+  },
+  roon_clear_action_logs: {
+    read_only: false,
+    safe_mutation: false,
+    destructive: true,
+    audible: false,
+    queue_mutation: false,
+    volume_mutation: false,
+    requires_confirmation_by_default: true
+  },
 
   roon_delete_virtual_playlist: {
     read_only: false,

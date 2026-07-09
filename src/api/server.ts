@@ -32,6 +32,11 @@ import { createSafetyRouter } from "./routes/safety.routes";
 import { createZonePresetsRouter } from "./routes/zonePresets.routes";
 import { createVolumeLimitsRouter } from "./routes/volumeLimits.routes";
 import { createWidgetsRouter } from "./routes/widgets.routes";
+import { createActionAuditMiddleware, createObservabilityRouter } from "./routes/observability.routes";
+import { ActionLogService } from "../services/actionLogService";
+import { TechnicalLogService } from "../services/technicalLogService";
+import { ExtensionManagerService } from "../services/extensionManagerService";
+import { DiagnosticsService } from "../services/diagnosticsService";
 
 export type ApiContext = {
   config: AppConfig;
@@ -46,13 +51,17 @@ export type ApiContext = {
   zonePresetService: ZonePresetService;
   outputVolumeSettingsService: OutputVolumeSettingsService;
   volumeLimitService: VolumeLimitService;
+  actionLogService?: ActionLogService;
+  technicalLogService?: TechnicalLogService;
+  extensionManagerService?: ExtensionManagerService;
+  diagnosticsService?: DiagnosticsService;
 };
 
 export function createServer(context: ApiContext): express.Express {
   const app = express();
 
   app.use(express.json());
-  app.use(createHealthRouter());
+  app.use(createHealthRouter(context));
   app.use(createOAuthRouter(context));
   app.get("/privacy", (req, res) => {
     res
@@ -68,8 +77,10 @@ export function createServer(context: ApiContext): express.Express {
       ].join("\n"));
   });
   app.use(createAuthMiddleware(context));
+  app.use(createActionAuditMiddleware(context, "http"));
   app.use(createSafetyRouter(context));
   app.use("/", createWidgetsRouter(context));
+  app.use("/", createObservabilityRouter(context));
 
   app.all("/mcp", async (req, res, next) => {
     try {

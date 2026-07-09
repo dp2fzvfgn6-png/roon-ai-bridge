@@ -17,6 +17,7 @@ import { createVolumeLimitsRouter } from "../api/routes/volumeLimits.routes";
 import { createWidgetsRouter } from "../api/routes/widgets.routes";
 import { ApiError, sendError } from "../utils/errors";
 import { APP_VERSION } from "../config/version";
+import { createActionAuditMiddleware, createObservabilityRouter } from "../api/routes/observability.routes";
 
 function createPortalAuth(context: ApiContext) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -126,6 +127,8 @@ export function createPortalServer(context: ApiContext): express.Express {
   });
 
   app.use("/api", createPortalAuth(context));
+  app.use("/api", createActionAuditMiddleware(context, "portal"));
+  app.use("/api", createObservabilityRouter(context));
 
   app.get("/api/session", (_req, res) => {
     res.json({
@@ -166,6 +169,13 @@ export function createPortalServer(context: ApiContext): express.Express {
       offset: 0
     });
     const apiKeys = context.apiKeyService.list();
+    const actions = context.actionLogService?.list({ limit: 5 }) as any;
+    const errors = context.technicalLogService?.errors(5) as any;
+    const manifest = context.diagnosticsService?.bundle({
+      include_recent_actions: false,
+      include_recent_errors: false,
+      include_tool_schemas: false
+    }) as any;
 
     res.json({
       version: APP_VERSION,
@@ -184,8 +194,13 @@ export function createPortalServer(context: ApiContext): express.Express {
           (total, playlist) => total + playlist.tracks_count,
           0
         ),
-        active_api_keys: apiKeys.filter((key) => !key.revoked_at).length
+        active_api_keys: apiKeys.filter((key) => !key.revoked_at).length,
+        mcp_tools: manifest?.mcp?.tools_count || 0,
+        recent_errors: errors?.count || 0
       },
+      extension_manager: context.extensionManagerService?.status() || null,
+      recent_actions: actions?.actions || [],
+      recent_errors: errors?.errors || [],
       now_playing: zones
         .filter((zone) => zone.state === "playing")
         .map((zone) => ({

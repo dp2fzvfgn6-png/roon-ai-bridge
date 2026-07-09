@@ -50,6 +50,7 @@
         <button class="nav-item" data-view="widgets"><span>◧</span> Widgets</button>
         <button class="nav-item" data-view="playlists"><span>≡</span> Playlists</button>
         <button class="nav-item" data-view="presets"><span>◇</span> Presets</button>
+        <button class="nav-item" data-view="operation"><span>●</span> Operación</button>
         <button class="nav-item" data-view="keys"><span>⌁</span> API keys</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Sistema</button>
       </nav>
@@ -197,6 +198,41 @@
             <tbody id="keys-table"></tbody>
           </table>
         </div>
+      </section>
+
+      <section id="view-operation" class="view">
+        <div class="operation-grid">
+          <article class="info-card">
+            <div class="section-toolbar"><div><p class="eyebrow">Sistema</p><h3>Health y readiness</h3></div><button id="copy-diagnostics" class="button ghost">Copiar diagnóstico</button></div>
+            <div id="operation-health" class="settings-grid"></div>
+            <div class="top-actions system-actions">
+              <a class="button ghost" href="/api/health" target="_blank" rel="noopener">Health</a>
+              <a class="button ghost" href="/api/ready" target="_blank" rel="noopener">Ready</a>
+              <a class="button ghost" href="/api/diagnostics/bundle" target="_blank" rel="noopener">Bundle</a>
+            </div>
+          </article>
+          <article class="info-card">
+            <p class="eyebrow">Extension Manager</p>
+            <h3>Extensiones detectadas</h3>
+            <div id="extension-status" class="setting-row"></div>
+            <div id="extension-list" class="playlist-list"></div>
+          </article>
+        </div>
+        <div class="operation-grid">
+          <article class="info-card">
+            <div class="section-toolbar"><div><p class="eyebrow">Auditoría</p><h3>Acciones recientes</h3></div><button id="refresh-actions" class="button ghost">Refrescar</button></div>
+            <div id="action-log-list" class="log-list"></div>
+          </article>
+          <article class="info-card">
+            <div class="section-toolbar"><div><p class="eyebrow">Logs</p><h3>Errores y eventos</h3></div><button id="refresh-logs" class="button ghost">Refrescar</button></div>
+            <div id="technical-log-list" class="log-list"></div>
+          </article>
+        </div>
+        <article class="info-card">
+          <p class="eyebrow">Diagnóstico</p>
+          <h3>JSON sanitizado</h3>
+          <pre id="diagnostics-preview" class="json-preview"></pre>
+        </article>
       </section>
 
       <section id="view-settings" class="view">

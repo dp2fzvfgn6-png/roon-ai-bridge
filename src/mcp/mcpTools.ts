@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import crypto from "crypto";
 import { z } from "zod";
 import {
   playByQuery,
@@ -78,12 +79,34 @@ async function runTool<T>(
   name: string,
   fn: () => Promise<T> | T
 ): Promise<ToolResult> {
+  const started = Date.now();
+  let payload: unknown;
   try {
     context.logger.info("MCP tool called", { tool: name });
-    return jsonToolResult(await fn());
+    payload = await fn();
+    context.actionLogService?.record({
+      source: "mcp",
+      toolOrEndpoint: name,
+      classification: getToolClassification(name) as any,
+      result: payload,
+      durationMs: Date.now() - started,
+      dryRun: Boolean((payload as any)?.dry_run),
+      requiresConfirmation: Boolean((payload as any)?.requires_confirmation),
+      confirmed: Boolean((payload as any)?.confirmed),
+      warnings: Array.isArray((payload as any)?.warnings) ? (payload as any).warnings : []
+    });
+    return jsonToolResult(payload);
   } catch (error) {
-    const payload = errorPayload(error);
+    payload = errorPayload(error);
     context.logger.warn("MCP tool failed", { tool: name, payload });
+    context.actionLogService?.record({
+      source: "mcp",
+      toolOrEndpoint: name,
+      classification: getToolClassification(name) as any,
+      result: payload,
+      durationMs: Date.now() - started,
+      errorCode: (payload as any)?.error?.code || "ERROR"
+    });
     return jsonToolResult(payload, true);
   }
 }
@@ -280,6 +303,47 @@ const mediaTypeSchema = z.enum(["track", "album", "artist", "playlist"]);
 const mediaTypesInputSchema = z
   .union([z.array(mediaTypeSchema), mediaTypeSchema])
   .optional();
+
+function buildInlineToolsManifest(context: McpContext): Record<string, unknown> {
+  const tools: Array<Record<string, unknown>> = [];
+  const server = {
+    registerTool(name: string, options: any): void {
+      const inputSchema = options.inputSchema || {};
+      const schema = {
+        type: "object",
+        properties: Object.keys(inputSchema)
+      };
+      const classification = {
+        read_only: options.annotations?.readOnlyHint === true,
+        mutation: options.annotations?.readOnlyHint !== true,
+        destructive: options.annotations?.destructiveHint === true,
+        open_world: options.annotations?.openWorldHint === true
+      };
+      const schemaHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify({ name, description: options.description, schema }))
+        .digest("hex")
+        .slice(0, 16);
+      tools.push({
+        name,
+        title: options.title || name,
+        description: options.description,
+        input_schema: schema,
+        classification,
+        security: classification,
+        schema_hash: schemaHash,
+        widget_uri: options._meta?.ui?.resourceUri || options._meta?.["openai/outputTemplate"] || null
+      });
+    }
+  };
+  registerRoonMcpTools(server as any, context);
+  return {
+    ok: true,
+    generated_at: new Date().toISOString(),
+    tools_count: tools.length,
+    tools
+  };
+}
 
 function normalizeMediaTypesInput(value: unknown): MediaType[] | undefined {
   if (Array.isArray(value)) return value as MediaType[];
@@ -2118,5 +2182,265 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
           data_url: `data:${image.contentType};base64,${image.bytes.toString("base64")}`
         };
       })
+  );
+
+  registerTool(
+    "roon_extension_manager_status",
+    {
+      title: "Roon Extension Manager Status",
+      description:
+        "Use this when operational status for RoonIA extension management is needed. It reports safe capabilities and does not modify services.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_extension_manager_status", () =>
+      context.extensionManagerService?.status() || { ok: false, manager_available: false }
+    )
+  );
+
+  registerTool(
+    "roon_list_extensions",
+    {
+      title: "List Roon Extensions",
+      description:
+        "Use this when the user asks which Roon extensions or integrations RoonIA can safely detect. It is read-only and may list only local diagnostics.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_list_extensions", () =>
+      context.extensionManagerService?.listExtensions(statusPayload(context)) || { ok: true, extensions: [] }
+    )
+  );
+
+  registerTool(
+    "roon_get_extension_details",
+    {
+      title: "Get Roon Extension Details",
+      description:
+        "Use this when a detected extension needs read-only deployment, version, connection and limitation details.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { extension_id: z.string().min(1) }
+    },
+    async ({ extension_id }) => runTool(context, "roon_get_extension_details", () =>
+      context.extensionManagerService?.getExtensionDetails(extension_id, statusPayload(context)) || { ok: false }
+    )
+  );
+
+  registerTool(
+    "roon_get_extension_logs",
+    {
+      title: "Get Roon Extension Logs",
+      description:
+        "Use this when sanitized recent logs for a detected extension are needed. Do not use it to read arbitrary files or paths.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        extension_id: z.string().min(1),
+        level: z.enum(["debug", "info", "warn", "error"]).optional(),
+        limit: z.number().int().min(1).max(500).default(100)
+      }
+    },
+    async (input) => runTool(context, "roon_get_extension_logs", () =>
+      context.extensionManagerService?.getExtensionLogs(input.extension_id, input) || { ok: true, logs: [] }
+    )
+  );
+
+  for (const [tool, title] of [
+    ["roon_restart_extension", "Restart Roon Extension"],
+    ["roon_enable_extension", "Enable Roon Extension"],
+    ["roon_disable_extension", "Disable Roon Extension"],
+    ["roon_update_extension", "Update Roon Extension"]
+  ] as const) {
+    registerTool(
+      tool,
+      {
+        title,
+        description:
+          "Use this when extension management is requested, but only after explicit confirmation. In this deployment it reports unavailable unless a safe manager backend exists.",
+        ...structuredOutputSchema,
+        annotations: destructiveAnnotations,
+        _meta: widgetMeta,
+        inputSchema: {
+          extension_id: z.string().min(1),
+          confirm: confirmSchema
+        }
+      },
+      async ({ extension_id, confirm }) => runTool(context, tool, () =>
+        context.extensionManagerService?.mutationUnavailable(tool, extension_id, confirm) || { ok: false }
+      )
+    );
+  }
+
+  registerTool(
+    "roon_list_action_logs",
+    {
+      title: "List Roon Action Logs",
+      description:
+        "Use this when recent MCP, HTTP or portal actions must be audited with sanitized arguments and results.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        limit: z.number().int().min(1).max(250).default(50),
+        offset: z.number().int().min(0).default(0),
+        tool: z.string().optional(),
+        source: z.enum(["mcp", "http", "portal", "system"]).optional(),
+        error_only: z.boolean().optional(),
+        mutation_only: z.boolean().optional()
+      }
+    },
+    async ({ error_only, mutation_only, ...input }) => runTool(context, "roon_list_action_logs", () =>
+      context.actionLogService?.list({ ...input, errorOnly: error_only, mutationOnly: mutation_only }) || { ok: true, actions: [] }
+    )
+  );
+
+  registerTool(
+    "roon_get_action_log",
+    {
+      title: "Get Roon Action Log",
+      description:
+        "Use this when one audited action entry needs full sanitized details by action_id.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { action_id: z.string().min(1) }
+    },
+    async ({ action_id }) => runTool(context, "roon_get_action_log", () =>
+      context.actionLogService?.get(action_id) || { ok: false, error: { code: "ACTION_LOG_NOT_FOUND" } }
+    )
+  );
+
+  registerTool(
+    "roon_clear_action_logs",
+    {
+      title: "Clear Roon Action Logs",
+      description:
+        "Use this only when the user explicitly wants to clear local audit history; it requires confirm:true.",
+      ...structuredOutputSchema,
+      annotations: destructiveAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { confirm: confirmSchema }
+    },
+    async ({ confirm }) => runTool(context, "roon_clear_action_logs", () =>
+      context.actionLogService?.clear(confirm) || { ok: false }
+    )
+  );
+
+  registerTool(
+    "roon_get_recent_logs",
+    {
+      title: "Get Recent RoonIA Logs",
+      description:
+        "Use this when sanitized technical logs are needed for debugging. It supports level, component, since and limit filters.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        level: z.enum(["debug", "info", "warn", "error"]).optional(),
+        component: z.string().optional(),
+        since: z.string().optional(),
+        limit: z.number().int().min(1).max(500).default(100)
+      }
+    },
+    async (input) => runTool(context, "roon_get_recent_logs", () =>
+      context.technicalLogService?.list(input) || { ok: true, logs: [] }
+    )
+  );
+
+  registerTool(
+    "roon_get_error_summary",
+    {
+      title: "Get RoonIA Error Summary",
+      description:
+        "Use this when recent sanitized warnings and errors are needed without reading full application logs.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: { limit: z.number().int().min(1).max(250).default(50) }
+    },
+    async ({ limit }) => runTool(context, "roon_get_error_summary", () =>
+      context.technicalLogService?.errors(limit) || { ok: true, errors: [] }
+    )
+  );
+
+  registerTool(
+    "roon_diagnostics_bundle",
+    {
+      title: "Generate RoonIA Diagnostics Bundle",
+      description:
+        "Use this when a safe diagnostic JSON package is needed for Codex or portal troubleshooting.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        include_recent_actions: z.boolean().default(true),
+        include_recent_errors: z.boolean().default(true),
+        include_tool_schemas: z.boolean().default(true),
+        sanitize: z.boolean().default(true)
+      }
+    },
+    async (input) => runTool(context, "roon_diagnostics_bundle", () =>
+      context.diagnosticsService?.bundle(input) || { ok: false }
+    )
+  );
+
+  registerTool(
+    "roon_healthcheck",
+    {
+      title: "RoonIA Healthcheck",
+      description: "Use this when the caller only needs to know whether the RoonIA process is alive.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_healthcheck", () => ({ ok: true, status: "healthy" }))
+  );
+
+  registerTool(
+    "roon_readiness",
+    {
+      title: "RoonIA Readiness",
+      description:
+        "Use this when the caller needs database, Roon Core, MCP tools and migration readiness checks.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_readiness", () =>
+      context.diagnosticsService?.readyChecks() || { ok: false, ready: false }
+    )
+  );
+
+  registerTool(
+    "roon_version",
+    {
+      title: "RoonIA Version",
+      description:
+        "Use this when deployed app version, git metadata, build time and Node runtime details are needed.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_version", () =>
+      context.diagnosticsService?.version() || { app_version: "unknown" }
+    )
+  );
+
+  registerTool(
+    "roon_get_tools_manifest",
+    {
+      title: "Get RoonIA Tools Manifest",
+      description:
+        "Use this when the final MCP tool names, descriptions, schemas, classifications and schema hashes need validation.",
+      ...structuredOutputSchema,
+      annotations: readOnlyAnnotations,
+      _meta: widgetMeta
+    },
+    async () => runTool(context, "roon_get_tools_manifest", () => buildInlineToolsManifest(context))
   );
 }

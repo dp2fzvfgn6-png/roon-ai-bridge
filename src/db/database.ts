@@ -149,6 +149,43 @@ CREATE TABLE IF NOT EXISTS output_volume_settings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS action_logs (
+  action_id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  source TEXT NOT NULL,
+  tool_or_endpoint TEXT NOT NULL,
+  classification_json TEXT NOT NULL,
+  arguments_sanitized_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  dry_run INTEGER NOT NULL DEFAULT 0,
+  requires_confirmation INTEGER NOT NULL DEFAULT 0,
+  confirmed INTEGER NOT NULL DEFAULT 0,
+  warnings_json TEXT NOT NULL,
+  error_code TEXT,
+  correlation_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS system_events (
+  event_id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  component TEXT NOT NULL,
+  level TEXT NOT NULL,
+  message TEXT NOT NULL,
+  details_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS extension_registry (
+  extension_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  manager_type TEXT NOT NULL,
+  service_name TEXT,
+  status TEXT NOT NULL,
+  version TEXT,
+  config_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_virtual_playlist_tracks_playlist
   ON virtual_playlist_tracks (playlist_id, position);
 
@@ -163,6 +200,15 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_active
 
 CREATE INDEX IF NOT EXISTS idx_portal_sessions_user
   ON portal_sessions (user_id, expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_action_logs_timestamp
+  ON action_logs (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_action_logs_tool
+  ON action_logs (tool_or_endpoint, timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_system_events_component
+  ON system_events (component, level, timestamp);
 `;
 
 export const databaseImplemented = true;
@@ -296,6 +342,50 @@ export class SqliteDatabase {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS action_logs (
+        action_id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        source TEXT NOT NULL,
+        tool_or_endpoint TEXT NOT NULL,
+        classification_json TEXT NOT NULL,
+        arguments_sanitized_json TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        dry_run INTEGER NOT NULL DEFAULT 0,
+        requires_confirmation INTEGER NOT NULL DEFAULT 0,
+        confirmed INTEGER NOT NULL DEFAULT 0,
+        warnings_json TEXT NOT NULL,
+        error_code TEXT,
+        correlation_id TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS system_events (
+        event_id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        component TEXT NOT NULL,
+        level TEXT NOT NULL,
+        message TEXT NOT NULL,
+        details_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS extension_registry (
+        extension_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        manager_type TEXT NOT NULL,
+        service_name TEXT,
+        status TEXT NOT NULL,
+        version TEXT,
+        config_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_action_logs_timestamp
+        ON action_logs (timestamp);
+      CREATE INDEX IF NOT EXISTS idx_action_logs_tool
+        ON action_logs (tool_or_endpoint, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_system_events_component
+        ON system_events (component, level, timestamp);
     `);
   }
 

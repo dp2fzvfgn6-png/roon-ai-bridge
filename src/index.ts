@@ -13,9 +13,16 @@ import { SystemManagementService } from "./services/systemManagementService";
 import { ZonePresetService } from "./services/zonePresetService";
 import { OutputVolumeSettingsService } from "./services/outputVolumeSettingsService";
 import { VolumeLimitService } from "./services/volumeLimitService";
+import { ActionLogService } from "./services/actionLogService";
+import { TechnicalLogService, createObservedLogger } from "./services/technicalLogService";
+import { ExtensionManagerService } from "./services/extensionManagerService";
+import { DiagnosticsService } from "./services/diagnosticsService";
 
 const config = loadConfig();
-const logger = createLogger(config.logLevel);
+const baseLogger = createLogger(config.logLevel);
+const database = createDatabase(config);
+const technicalLogService = new TechnicalLogService(database);
+const logger = createObservedLogger(baseLogger, technicalLogService);
 
 logger.info("Configuration loaded", {
   port: config.port,
@@ -32,7 +39,6 @@ logger.info("Configuration loaded", {
 
 const systemManagementService = new SystemManagementService(config, logger);
 const roonClient = createRoonClient(config, logger, systemManagementService);
-const database = createDatabase(config);
 const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
@@ -44,6 +50,8 @@ const outputVolumeSettingsService = new OutputVolumeSettingsService(
   database
 );
 const volumeLimitService = new VolumeLimitService(config, database);
+const actionLogService = new ActionLogService(database);
+const extensionManagerService = new ExtensionManagerService(config, technicalLogService);
 const context = {
   config,
   logger,
@@ -56,8 +64,21 @@ const context = {
   systemManagementService,
   zonePresetService,
   outputVolumeSettingsService,
-  volumeLimitService
+  volumeLimitService,
+  actionLogService,
+  technicalLogService,
+  extensionManagerService
 };
+const diagnosticsService = new DiagnosticsService(
+  config,
+  database,
+  roonClient,
+  actionLogService,
+  technicalLogService,
+  extensionManagerService,
+  context
+);
+(context as any).diagnosticsService = diagnosticsService;
 const app = createServer(context);
 
 logger.info("Starting service", {

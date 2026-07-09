@@ -148,6 +148,13 @@ td code { color: var(--accent-2); }
 .output-volume-list { display: grid; gap: 10px; margin-top: 18px; }
 .volume-settings-row { border-top: 1px solid var(--line); padding-top: 13px; display: grid; grid-template-columns: minmax(120px, 1fr) repeat(3, minmax(70px, .55fr)) auto; gap: 8px; align-items: end; }
 .volume-settings-row label { margin: 0; }
+.operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; align-items: start; }
+.log-list { display: grid; gap: 8px; }
+.log-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #0e1115; display: grid; gap: 5px; }
+.log-row strong { font-size: 13px; }
+.log-row span, .log-row code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.log-row.error { border-color: rgba(239,124,115,.45); }
+.json-preview { max-height: 420px; overflow: auto; border: 1px solid var(--line); background: #0e1115; border-radius: 12px; padding: 14px; color: var(--accent-2); font-size: 12px; white-space: pre-wrap; }
 
 .button { border: 1px solid transparent; border-radius: 10px; padding: 10px 14px; color: var(--text); background: var(--surface-2); }
 .button.primary { background: var(--accent); color: #181309; font-weight: 700; }
@@ -194,6 +201,7 @@ legend { color: var(--muted); font-size: 11px; padding: 0 7px; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .split-layout { grid-template-columns: 1fr; }
   .preset-layout { grid-template-columns: 1fr; }
+  .operation-grid { grid-template-columns: 1fr; }
   .editor-panel { position: static; max-height: none; }
 }
 @media (max-width: 620px) {

@@ -88,6 +88,7 @@ const viewCopy = {
   widgets: ["ChatGPT Apps", "Widgets"],
   playlists: ["Biblioteca local", "Playlists"],
   presets: ["Configuración de audio", "Presets y volúmenes"],
+  operation: ["Administración", "Operación y diagnóstico"],
   keys: ["Acceso seguro", "API keys"],
   settings: ["Configuración", "Sistema"]
 };
@@ -106,6 +107,7 @@ async function navigate(view) {
     if (view === "widgets") await loadWidgets();
     if (view === "playlists") await loadPlaylists();
     if (view === "presets") await loadPresets();
+    if (view === "operation") await loadOperation();
     if (view === "keys") await loadKeys();
     if (view === "settings") await loadSettings();
   } catch (error) {
@@ -116,6 +118,61 @@ async function navigate(view) {
     }
     toast(error.message, "error");
   }
+}
+
+async function loadOperation() {
+  const [health, ready, version, manifest, extensions, actions, errors, logs, diagnostics] = await Promise.all([
+    api("/api/health"),
+    api("/api/ready").catch((error) => ({ ok: false, ready: false, error: error.message })),
+    api("/api/version"),
+    api("/api/tools/manifest"),
+    api("/api/extensions"),
+    api("/api/observability/actions?limit=8"),
+    api("/api/observability/errors?limit=8"),
+    api("/api/logs/recent?limit=8"),
+    api("/api/diagnostics/bundle")
+  ]);
+  const statusRows = [
+    ["Health", health.status || (health.ok ? "healthy" : "error")],
+    ["Ready", ready.ready ? "Sí" : "No"],
+    ["Versión", version.app_version],
+    ["Commit", version.commit],
+    ["Tools MCP", manifest.tools_count]
+  ];
+  $("#operation-health").innerHTML = statusRows.map(([label, value]) =>
+    `<div class="setting-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+  ).join("");
+  const manager = diagnostics.extension_manager || {};
+  $("#extension-status").innerHTML = `<span>${escapeHtml(manager.manager_type || "unknown")}</span><strong>${manager.capabilities?.restart ? "Mutaciones disponibles" : "Solo lectura"}</strong>`;
+  $("#extension-list").innerHTML = (extensions.extensions || []).map((extension) => `
+    <article class="playlist-item">
+      <div><strong>${escapeHtml(extension.name)}</strong><p class="muted">${escapeHtml([extension.status, extension.version, extension.deployment].filter(Boolean).join(" · "))}</p></div>
+      <button class="small-button" data-extension-logs="${escapeHtml(extension.extension_id)}">Logs</button>
+    </article>
+  `).join("") || `<div class="empty-state">No hay extensiones detectadas.</div>`;
+  renderActions(actions.actions || []);
+  renderTechnicalLogs([...(errors.errors || []), ...(logs.logs || [])].slice(0, 10));
+  $("#diagnostics-preview").textContent = JSON.stringify(diagnostics, null, 2);
+}
+
+function renderActions(actions) {
+  $("#action-log-list").innerHTML = actions.length ? actions.map((action) => `
+    <article class="log-row">
+      <strong>${escapeHtml(action.tool_or_endpoint)}</strong>
+      <span>${escapeHtml(action.source)} · ${escapeHtml(action.duration_ms)} ms · ${escapeHtml(action.error_code || "ok")}</span>
+      <code>${escapeHtml(action.action_id)}</code>
+    </article>
+  `).join("") : `<div class="empty-state">Todavía no hay acciones registradas.</div>`;
+}
+
+function renderTechnicalLogs(logs) {
+  $("#technical-log-list").innerHTML = logs.length ? logs.map((log) => `
+    <article class="log-row ${escapeHtml(log.level)}">
+      <strong>${escapeHtml(log.level)} · ${escapeHtml(log.component)}</strong>
+      <span>${escapeHtml(log.message)}</span>
+      <code>${escapeHtml(fmtDate(log.timestamp))}</code>
+    </article>
+  `).join("") : `<div class="empty-state">No hay errores recientes.</div>`;
 }
 
 async function loadDashboard() {
@@ -1207,6 +1264,22 @@ $("#main-nav").addEventListener("click", (event) => {
 });
 $("[data-go=zones]").addEventListener("click", () => navigate("zones"));
 $("#refresh").addEventListener("click", () => navigate(state.view));
+$("#refresh-actions")?.addEventListener("click", async () => {
+  try {
+    const actions = await api("/api/observability/actions?limit=8");
+    renderActions(actions.actions || []);
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#refresh-logs")?.addEventListener("click", async () => {
+  try {
+    const logs = await api("/api/logs/recent?limit=8");
+    renderTechnicalLogs(logs.logs || []);
+  } catch (error) { toast(error.message, "error"); }
+});
+$("#copy-diagnostics")?.addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("#diagnostics-preview").textContent || "");
+  toast("Diagnóstico copiado");
+});
 $("#logout").addEventListener("click", async () => {
   try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } catch {}
   sessionStorage.removeItem("roonia.portal.token");

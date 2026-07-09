@@ -6,6 +6,10 @@ import { RoonMediaService } from "../roon/roonMediaService";
 import { Logger } from "../utils/logger";
 import { ZonePresetService } from "../services/zonePresetService";
 import { VolumeLimitService } from "../services/volumeLimitService";
+import { ActionLogService } from "../services/actionLogService";
+import { TechnicalLogService } from "../services/technicalLogService";
+import { ExtensionManagerService } from "../services/extensionManagerService";
+import { DiagnosticsService } from "../services/diagnosticsService";
 
 export type McpContext = {
   config: AppConfig;
@@ -16,4 +20,8 @@ export type McpContext = {
   mediaService: RoonMediaService;
   zonePresetService: ZonePresetService;
   volumeLimitService: VolumeLimitService;
+  actionLogService?: ActionLogService;
+  technicalLogService?: TechnicalLogService;
+  extensionManagerService?: ExtensionManagerService;
+  diagnosticsService?: DiagnosticsService;
 };
