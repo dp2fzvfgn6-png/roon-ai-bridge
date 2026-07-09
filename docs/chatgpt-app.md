@@ -1,6 +1,6 @@
 # ChatGPT App
 
-v0.12.3 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth, verified playback results and an interactive widget resource.
+v0.12.4 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth, verified playback results and an interactive widget resource.
 
 ## Public URLs
 
@@ -35,13 +35,13 @@ The MCP server exposes tools for:
 The server also registers a minimal Apps SDK widget resource:
 
 ```text
-ui://roon-ai-bridge/control-v5.html
+ui://roon-ai-bridge/control-v6/default.html
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
 metadata cached even after the backend deploy succeeds; the versioned
-`ui://roon-ai-bridge/control-v5.html` resource URI invalidates the widget cache.
+`ui://roon-ai-bridge/control-v6/default.html` resource URI invalidates the widget cache.
 
 ## ChatGPT Developer Setup
 

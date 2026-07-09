@@ -1,4 +1,4 @@
-# MCP Server
+﻿# MCP Server
 
 v0.10 adds SQLite-backed virtual playlist management, alongside the typed media tools, structured results and interactive widget from v0.9.
 
@@ -25,7 +25,7 @@ https://roonia.ipchome.com/mcp
 The current ChatGPT App widget resource is:
 
 ```text
-ui://roon-ai-bridge/control-v5.html
+ui://roon-ai-bridge/control-v6/default.html
 ```
 
 After changes to tool schemas, descriptions or widget resources, refresh the

@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+﻿import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   playByQuery,
@@ -14,7 +14,7 @@ import { transferZonePlayback } from "../roon/roonTransferService";
 import { groupZones, ungroupZone } from "../roon/roonGroupingService";
 import { ApiError } from "../utils/errors";
 import { parsePlaybackCommand, parseVolumeMode, parseVolumeValue } from "../utils/validation";
-import { roonControlWidgetUri } from "./appResources";
+import { roonControlWidgetUriForTool } from "./appResources";
 import { McpContext } from "./mcpContext";
 import {
   changeZoneSettings,
@@ -136,21 +136,22 @@ const structuredOutputSchema = {
   }
 };
 
-const widgetMeta = {
-  ui: {
-    resourceUri: roonControlWidgetUri,
-    visibility: ["model", "app"]
-  },
-  "openai/outputTemplate": roonControlWidgetUri
-};
+const widgetMeta = Symbol("model-and-app-widget");
+const legacyWidgetMeta = Symbol("app-only-widget");
 
-const legacyWidgetMeta = {
-  ui: {
-    resourceUri: roonControlWidgetUri,
-    visibility: ["app"]
-  },
-  "openai/outputTemplate": roonControlWidgetUri
-};
+function widgetMetaForTool(
+  toolName: string,
+  visibility: Array<"model" | "app">
+): Record<string, unknown> {
+  const resourceUri = roonControlWidgetUriForTool(toolName);
+  return {
+    ui: {
+      resourceUri,
+      visibility
+    },
+    "openai/outputTemplate": resourceUri
+  };
+}
 
 const playlistTrackMetadataSchema = z
   .object({})
@@ -219,7 +220,17 @@ function normalizeMediaTypesInput(value: unknown): MediaType[] | undefined {
 }
 
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
-  server.registerTool(
+  const registerTool = (name: string, options: any, handler: any): void => {
+    const visibility = options._meta === legacyWidgetMeta
+      ? ["app" as const]
+      : ["model" as const, "app" as const];
+    server.registerTool(name, {
+      ...options,
+      _meta: widgetMetaForTool(name, visibility)
+    }, handler);
+  };
+
+  registerTool(
     "roon_status",
     {
       title: "Roon Status",
@@ -231,7 +242,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     async () => runTool(context, "roon_status", () => statusPayload(context))
   );
 
-  server.registerTool(
+  registerTool(
     "roon_list_zones",
     {
       title: "List Roon Zones",
@@ -262,7 +273,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_control_playback",
     {
       title: "Control Roon Playback",
@@ -287,7 +298,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       })
   );
 
-  server.registerTool(
+  registerTool(
     "roon_change_volume",
     {
       title: "Change Roon Volume",
@@ -309,7 +320,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       })
   );
 
-  server.registerTool(
+  registerTool(
     "roon_transfer_playback",
     {
       title: "Transfer Roon Playback",
@@ -335,7 +346,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_group_zones",
     {
       title: "Group Roon Zones",
@@ -365,7 +376,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       })
   );
 
-  server.registerTool(
+  registerTool(
     "roon_ungroup_zone",
     {
       title: "Ungroup Roon Zone",
@@ -388,7 +399,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       })
   );
 
-  server.registerTool(
+  registerTool(
     "roon_search",
     {
       title: "Search Roon",
@@ -416,7 +427,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_play_by_query",
     {
       title: "Play Roon Query",
@@ -436,7 +447,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_get_queue",
     {
       title: "Get Roon Queue",
@@ -455,7 +466,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_queue_by_query",
     {
       title: "Queue Roon Query",
@@ -476,7 +487,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_play_queue_item_from_here",
     {
       title: "Play Roon Queue Item",
@@ -495,7 +506,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_list_virtual_playlists",
     {
       title: "List Virtual Playlists",
@@ -523,7 +534,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_create_virtual_playlist",
     {
       title: "Create Virtual Playlist",
@@ -547,7 +558,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_get_virtual_playlist",
     {
       title: "Get Virtual Playlist",
@@ -572,7 +583,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_update_virtual_playlist",
     {
       title: "Update Virtual Playlist",
@@ -592,7 +603,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_delete_virtual_playlist",
     {
       title: "Delete Virtual Playlist",
@@ -610,7 +621,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_add_virtual_playlist_track",
     {
       title: "Add Virtual Playlist Track",
@@ -632,7 +643,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_update_virtual_playlist_track",
     {
       title: "Update Virtual Playlist Track",
@@ -652,7 +663,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_remove_virtual_playlist_track",
     {
       title: "Remove Virtual Playlist Track",
@@ -671,7 +682,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_replace_virtual_playlist_tracks",
     {
       title: "Replace Virtual Playlist Tracks",
@@ -693,7 +704,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_resolve_virtual_playlist",
     {
       title: "Resolve Virtual Playlist",
@@ -721,7 +732,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_reorder_virtual_playlist_tracks",
     {
       title: "Reorder Virtual Playlist Tracks",
@@ -740,7 +751,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_play_virtual_playlist",
     {
       title: "Play Virtual Playlist",
@@ -767,7 +778,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_search_media",
     {
       title: "Search Roon Media",
@@ -812,7 +823,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       })
   );
 
-  server.registerTool(
+  registerTool(
     "roon_get_media_details",
     {
       title: "Get Roon Media Details",
@@ -831,7 +842,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_list_artist_releases",
     {
       title: "List Roon Artist Releases",
@@ -852,7 +863,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_play_media",
     {
       title: "Play Selected Roon Media",
@@ -872,7 +883,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_start_radio",
     {
       title: "Start Roon Artist Radio",
@@ -892,7 +903,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_add_media_to_queue",
     {
       title: "Add Selected Roon Media To Queue",
@@ -917,7 +928,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_list_outputs",
     {
       title: "List Roon Outputs",
@@ -930,7 +941,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     async () => runTool(context, "roon_list_outputs", () => listOutputs(context.roonClient))
   );
 
-  server.registerTool(
+  registerTool(
     "roon_seek",
     {
       title: "Seek Roon Playback",
@@ -951,7 +962,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_mute_output",
     {
       title: "Mute Roon Output",
@@ -971,7 +982,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_change_output_volume",
     {
       title: "Change Roon Output Volume",
@@ -992,7 +1003,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_mute_all",
     {
       title: "Mute All Roon Outputs",
@@ -1007,7 +1018,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       runTool(context, "roon_mute_all", () => muteAll(context.roonClient, action))
   );
 
-  server.registerTool(
+  registerTool(
     "roon_pause_all",
     {
       title: "Pause All Roon Zones",
@@ -1019,7 +1030,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     async () => runTool(context, "roon_pause_all", () => pauseAll(context.roonClient))
   );
 
-  server.registerTool(
+  registerTool(
     "roon_output_power",
     {
       title: "Control Roon Output Power",
@@ -1040,7 +1051,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_change_playback_settings",
     {
       title: "Change Roon Playback Settings",
@@ -1066,7 +1077,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_restart_queue",
     {
       title: "Restart Roon Queue Playback",
@@ -1083,7 +1094,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_run_browse_action",
     {
       title: "Run Generic Roon Browse Action",
@@ -1115,7 +1126,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
       )
   );
 
-  server.registerTool(
+  registerTool(
     "roon_get_image",
     {
       title: "Get Roon Image",

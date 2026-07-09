@@ -8,7 +8,7 @@ const { createServer } = require("../dist/api/server");
 const { registerRoonMcpTools } = require("../dist/mcp/mcpTools");
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
-const { roonControlWidgetUri } = require("../dist/mcp/appResources");
+const { roonControlWidgetUriForTool } = require("../dist/mcp/appResources");
 
 function createConfig(dataDir) {
   return {
@@ -132,8 +132,18 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
     assert.ok(getPlaylist.inputSchema.properties.include_tracks);
     assert.ok(getPlaylist.inputSchema.properties.limit);
     assert.ok(getPlaylist.inputSchema.properties.offset);
-    assert.equal(getPlaylist._meta["openai/outputTemplate"], roonControlWidgetUri);
-    assert.equal(roonControlWidgetUri, "ui://roon-ai-bridge/control-v5.html");
+    assert.equal(
+      getPlaylist._meta["openai/outputTemplate"],
+      roonControlWidgetUriForTool("roon_get_virtual_playlist")
+    );
+    assert.equal(
+      getPlaylist._meta["openai/outputTemplate"],
+      "ui://roon-ai-bridge/control-v6/roon_get_virtual_playlist.html"
+    );
+    assert.notEqual(
+      tools.get("roon_status")._meta["openai/outputTemplate"],
+      getPlaylist._meta["openai/outputTemplate"]
+    );
 
     for (const [name, tool] of tools.entries()) {
       assert.ok(tool.description, `${name} should have a description`);

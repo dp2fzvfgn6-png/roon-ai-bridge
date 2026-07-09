@@ -1,6 +1,8 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_URI = "ui://roon-ai-bridge/control-v5.html";
+const ROON_CONTROL_WIDGET_VERSION = "v6";
+const ROON_CONTROL_WIDGET_URI = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/default.html`;
+const ROON_CONTROL_WIDGET_TEMPLATE = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/{tool}.html`;
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const controlWidgetHtml = `
@@ -294,17 +296,10 @@ const controlWidgetHtml = `
 `.trim();
 
 export function registerRoonAppResources(server: McpServer): void {
-  server.registerResource(
-    "roon-control-widget",
-    ROON_CONTROL_WIDGET_URI,
-    {
-      title: "Roon Control",
-      description: "Interactive ChatGPT App widget for Roon AI Bridge."
-    },
-    async () => ({
+  const readWidget = async (uri: string) => ({
       contents: [
         {
-          uri: ROON_CONTROL_WIDGET_URI,
+          uri,
           mimeType: MCP_APP_MIME_TYPE,
           text: controlWidgetHtml,
           _meta: {
@@ -319,8 +314,34 @@ export function registerRoonAppResources(server: McpServer): void {
           }
         }
       ]
-    })
+    });
+
+  server.registerResource(
+    "roon-control-widget",
+    ROON_CONTROL_WIDGET_URI,
+    {
+      title: "Roon Control",
+      description: "Interactive ChatGPT App widget for Roon AI Bridge."
+    },
+    async () => readWidget(ROON_CONTROL_WIDGET_URI)
+  );
+
+  server.registerResource(
+    "roon-control-widget-tool",
+    new ResourceTemplate(ROON_CONTROL_WIDGET_TEMPLATE, {
+      list: undefined
+    }),
+    {
+      title: "Roon Control Tool Widget",
+      description: "Per-tool ChatGPT App widget resource for Roon AI Bridge."
+    },
+    async (uri) => readWidget(uri.toString())
   );
 }
 
 export const roonControlWidgetUri = ROON_CONTROL_WIDGET_URI;
+
+export function roonControlWidgetUriForTool(toolName: string): string {
+  const safeToolName = /^[a-z0-9_]+$/.test(toolName) ? toolName : "default";
+  return `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/${safeToolName}.html`;
+}
