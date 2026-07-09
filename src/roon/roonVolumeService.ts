@@ -18,6 +18,7 @@ export type VolumeOutputState = {
   output_id: string;
   display_name: string;
   volume: RoonOutput["volume"];
+  normalized_volume: Record<string, unknown> | null;
 };
 
 export type VolumeChangeResult = {
@@ -108,10 +109,30 @@ function validateVolume(
 }
 
 function outputState(output: RoonOutput): VolumeOutputState {
+  const volume = output.volume || null;
+  const min = typeof volume?.min === "number" ? volume.min : null;
+  const max = typeof volume?.max === "number" ? volume.max : null;
+  const raw = typeof volume?.value === "number" ? volume.value : null;
+  const normalizedPercent =
+    volume?.type === "number" && raw !== null && min !== null && max !== null && max > min
+      ? Math.round(((raw - min) / (max - min)) * 100)
+      : null;
   return {
     output_id: output.output_id,
     display_name: output.display_name,
-    volume: output.volume
+    volume: output.volume,
+    normalized_volume: volume
+      ? {
+          volume_type: volume.type || null,
+          raw_value: raw,
+          normalized_percent: normalizedPercent,
+          min,
+          max,
+          step: volume.step ?? null,
+          hard_limit: (volume as Record<string, unknown>).hard_limit_max ?? null,
+          soft_limit: max
+        }
+      : null
   };
 }
 

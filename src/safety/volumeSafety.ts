@@ -84,6 +84,8 @@ const GLOBAL_FALLBACK_LIMIT: VolumeSafetyLimit = {
   output_name: null,
   zone_name: null,
   safe_max: 35,
+  limit_id: "__default_global__",
+  source_type: "default_global",
   limits: [{ name: "default", from: null, to: null, safe_max: 35 }]
 };
 

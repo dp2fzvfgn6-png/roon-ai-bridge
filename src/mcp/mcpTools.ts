@@ -609,7 +609,8 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
         const parsedValue = parseVolumeValue(value);
         return changeZoneVolume(context.roonClient, zone_id, parsedMode, parsedValue, {
           dryRun: Boolean(dry_run),
-          confirm: Boolean(confirm)
+          confirm: Boolean(confirm),
+          volumeLimits: context.volumeLimitService.activeSafetyLimits()
         });
       })
   );

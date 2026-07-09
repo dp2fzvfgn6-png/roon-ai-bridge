@@ -25,6 +25,7 @@ export type RoonClient = {
   getImage(): any | null;
   getZones(): RoonZone[];
   getOutputs(): RoonOutput[];
+  getKnownOutputs?(): RoonOutput[];
   getOutput(outputId: string): RoonOutput | null;
   getZone(zoneId: string): RoonZone | null;
 };
@@ -44,6 +45,7 @@ export function createRoonClient(
   let imageReady = false;
   let zonesById = new Map<string, RoonZone>();
   let outputsById = new Map<string, RoonOutput>();
+  let knownOutputsById = new Map<string, RoonOutput>();
 
   function ensureDataDir(): void {
     fs.mkdirSync(config.dataDir, { recursive: true });
@@ -78,15 +80,33 @@ export function createRoonClient(
       outputsById = new Map(
         data.outputs.map((output: RoonOutput) => [output.output_id, output])
       );
+      knownOutputsById = new Map(
+        data.outputs.map((output: RoonOutput) => [
+          output.output_id,
+          { ...output, currently_available: true, last_seen: new Date().toISOString() }
+        ])
+      );
       return;
     }
     for (const output of data?.outputs_added || []) {
       outputsById.set(output.output_id, output);
+      knownOutputsById.set(output.output_id, {
+        ...output,
+        currently_available: true,
+        last_seen: new Date().toISOString()
+      });
     }
     for (const output of data?.outputs_changed || []) {
       outputsById.set(output.output_id, output);
+      knownOutputsById.set(output.output_id, {
+        ...output,
+        currently_available: true,
+        last_seen: new Date().toISOString()
+      });
     }
     for (const outputId of data?.outputs_removed || []) {
+      const known = knownOutputsById.get(outputId);
+      if (known) knownOutputsById.set(outputId, { ...known, currently_available: false });
       outputsById.delete(outputId);
     }
   }
@@ -161,6 +181,13 @@ export function createRoonClient(
         outputsById = new Map(
           body.outputs.map((output: RoonOutput) => [output.output_id, output])
         );
+        for (const output of body.outputs) {
+          knownOutputsById.set(output.output_id, {
+            ...output,
+            currently_available: true,
+            last_seen: new Date().toISOString()
+          });
+        }
       });
     },
     core_unpaired: (core: any) => {
@@ -345,6 +372,9 @@ export function createRoonClient(
     },
     getOutputs() {
       return Array.from(outputsById.values());
+    },
+    getKnownOutputs() {
+      return Array.from(knownOutputsById.values());
     },
     getOutput(outputId: string) {
       return outputsById.get(outputId) || null;

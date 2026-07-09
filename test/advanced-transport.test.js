@@ -38,7 +38,16 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     getOutputs: () => [output]
   };
 
-  assert.deepEqual(listOutputs(client), [output]);
+  assert.deepEqual(listOutputs(client), [{
+    ...output,
+    currently_available: true,
+    last_seen: null,
+    can_control_volume: false,
+    volume_type: null,
+    can_group_with_output_ids: [],
+    source_control_status: null,
+    device_type: null
+  }]);
   await seekZone(client, "zone-1", "relative", -15);
   await muteOutput(client, "output-1", "mute");
   await changeOutputVolume(client, "output-1", "relative_step", 1);

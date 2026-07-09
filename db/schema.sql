@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS portal_sessions (
 CREATE TABLE IF NOT EXISTS zone_presets (
   preset_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  primary_output_id TEXT NOT NULL,
+  primary_output_id TEXT,
   output_ids_json TEXT NOT NULL,
   volume_values_json TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

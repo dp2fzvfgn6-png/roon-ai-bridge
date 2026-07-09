@@ -104,3 +104,37 @@ test("rejects zones without volume-capable outputs", async () => {
     (error) => error.code === "VOLUME_NOT_SUPPORTED"
   );
 });
+
+test("dry-run exposes normalized volume context and configured active limit id", async () => {
+  const zone = {
+    zone_id: "office",
+    display_name: "Office",
+    state: "paused",
+    outputs: [
+      {
+        output_id: "out",
+        display_name: "Output",
+        volume: { type: "number", min: 0, max: 100, value: 34 }
+      }
+    ]
+  };
+  const result = await changeZoneVolume(createClient(zone, () => {
+    throw new Error("dry-run should not change volume");
+  }), "office", "absolute", 50, {
+    dryRun: true,
+    volumeLimits: [{
+      output_id: "out",
+      output_name: null,
+      zone_name: null,
+      safe_max: 40,
+      limit_id: "out-safe",
+      source_type: "output_id",
+      limits: [{ name: "safe", from: null, to: null, safe_max: 40 }]
+    }]
+  });
+
+  assert.equal(result.volume_policy.outputs[0].active_limit_id, "out-safe");
+  assert.equal(result.volume_policy.outputs[0].safe_limit_source, "output_id");
+  assert.equal(result.after.outputs[0].normalized_volume.volume_type, "number");
+  assert.equal(result.after.outputs[0].normalized_volume.normalized_percent, 34);
+});

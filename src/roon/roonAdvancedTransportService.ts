@@ -36,9 +36,24 @@ function getOutputOrThrow(roonClient: RoonClient, outputId: string): RoonOutput 
   return output;
 }
 
-export function listOutputs(roonClient: RoonClient): RoonOutput[] {
+export function listOutputs(roonClient: RoonClient): Array<RoonOutput & Record<string, unknown>> {
   requireTransport(roonClient);
-  return roonClient.getOutputs();
+  const currentIds = new Set(roonClient.getOutputs().map((output) => output.output_id));
+  const knownOutputs = typeof roonClient.getKnownOutputs === "function"
+    ? roonClient.getKnownOutputs()
+    : roonClient.getOutputs();
+  return knownOutputs.map((output) => ({
+    ...output,
+    currently_available: typeof output.currently_available === "boolean"
+      ? output.currently_available
+      : currentIds.has(output.output_id),
+    last_seen: output.last_seen ?? null,
+    can_control_volume: Boolean(output.volume),
+    volume_type: output.volume?.type || null,
+    can_group_with_output_ids: output.can_group_with_output_ids || [],
+    source_control_status: output.source_control_status ?? null,
+    device_type: output.device_type ?? output.protocol ?? null
+  }));
 }
 
 export async function seekZone(

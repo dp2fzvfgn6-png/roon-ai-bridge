@@ -518,6 +518,82 @@ test("resolves virtual playlist entries with the best playable track", async () 
   assert.equal(playlist.tracks[0].image_key, "cover-key");
 });
 
+test("automatic resolver marks close low-metadata candidates ambiguous instead of resolved", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Ambiguous Mix",
+    tracks: [{ title: "Same Song", artist: "Same Artist", query: "Same Song Same Artist" }]
+  });
+  const mediaService = {
+    async search() {
+      return {
+        query: "Same Song Same Artist",
+        source_preference: "highest_quality",
+        warnings: [],
+        results: [
+          {
+            result_id: "candidate-1",
+            roon_item_key: "key-1",
+            media_type: "track",
+            title: "Same Song",
+            subtitle: "Same Artist",
+            artist: "Same Artist",
+            album: null,
+            source: "unknown",
+            quality: null,
+            is_library: null,
+            playable: true,
+            confidence: "low",
+            version_hint: "studio"
+          },
+          {
+            result_id: "candidate-2",
+            roon_item_key: "key-2",
+            media_type: "track",
+            title: "Same Song",
+            subtitle: "Same Artist",
+            artist: "Same Artist",
+            album: null,
+            source: "unknown",
+            quality: null,
+            is_library: null,
+            playable: true,
+            confidence: "low",
+            version_hint: "studio"
+          }
+        ]
+      };
+    }
+  };
+
+  const resolved = await service.resolveVirtualPlaylistItems(playlist.playlist_id, { mediaService });
+  assert.equal(resolved.resolution[0].status, "ambiguous");
+  const validation = service.validatePlaylist(playlist.playlist_id);
+  assert.equal(validation.summary.resolved, 0);
+  assert.equal(validation.summary.unresolved, 1);
+  assert.equal(validation.summary.ambiguous, 1);
+});
+
+test("read-only virtual playlist operations do not update playlist updated_at", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Read Only Mix",
+    tracks: [{ query: "one", title: "One", roon_item_key: "roon-one" }]
+  });
+  const before = service.getPlaylist(playlist.playlist_id).updated_at;
+
+  service.listPlaylists({ includeTracks: true });
+  service.getPlaylistDetail(playlist.playlist_id);
+  service.validatePlaylist(playlist.playlist_id);
+  service.exportPlaylist(playlist.playlist_id, "json");
+  service.exportPlaylist(playlist.playlist_id, "csv");
+  service.exportPlaylist(playlist.playlist_id, "m3u");
+
+  assert.equal(service.getPlaylist(playlist.playlist_id).updated_at, before);
+});
+
 test("phase 2 metadata model preserves user metadata and exposes audio metadata separately", () => {
   const config = tempConfig();
   const service = new PlaylistService(config);

@@ -357,6 +357,7 @@ export function scoreSearchResult(
     query: string;
     title?: string | null;
     artist?: string | null;
+    album?: string | null;
     sourcePreference?: SourcePreference;
     strategy?: SearchStrategyOptions;
   }
@@ -366,8 +367,10 @@ export function scoreSearchResult(
   const query = normalize(request.query);
   const title = request.title ? normalize(request.title) : "";
   const artist = request.artist ? normalize(request.artist) : "";
+  const album = request.album ? normalize(request.album) : "";
   const resultTitle = normalize(result.title);
   const resultSubtitle = normalize(result.subtitle || "");
+  const resultAlbum = normalize(result.album || "");
   const reasons: string[] = [];
   const penalties: string[] = [];
   let score = 0;
@@ -410,6 +413,20 @@ export function scoreSearchResult(
     }
   }
 
+  if (album) {
+    if (resultAlbum === album) {
+      score += 10;
+      reasons.push("album_match");
+    } else if (resultAlbum && (resultAlbum.includes(album) || album.includes(resultAlbum))) {
+      score += 5;
+      reasons.push("album_partial");
+      penalties.push("album_partial");
+    } else {
+      score -= 8;
+      penalties.push("album_missing_or_mismatch");
+    }
+  }
+
   if (query) {
     const relevance = mediaRelevanceScore(result, query);
     const normalizedRelevance = Math.min(18, Math.round(relevance / 180));
@@ -449,6 +466,19 @@ export function scoreSearchResult(
     penalties.push("not_playable");
   }
 
+  if (result.source === "unknown") {
+    score -= 5;
+    penalties.push("source_unknown");
+  }
+  if (!result.quality && result.source === "unknown") {
+    score -= 3;
+    penalties.push("quality_unknown");
+  }
+  if (result.is_library === null) {
+    score -= 2;
+    penalties.push("library_status_unknown");
+  }
+
   if (strategy.avoid_live && result.version_hint === "live") {
     score -= 18;
     penalties.push("live_version");
@@ -460,6 +490,10 @@ export function scoreSearchResult(
   if (strategy.avoid_cover && result.version_hint === "cover") {
     score -= 18;
     penalties.push("cover_version");
+  }
+  if (strategy.prefer_original_album && result.version_hint !== "studio") {
+    score -= 12;
+    penalties.push("not_original_studio_version");
   }
 
   const bounded = Math.max(0, Math.min(100, Math.round(score)));
@@ -915,6 +949,7 @@ export class RoonMediaService {
       query: string;
       title?: string | null;
       artist?: string | null;
+      album?: string | null;
       sourcePreference?: SourcePreference;
       strategy?: SearchStrategyOptions;
     }

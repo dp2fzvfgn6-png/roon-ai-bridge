@@ -1364,6 +1364,7 @@ export class PlaylistService {
             query,
             title: row.title,
             artist: row.artist,
+            album: row.album,
             sourcePreference: options.sourcePreference || "highest_quality"
           })
         }))
@@ -1390,10 +1391,20 @@ export class PlaylistService {
         second.scoring.score >= 60 &&
         Math.abs(best.scoring.score - second.scoring.score) <= AMBIGUOUS_SCORE_DELTA
       );
+      const hasStablePlayableKey = Boolean(best.result.roon_item_key || best.result.result_id);
+      const baseConfidence = best.result.confidence || best.scoring.confidence;
+      const richEnough =
+        Boolean(row.album || best.result.album) ||
+        best.result.source !== "unknown" ||
+        best.result.quality !== null ||
+        best.result.is_library !== null;
       const accepted =
         best.result.media_type === "track" &&
         best.result.playable &&
+        hasStablePlayableKey &&
         best.scoring.score >= RESOLUTION_SCORE_THRESHOLD &&
+        baseConfidence !== "low" &&
+        richEnough &&
         !ambiguous;
       const status: VirtualPlaylistResolutionStatus = accepted
         ? "resolved"

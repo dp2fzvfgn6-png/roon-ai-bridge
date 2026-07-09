@@ -42,6 +42,13 @@ keeping legacy columns for compatibility:
 - `created_at`
 - `updated_at`
 
+When a preset is created with the modern `grouping.primary_zone_ref` schema,
+RoonIA also writes the legacy `primary_output_id` column. `output_id` refs are
+stored directly. `zone_id` refs are resolved to the zone's first output at
+creation time; if the zone is unavailable or has no outputs, RoonIA returns a
+typed validation error instead of an internal SQLite error. Presets with
+`grouping.enabled=false` may omit `primary_output_id`.
+
 `volume_limits` stores configurable safe limits:
 
 - `limit_id`
@@ -55,6 +62,18 @@ keeping legacy columns for compatibility:
 - `updated_at`
 
 Initial editable limits are seeded once for Salon/Salón, Despacho and Cocina.
+MCP and HTTP volume changes use the same active limit list. Internal fallback
+limits, when used outside the configured service, expose the synthetic id
+`__default_global__` and source `default_global`.
+
+Volume dry-runs and responses expose the output's real volume scale with
+`volume_type`, raw value, min/max/step, hard/soft limits and a normalized
+percentage only when Roon reports a safe numeric scale.
+
+`roon_list_outputs` returns known output metadata, including whether each
+output is currently available, last seen time where known, volume capability,
+volume type and grouping compatibility. This reflects Roon's dynamic output
+visibility and avoids treating disappeared outputs as internal failures.
 
 ## HTTP endpoints
 

@@ -111,6 +111,19 @@ function outputIds(zone: RoonZone): string[] {
   return (zone.outputs || []).map((output) => output.output_id);
 }
 
+function volumeContext(output: RoonOutput | null): Record<string, unknown> | null {
+  if (!output?.volume) return null;
+  return {
+    volume_type: output.volume.type || null,
+    raw_value: output.volume.value ?? null,
+    min: output.volume.min ?? null,
+    max: output.volume.max ?? null,
+    step: output.volume.step ?? null,
+    hard_limit: (output.volume as Record<string, unknown>).hard_limit_max ?? null,
+    soft_limit: output.volume.max ?? null
+  };
+}
+
 export class ZonePresetService {
   private readonly database: SqliteDatabase;
 
@@ -159,11 +172,13 @@ export class ZonePresetService {
       ? slug(input.preset_id)
       : slug(preset.name);
     const now = nowIso();
+    const legacy = this.legacySnapshot(roonClient, preset);
     this.database.db
       .prepare(
         `INSERT INTO zone_presets (
-          preset_id, name, description, enabled, config_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+          preset_id, name, description, enabled, config_json, primary_output_id,
+          output_ids_json, volume_values_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         presetId,
@@ -171,6 +186,9 @@ export class ZonePresetService {
         preset.description,
         preset.enabled ? 1 : 0,
         JSON.stringify({ ...preset, preset_id: presetId, created_at: now, updated_at: now }),
+        legacy.primary_output_id,
+        JSON.stringify(legacy.output_ids),
+        JSON.stringify(legacy.volume_values),
         now,
         now
       );
@@ -184,7 +202,8 @@ export class ZonePresetService {
     this.database.db
       .prepare(
         `UPDATE zone_presets
-         SET name = ?, description = ?, enabled = ?, config_json = ?, updated_at = ?
+         SET name = ?, description = ?, enabled = ?, config_json = ?, primary_output_id = ?,
+             output_ids_json = ?, volume_values_json = ?, updated_at = ?
          WHERE preset_id = ?`
       )
       .run(
@@ -192,6 +211,9 @@ export class ZonePresetService {
         merged.description,
         merged.enabled ? 1 : 0,
         JSON.stringify({ ...merged, preset_id: presetId, updated_at: now }),
+        merged.grouping.primary_zone_ref?.type === "output_id" ? merged.grouping.primary_zone_ref.value : null,
+        JSON.stringify(merged.grouping.members.filter((item) => item.type === "output_id").map((item) => item.value)),
+        JSON.stringify(Object.fromEntries(merged.volumes.filter((item) => item.target_ref.type === "output_id").map((item) => [item.target_ref.value, item.volume]))),
         now,
         presetId
       );
@@ -285,7 +307,11 @@ export class ZonePresetService {
     volumeLimitService?: VolumeLimitService
   ) {
     const warnings: string[] = [];
-    const memberOutputs = preset.grouping.members.map((ref) => this.resolveOutput(roonClient, ref));
+    const memberOutputs = preset.grouping.enabled
+      ? preset.grouping.members.map((ref) => this.resolveOutput(roonClient, ref))
+      : preset.grouping.members
+          .map((ref) => this.tryResolveOutput(roonClient, ref, warnings))
+          .filter((output): output is RoonOutput => Boolean(output));
     const primaryOutput = preset.grouping.primary_zone_ref
       ? this.resolveOutput(roonClient, preset.grouping.primary_zone_ref)
       : memberOutputs[0];
@@ -350,6 +376,7 @@ export class ZonePresetService {
           output_id: item.output.output_id,
           output_name: item.output.display_name,
           volume: item.volume,
+          volume_context: volumeContext(item.output),
           policy: policies.find((policy) => policy.output_id === item.output.output_id)
         })),
         playback: preset.playback,
@@ -359,33 +386,73 @@ export class ZonePresetService {
         note: "Dry-run only; Roon state is not changed.",
         output_volumes: volumeOutputs.map((item) => ({
           output_id: item.output.output_id,
-          value: item.volume
+          value: item.volume,
+          volume_context: volumeContext(item.output)
         }))
       }
     };
   }
 
+  private tryResolveOutput(roonClient: RoonClient, ref: PresetTargetRef, warnings: string[]): RoonOutput | null {
+    try {
+      return this.resolveOutput(roonClient, ref);
+    } catch {
+      warnings.push(`Output not currently available for ${ref.type}:${ref.value}`);
+      return null;
+    }
+  }
+
   private resolveOutput(roonClient: RoonClient, ref: PresetTargetRef): RoonOutput {
     if (ref.type === "output_id") {
       const output = roonClient.getOutput(ref.value);
-      if (!output) throw new ApiError("OUTPUT_NOT_FOUND", "No se encontró el output configurado.", { target_ref: ref });
+      if (!output) throw new ApiError("OUTPUT_NOT_AVAILABLE", "No se encontró el output configurado.", { target_ref: ref });
       return output;
     }
     if (ref.type === "zone_id") {
       const zone = roonClient.getZone(ref.value);
       const output = zone?.outputs?.[0];
-      if (!output) throw new ApiError("ZONE_NOT_FOUND", "No se encontró la zona configurada.", { target_ref: ref });
+      if (!output) throw new ApiError("OUTPUT_NOT_AVAILABLE", "No se encontró la zona configurada.", { target_ref: ref });
       return output;
     }
     if (ref.type === "output_name") {
       const output = roonClient.getOutputs().find((item) => normalizeName(item.display_name) === normalizeName(ref.value));
-      if (!output) throw new ApiError("OUTPUT_NOT_FOUND", "No se encontró el output configurado.", { target_ref: ref });
+      if (!output) throw new ApiError("OUTPUT_NOT_AVAILABLE", "No se encontró el output configurado.", { target_ref: ref });
       return output;
     }
     const zone = roonClient.getZones().find((item) => normalizeName(item.display_name) === normalizeName(ref.value));
     const output = zone?.outputs?.[0];
-    if (!output) throw new ApiError("ZONE_NOT_FOUND", "No se encontró la zona configurada.", { target_ref: ref });
+    if (!output) throw new ApiError("OUTPUT_NOT_AVAILABLE", "No se encontró la zona configurada.", { target_ref: ref });
     return output;
+  }
+
+  private legacySnapshot(roonClient: RoonClient, preset: ZonePreset): {
+    primary_output_id: string | null;
+    output_ids: string[];
+    volume_values: Record<string, number>;
+  } {
+    let primaryOutputId: string | null = null;
+    if (preset.grouping.enabled && preset.grouping.primary_zone_ref) {
+      primaryOutputId = this.resolveOutput(roonClient, preset.grouping.primary_zone_ref).output_id;
+    } else if (preset.grouping.primary_zone_ref?.type === "output_id") {
+      primaryOutputId = preset.grouping.primary_zone_ref.value;
+    }
+
+    const output_ids = preset.grouping.members
+      .map((ref) => {
+        if (ref.type === "output_id") return ref.value;
+        if (preset.grouping.enabled) return this.resolveOutput(roonClient, ref).output_id;
+        return null;
+      })
+      .filter((value): value is string => Boolean(value));
+    const volume_values = Object.fromEntries(
+      preset.volumes.map((item) => {
+        const outputId = item.target_ref.type === "output_id"
+          ? item.target_ref.value
+          : this.resolveOutput(roonClient, item.target_ref).output_id;
+        return [outputId, item.volume];
+      })
+    );
+    return { primary_output_id: primaryOutputId, output_ids, volume_values };
   }
 
   private parseInput(input: Record<string, unknown>, fallback?: ZonePreset): ZonePreset {
@@ -476,9 +543,11 @@ export class ZonePresetService {
         name: row.name,
         description: row.description,
         enabled: Boolean(row.enabled),
-        primary_output_id: parsed.grouping.primary_zone_ref?.type === "output_id"
-          ? parsed.grouping.primary_zone_ref.value
-          : null,
+        primary_output_id: row.primary_output_id || (
+          parsed.grouping.primary_zone_ref?.type === "output_id"
+            ? parsed.grouping.primary_zone_ref.value
+            : null
+        ),
         output_ids: outputIdsValue,
         volume_values: volumeValues,
         created_at: row.created_at,

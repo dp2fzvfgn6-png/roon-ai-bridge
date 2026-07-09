@@ -256,6 +256,33 @@ export class SqliteDatabase {
     addZoneColumn("primary_output_id", "primary_output_id TEXT");
     addZoneColumn("output_ids_json", "output_ids_json TEXT");
     addZoneColumn("volume_values_json", "volume_values_json TEXT");
+    const primaryOutputColumn = zoneColumns.find((column: any) => column.name === "primary_output_id") as any;
+    if (primaryOutputColumn?.notnull) {
+      this.db.exec(`
+        CREATE TABLE zone_presets_migration (
+          preset_id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          config_json TEXT,
+          primary_output_id TEXT,
+          output_ids_json TEXT,
+          volume_values_json TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO zone_presets_migration (
+          preset_id, name, description, enabled, config_json, primary_output_id,
+          output_ids_json, volume_values_json, created_at, updated_at
+        )
+        SELECT
+          preset_id, name, description, enabled, config_json, primary_output_id,
+          output_ids_json, volume_values_json, created_at, updated_at
+        FROM zone_presets;
+        DROP TABLE zone_presets;
+        ALTER TABLE zone_presets_migration RENAME TO zone_presets;
+      `);
+    }
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS volume_limits (
