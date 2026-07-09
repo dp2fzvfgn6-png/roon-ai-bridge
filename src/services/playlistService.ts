@@ -2,6 +2,7 @@ import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
 import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
 import { RoonClient } from "../roon/roonClient";
+import { controlPlayback } from "../roon/roonPlaybackService";
 import {
   MediaResult,
   RoonMediaService,
@@ -986,6 +987,7 @@ export class PlaylistService {
     const tracks = playlist.tracks.slice(0, limit);
     const results: Record<string, unknown>[] = [];
     const failures: Record<string, unknown>[] = [];
+    let playback: Record<string, unknown> | null = null;
     const sessionPrefix =
       nonEmptyString(input.session_key) ||
       `roon-ai-bridge-playlist-${playlist.playlist_id}-${Date.now().toString(36)}`;
@@ -1012,6 +1014,10 @@ export class PlaylistService {
           failures
         );
       }
+
+      if (failures.length === 0) {
+        playback = await controlPlayback(roonClient, zoneId, "play");
+      }
     } else {
       const orderedTracks = mode === "add_next" ? tracks.slice().reverse() : tracks;
       for (const [index, track] of orderedTracks.entries()) {
@@ -1035,6 +1041,7 @@ export class PlaylistService {
       requested: tracks.length,
       succeeded: results.length,
       failed: failures.length,
+      playback,
       results,
       failures
     };

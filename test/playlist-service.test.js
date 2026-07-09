@@ -730,3 +730,82 @@ test("phase 2 manual selection and add-from-result keep user metadata", () => {
   assert.equal(added.tracks[1].user_metadata.mood, "dark");
   assert.equal(added.tracks[1].resolution.status, "manual");
 });
+
+test("play_now virtual playlist replaces the queue then starts verified playback", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Playback Smoke",
+    tracks: [
+      { query: "first track", title: "First" },
+      { query: "second track", title: "Second" },
+      { query: "third track", title: "Third" }
+    ]
+  });
+  const calls = [];
+  const zone = {
+    zone_id: "office",
+    display_name: "Office",
+    state: "paused",
+    is_play_allowed: true
+  };
+  const lastBrowseItemKeyBySession = new Map();
+  const browse = {
+    browse(opts, callback) {
+      calls.push({ type: "browse", opts });
+      lastBrowseItemKeyBySession.set(
+        opts.multi_session_key,
+        typeof opts.item_key === "string" ? opts.item_key : null
+      );
+      callback(false, { action: opts.item_key?.startsWith("action:") ? "message" : "list" });
+    },
+    load(opts, callback) {
+      calls.push({ type: "load", opts });
+      const suffix = String(opts.multi_session_key || "").split("-").at(-1);
+      const query = suffix === "0" ? "first track" : suffix === "1" ? "second track" : "third track";
+      const actionTitle = suffix === "0" ? "Play now" : "Add to queue";
+      const actionKey = suffix === "0" ? "action:play" : "action:add-to-queue";
+      const lastItemKey = lastBrowseItemKeyBySession.get(opts.multi_session_key);
+      const items = lastItemKey
+        ? [{ title: actionTitle, item_key: actionKey, hint: "action" }]
+        : [{ title: query, item_key: "result:" + query, hint: "track" }];
+      callback(false, { list: { level: 0, title: "Search", count: items.length }, items });
+    }
+  };
+  const transport = {
+    control(_zone, command, callback) {
+      calls.push({ type: "control", command });
+      if (command === "play") zone.state = "playing";
+      callback(false);
+    }
+  };
+  const roonClient = {
+    isCoreConnected: () => true,
+    isBrowseReady: () => true,
+    getBrowse: () => browse,
+    getZone: (zoneId) => zoneId === zone.zone_id ? zone : null,
+    isTransportReady: () => true,
+    getTransport: () => transport
+  };
+
+  const result = await service.playPlaylist(roonClient, playlist.playlist_id, {
+    zone_id: "office",
+    mode: "play_now",
+    session_key: "playlist-session"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.succeeded, 3);
+  assert.equal(result.failed, 0);
+  assert.equal(result.playback.command, "play");
+  assert.equal(result.playback.state_verified, true);
+  assert.equal(zone.state, "playing");
+  assert.deepEqual(
+    calls
+      .filter((call) => call.type === "browse" && call.opts.item_key?.startsWith("action:"))
+      .map((call) => call.opts.item_key),
+    ["action:play", "action:add-to-queue", "action:add-to-queue"]
+  );
+  assert.equal(calls.at(-1).type, "control");
+  assert.equal(calls.at(-1).command, "play");
+});
