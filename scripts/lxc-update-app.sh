@@ -68,7 +68,13 @@ flock -n 9 || exit 0
 REQUEST_PATH='${request_path}'
 STATUS_PATH='${status_path}'
 [[ -f "\${REQUEST_PATH}" ]] || exit 0
-TARGET="\$(node -e 'try{const fs=require("fs");const req=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const target=String(req.target||"main");if(!["main","beta"].includes(target)) process.exit(2);process.stdout.write(target)}catch{process.exit(1)}' "\${REQUEST_PATH}")"
+TARGET="\$(sed -n 's/.*\"target\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p' "\${REQUEST_PATH}" | head -n1)"
+TARGET="\${TARGET:-main}"
+if [[ "\${TARGET}" != "main" && "\${TARGET}" != "beta" ]]; then
+  rm -f "\${REQUEST_PATH}"
+  printf '{"state":"failed","error":"invalid_target","target":"%s","completed_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
+  exit 2
+fi
 rm -f "\${REQUEST_PATH}"
 printf '{"state":"running","target":"%s","started_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
 if GIT_REF="\${TARGET}" bash '${APP_DIR}/scripts/lxc-update-app.sh'; then
@@ -105,6 +111,7 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
+  systemctl reset-failed roon-ai-bridge-update.service roon-ai-bridge-update.path >/dev/null 2>&1 || true
   systemctl enable --now roon-ai-bridge-update.path
 }
 
