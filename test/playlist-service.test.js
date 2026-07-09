@@ -731,15 +731,263 @@ test("phase 2 manual selection and add-from-result keep user metadata", () => {
   assert.equal(added.tracks[1].resolution.status, "manual");
 });
 
+test("automatic resolver persists roon_item_key for clear virtual playlist matches", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const mediaService = {
+    async search(request) {
+      if (request.query === "Max Cooper Repetition") {
+        return {
+          query: request.query,
+          source_preference: "highest_quality",
+          warnings: [],
+          results: [
+            {
+              result_id: "media_repetition_binaural",
+              roon_item_key: "225:0",
+              type: "track",
+              media_type: "track",
+              title: "Repetition 3D (Binaural Version - Headphones Only)",
+              artist: "Max Cooper",
+              subtitle: "Max Cooper",
+              album: "Yearning for the Infinite",
+              album_artist: null,
+              version_hint: "alternate",
+              version_penalties: ["alternate_3d", "binaural_version"],
+              image_key: null,
+              source: "library",
+              source_confidence: "high",
+              quality: null,
+              is_library: true,
+              playable: true,
+              is_best_match: false,
+              selection_required: false,
+              match_score: 0,
+              confidence: "medium",
+              match_reasons: [],
+              match_penalties: [],
+              warnings: [],
+              expires_at: new Date().toISOString()
+            },
+            {
+              result_id: "media_repetition_clean",
+              roon_item_key: "225:1",
+              type: "track",
+              media_type: "track",
+              title: "Repetition",
+              artist: "Max Cooper",
+              subtitle: "Max Cooper",
+              album: "Yearning for the Infinite",
+              album_artist: null,
+              version_hint: "studio",
+              version_penalties: [],
+              image_key: null,
+              source: "library",
+              source_confidence: "high",
+              quality: null,
+              is_library: true,
+              playable: true,
+              is_best_match: true,
+              selection_required: false,
+              match_score: 0,
+              confidence: "high",
+              match_reasons: [],
+              match_penalties: [],
+              warnings: [],
+              expires_at: new Date().toISOString()
+            }
+          ]
+        };
+      }
+      return {
+        query: request.query,
+        source_preference: "highest_quality",
+        warnings: [],
+        results: [
+          {
+            result_id: "media_angel_clean",
+            roon_item_key: "223:0",
+            type: "track",
+            media_type: "track",
+            title: "Angel",
+            artist: "Massive Attack",
+            subtitle: "Massive Attack",
+            album: "Mezzanine",
+            album_artist: null,
+            version_hint: "studio",
+            version_penalties: [],
+            image_key: null,
+            source: "library",
+            source_confidence: "high",
+            quality: null,
+            is_library: true,
+            playable: true,
+            is_best_match: true,
+            selection_required: false,
+            match_score: 0,
+            confidence: "high",
+            match_reasons: [],
+            match_penalties: [],
+            warnings: [],
+            expires_at: new Date().toISOString()
+          },
+          {
+            result_id: "media_angel_remix",
+            roon_item_key: "223:1",
+            type: "track",
+            media_type: "track",
+            title: "Angel (Blur Remix)",
+            artist: "Massive Attack",
+            subtitle: "Massive Attack",
+            album: "Mezzanine",
+            album_artist: null,
+            version_hint: "remix",
+            version_penalties: ["remix_version"],
+            image_key: null,
+            source: "library",
+            source_confidence: "high",
+            quality: null,
+            is_library: true,
+            playable: true,
+            is_best_match: false,
+            selection_required: false,
+            match_score: 0,
+            confidence: "medium",
+            match_reasons: [],
+            match_penalties: [],
+            warnings: [],
+            expires_at: new Date().toISOString()
+          }
+        ]
+      };
+    }
+  };
+
+  const playlist = await service.createPlaylistResolved(
+    {
+      playlist_id: "roonia_test_playlist_20260709_retest",
+      name: "RoonIA Test Playlist Retest",
+      tracks: [
+        {
+          query: "Max Cooper Repetition",
+          title: "Repetition",
+          artist: "Max Cooper",
+          album: "Yearning for the Infinite"
+        },
+        {
+          query: "Massive Attack Angel",
+          title: "Angel",
+          artist: "Massive Attack",
+          album: "Mezzanine"
+        }
+      ]
+    },
+    { mediaService }
+  );
+
+  assert.deepEqual(playlist.tracks.map((track) => track.roon_item_key), ["225:1", "223:0"]);
+  assert.equal(playlist.tracks[0].resolution.selected_roon_item_key, "225:1");
+  assert.equal(playlist.tracks[1].resolution.selected_roon_item_key, "223:0");
+  assert.equal(playlist.tracks[0].resolution.status, "resolved");
+  assert.equal(playlist.tracks[1].resolution.status, "resolved");
+
+  const validation = service.validatePlaylist(playlist.playlist_id);
+  assert.equal(validation.summary.resolved, 2);
+  assert.equal(validation.summary.unresolved, 0);
+  assert.equal(validation.summary.ambiguous, 0);
+});
+
+test("automatic resolver never stores high confidence for ambiguous or unselected matches", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Ambiguous Angel",
+    tracks: [{ query: "Angel", title: "Angel" }]
+  });
+  const mediaService = {
+    async search() {
+      return {
+        query: "Angel",
+        source_preference: "highest_quality",
+        warnings: [],
+        results: [
+          {
+            result_id: "angel-one",
+            roon_item_key: "one",
+            type: "track",
+            media_type: "track",
+            title: "Angel",
+            artist: "Massive Attack",
+            subtitle: "Massive Attack",
+            album: null,
+            album_artist: null,
+            version_hint: "studio",
+            version_penalties: [],
+            image_key: null,
+            source: "unknown",
+            source_confidence: "low",
+            quality: null,
+            is_library: null,
+            playable: true,
+            is_best_match: false,
+            selection_required: true,
+            match_score: 0,
+            confidence: "low",
+            match_reasons: [],
+            match_penalties: [],
+            warnings: [],
+            expires_at: new Date().toISOString()
+          },
+          {
+            result_id: "angel-two",
+            roon_item_key: "two",
+            type: "track",
+            media_type: "track",
+            title: "Angel",
+            artist: "Sarah McLachlan",
+            subtitle: "Sarah McLachlan",
+            album: null,
+            album_artist: null,
+            version_hint: "studio",
+            version_penalties: [],
+            image_key: null,
+            source: "unknown",
+            source_confidence: "low",
+            quality: null,
+            is_library: null,
+            playable: true,
+            is_best_match: false,
+            selection_required: true,
+            match_score: 0,
+            confidence: "low",
+            match_reasons: [],
+            match_penalties: [],
+            warnings: [],
+            expires_at: new Date().toISOString()
+          }
+        ]
+      };
+    }
+  };
+
+  await service.resolveVirtualPlaylistItems(playlist.playlist_id, { mediaService });
+  const resolved = service.getPlaylist(playlist.playlist_id).tracks[0];
+
+  assert.equal(resolved.roon_item_key, null);
+  assert.equal(resolved.resolution.status, "ambiguous");
+  assert.notEqual(resolved.resolution.confidence, "high");
+  assert.equal(resolved.resolution.selected_roon_item_key, null);
+});
+
 test("play_now virtual playlist replaces the queue then starts verified playback", async () => {
   const config = tempConfig();
   const service = new PlaylistService(config);
   const playlist = service.createPlaylist({
     name: "Playback Smoke",
     tracks: [
-      { query: "first track noisy text", roon_item_key: "stored:first", title: "First" },
-      { query: "second track noisy text", roon_item_key: "stored:second", title: "Second" },
-      { query: "third track noisy text", roon_item_key: "stored:third", title: "Third" }
+      { query: "first track noisy text", roon_item_key: "stored:first", title: "First", artist: "Artist One" },
+      { query: "second track noisy text", roon_item_key: "stored:second", title: "Second", artist: "Artist Two" },
+      { query: "third track noisy text", roon_item_key: "stored:third", title: "Third", artist: "Artist Three" }
     ]
   });
   const calls = [];
@@ -750,6 +998,7 @@ test("play_now virtual playlist replaces the queue then starts verified playback
     is_play_allowed: true
   };
   const lastBrowseItemKeyBySession = new Map();
+  const searchInputBySession = new Map();
   const browse = {
     browse(opts, callback) {
       calls.push({ type: "browse", opts });
@@ -757,18 +1006,23 @@ test("play_now virtual playlist replaces the queue then starts verified playback
         opts.multi_session_key,
         typeof opts.item_key === "string" ? opts.item_key : null
       );
+      if (typeof opts.input === "string") {
+        searchInputBySession.set(opts.multi_session_key, opts.input);
+      }
       callback(false, { action: opts.item_key?.startsWith("action:") ? "message" : "list" });
     },
     load(opts, callback) {
       calls.push({ type: "load", opts });
-      const suffix = String(opts.multi_session_key || "").split("-").at(-1);
-      const query = suffix === "0" ? "first track" : suffix === "1" ? "second track" : "third track";
-      const actionTitle = suffix === "0" ? "Play now" : "Add to queue";
-      const actionKey = suffix === "0" ? "action:play" : "action:add-to-queue";
       const lastItemKey = lastBrowseItemKeyBySession.get(opts.multi_session_key);
-      const items = lastItemKey
-        ? [{ title: actionTitle, item_key: actionKey, hint: "action" }]
-        : [{ title: query, item_key: "result:" + query, hint: "track" }];
+      const query = searchInputBySession.get(opts.multi_session_key) || "unknown";
+      const isFirst = query === "Artist One First";
+      const actionTitle = isFirst ? "Play now" : "Add to queue";
+      const actionKey = isFirst ? "action:play" : "action:add-to-queue";
+      const items = lastItemKey?.startsWith("stored:")
+        ? []
+        : lastItemKey
+          ? [{ title: actionTitle, item_key: actionKey, hint: "action" }]
+          : [{ title: query, item_key: `result:${query}`, hint: "track" }];
       callback(false, { list: { level: 0, title: "Search", count: items.length }, items });
     }
   };
@@ -811,6 +1065,12 @@ test("play_now virtual playlist replaces the queue then starts verified playback
       .filter((call) => call.type === "browse" && call.opts.item_key?.startsWith("stored:"))
       .map((call) => call.opts.item_key),
     ["stored:first", "stored:second", "stored:third"]
+  );
+  assert.deepEqual(
+    calls
+      .filter((call) => call.type === "browse" && call.opts.input)
+      .map((call) => call.opts.input),
+    ["Artist One First", "Artist Two Second", "Artist Three Third"]
   );
   assert.equal(calls.at(-1).type, "control");
   assert.equal(calls.at(-1).command, "play");

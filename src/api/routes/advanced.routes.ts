@@ -16,9 +16,11 @@ import { getRoonImage } from "../../roon/roonImageService";
 export function createAdvancedRouter(context: ApiContext): Router {
   const router = Router();
 
-  router.get("/outputs", (_req, res, next) => {
+  router.get("/outputs", (req, res, next) => {
     try {
-      res.json(listOutputs(context.roonClient));
+      res.json(listOutputs(context.roonClient, {
+        includeUnavailable: req.query.include_unavailable !== "false"
+      }));
     } catch (error) {
       next(error);
     }

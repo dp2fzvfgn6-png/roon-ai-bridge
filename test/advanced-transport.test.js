@@ -42,9 +42,12 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     ...output,
     currently_available: true,
     last_seen: null,
+    last_known_zone_id: null,
     can_control_volume: false,
     volume_type: null,
+    last_known_volume_type: null,
     can_group_with_output_ids: [],
+    source_controls: null,
     source_control_status: null,
     device_type: null
   }]);

@@ -288,6 +288,24 @@ function buildCover(imageKey: string | null): { image_key: string } | null {
   return imageKey ? { image_key: imageKey } : null;
 }
 
+function playbackQueryForTrack(track: VirtualPlaylistTrack): string {
+  const resolutionQuery = optionalString(track.resolution?.query);
+  const userQuery = optionalString(track.user_metadata?.query);
+  const title = optionalString(track.audio_metadata?.title) || track.title;
+  const artist = optionalString(track.audio_metadata?.artist) || track.artist;
+  const metadataQuery = [artist, title].filter(Boolean).join(" ").trim();
+  return resolutionQuery || userQuery || metadataQuery || track.query;
+}
+
+function shouldFallbackFromStoredKey(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "PLAYBACK_ACTION_NOT_FOUND" ||
+      error.code === "QUEUE_ACTION_NOT_FOUND" ||
+      error.code === "SEARCH_NO_RESULTS")
+  );
+}
+
 type NormalizedTrackInput = {
   track_id: string;
   query: string;
@@ -317,7 +335,7 @@ export type VirtualPlaylistResolutionResult = {
 };
 
 const RESOLUTION_SCORE_THRESHOLD = 85;
-const AMBIGUOUS_SCORE_DELTA = 20;
+const AMBIGUOUS_SCORE_DELTA = 12;
 const AUDIO_METADATA_KEYS = new Set([
   "title",
   "artist",
@@ -335,6 +353,28 @@ const AUDIO_METADATA_KEYS = new Set([
   "image_key",
   "cover"
 ]);
+
+function resolutionConfidence(input: {
+  status: VirtualPlaylistResolutionStatus;
+  roonItemKey: string | null;
+  score: number | null;
+  resultConfidence?: unknown;
+  candidates?: Record<string, unknown>[];
+}): "high" | "medium" | "low" {
+  if (input.status === "ambiguous" || !input.roonItemKey) {
+    return input.score !== null && input.score >= 60 ? "medium" : "low";
+  }
+  if (input.resultConfidence === "low") return input.score !== null && input.score >= 85 ? "medium" : "low";
+  const allCandidatesLow = Boolean(
+    input.candidates?.length &&
+    input.candidates.every((candidate) => candidate.confidence === "low")
+  );
+  if (allCandidatesLow) return input.score !== null && input.score >= 60 ? "medium" : "low";
+  if (input.status === "manual") return input.resultConfidence === "high" ? "high" : "medium";
+  if (input.score !== null && input.score >= 85) return "high";
+  if (input.score !== null && input.score >= 60) return "medium";
+  return "low";
+}
 
 function normalizeTrackInput(
   input: unknown,
@@ -929,7 +969,7 @@ export class PlaylistService {
     this.updateTrackResolution(row, {
       status: "manual",
       query: row.query,
-      roonItemKey: result.roon_item_key || result.result_id,
+      roonItemKey: result.roon_item_key || null,
       score: result.match_score,
       reason: input.selectionReason || "manual_user_selection",
       result
@@ -944,7 +984,7 @@ export class PlaylistService {
     const result = mediaService.get(resultId);
     const added = this.addTrack(playlistId, {
       query: [result.title, result.artist || result.subtitle].filter(Boolean).join(" "),
-      roon_item_key: result.roon_item_key || result.result_id,
+      roon_item_key: result.roon_item_key || null,
       title: result.title,
       artist: result.artist || result.subtitle,
       album: result.album,
@@ -954,7 +994,7 @@ export class PlaylistService {
       resolution: {
         status: "manual",
         selected_result_id: result.result_id,
-        selected_roon_item_key: result.roon_item_key || result.result_id,
+        selected_roon_item_key: result.roon_item_key || null,
         score: result.match_score,
         confidence: result.confidence,
         reason: "added_from_search_result",
@@ -1390,7 +1430,7 @@ export class PlaylistService {
         return unresolved;
       }
 
-      const roonItemKey = best.result.roon_item_key || best.result.result_id;
+      const roonItemKey = best.result.roon_item_key || null;
       const second = candidates[1];
       const ambiguous = Boolean(
         second &&
@@ -1398,20 +1438,14 @@ export class PlaylistService {
         second.scoring.score >= 60 &&
         Math.abs(best.scoring.score - second.scoring.score) <= AMBIGUOUS_SCORE_DELTA
       );
-      const hasStablePlayableKey = Boolean(best.result.roon_item_key || best.result.result_id);
+      const hasStablePlayableKey = Boolean(best.result.roon_item_key);
       const baseConfidence = best.result.confidence || best.scoring.confidence;
-      const richEnough =
-        Boolean(row.album || best.result.album) ||
-        best.result.source !== "unknown" ||
-        best.result.quality !== null ||
-        best.result.is_library !== null;
       const accepted =
         best.result.media_type === "track" &&
         best.result.playable &&
         hasStablePlayableKey &&
         best.scoring.score >= RESOLUTION_SCORE_THRESHOLD &&
         baseConfidence !== "low" &&
-        richEnough &&
         !ambiguous;
       const status: VirtualPlaylistResolutionStatus = accepted
         ? "resolved"
@@ -1424,7 +1458,7 @@ export class PlaylistService {
         query,
         roonItemKey: accepted ? roonItemKey : null,
         score: best.scoring.score,
-        reason,
+        reason: accepted ? reason : ambiguous ? "multiple_close_candidates" : reason,
         result: best.result,
         candidates: candidates.slice(0, 5).map((candidate) => candidate.result)
       });
@@ -1485,13 +1519,13 @@ export class PlaylistService {
         selected_result_id: resolution.result?.result_id || null,
         selected_roon_item_key: resolution.roonItemKey,
         score: resolution.score,
-        confidence: resolution.score === null
-          ? "low"
-          : resolution.score >= 85
-            ? "high"
-            : resolution.score >= 60
-              ? "medium"
-              : "low",
+        confidence: resolutionConfidence({
+          status: resolution.status,
+          roonItemKey: resolution.roonItemKey,
+          score: resolution.score,
+          resultConfidence: resolution.result?.confidence,
+          candidates: resolution.candidates
+        }),
         reason: resolution.reason,
         resolved_at: nowIso(),
         candidates: resolution.candidates?.map((candidate) => ({
@@ -1592,36 +1626,48 @@ export class PlaylistService {
   ): Promise<void> {
     try {
       if (mode === "play_now") {
-        const result = track.roon_item_key
-          ? await playByItemKey(roonClient, {
-            zoneId,
-            itemKey: track.roon_item_key,
-            label: track.title || track.query,
-            sessionKey
-          })
-          : await playByQuery(roonClient, {
-            zoneId,
-            query: track.query,
-            sessionKey
-          });
+        let result;
+        if (track.roon_item_key) {
+          try {
+            result = await playByItemKey(roonClient, {
+              zoneId,
+              itemKey: track.roon_item_key,
+              label: track.title || track.query,
+              sessionKey
+            });
+          } catch (error) {
+            if (!shouldFallbackFromStoredKey(error)) throw error;
+          }
+        }
+        result ||= await playByQuery(roonClient, {
+          zoneId,
+          query: playbackQueryForTrack(track),
+          sessionKey: `${sessionKey}-fallback-${track.track_id}`
+        });
         results.push({ track, result });
         return;
       }
 
-      const result = track.roon_item_key
-        ? await queueByItemKey(roonClient, {
-          zoneId,
-          itemKey: track.roon_item_key,
-          label: track.title || track.query,
-          mode,
-          sessionKey
-        })
-        : await queueByQuery(roonClient, {
-          zoneId,
-          query: track.query,
-          mode,
-          sessionKey
-        });
+      let result;
+      if (track.roon_item_key) {
+        try {
+          result = await queueByItemKey(roonClient, {
+            zoneId,
+            itemKey: track.roon_item_key,
+            label: track.title || track.query,
+            mode,
+            sessionKey
+          });
+        } catch (error) {
+          if (!shouldFallbackFromStoredKey(error)) throw error;
+        }
+      }
+      result ||= await queueByQuery(roonClient, {
+        zoneId,
+        query: playbackQueryForTrack(track),
+        mode,
+        sessionKey: `${sessionKey}-fallback-${track.track_id}`
+      });
       results.push({ track, result });
     } catch (error) {
       if (error instanceof ApiError) {

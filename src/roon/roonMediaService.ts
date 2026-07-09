@@ -17,7 +17,15 @@ export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" |
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
 export type SearchStrategy = "broaden" | "remove_context" | "artist_only" | "title_only" | "fuzzy" | "all";
-export type VersionHint = "studio" | "live" | "remix" | "cover" | "unknown";
+export type VersionHint =
+  | "studio"
+  | "live"
+  | "remix"
+  | "edit"
+  | "remaster"
+  | "cover"
+  | "alternate"
+  | "unknown";
 
 export type MediaQuality = {
   label: string;
@@ -43,10 +51,13 @@ export type MediaResult = {
   quality: MediaQuality | null;
   is_library: boolean | null;
   playable: boolean;
+  is_best_match: boolean;
+  selection_required: boolean;
   match_score: number;
   confidence: "high" | "medium" | "low";
   match_reasons: string[];
   match_penalties: string[];
+  version_penalties: string[];
   warnings: string[];
   expires_at: string;
 };
@@ -310,12 +321,56 @@ function confidenceFromScore(score: number): "high" | "medium" | "low" {
   return "low";
 }
 
-function inferVersionHint(title: string, subtitle: string | null): VersionHint {
+function requestedAlternateVersion(request: {
+  query?: string | null;
+  title?: string | null;
+}): boolean {
+  const text = normalize(`${request.query || ""} ${request.title || ""}`);
+  return /\b(3d|binaural|headphones only|remix|mix|edit|live|cover|remaster(?:ed)?|interpretation|version)\b/.test(text);
+}
+
+function inferVersionDetails(title: string, subtitle: string | null): {
+  version_hint: VersionHint;
+  is_alternate_version: boolean;
+  version_penalties: string[];
+} {
   const text = normalize(`${title} ${subtitle || ""}`);
-  if (/\blive\b|\ben vivo\b|\bdirecto\b/.test(text)) return "live";
-  if (/\bremix\b|\bmix\b|\brework\b/.test(text)) return "remix";
-  if (/\bcover\b|\bversion\b|\btribute\b/.test(text)) return "cover";
-  return "studio";
+  const penalties: string[] = [];
+  if (/\b3d\b/.test(text)) penalties.push("alternate_3d");
+  if (/\bbinaural\b|\bheadphones only\b/.test(text)) penalties.push("binaural_version");
+  if (/\binterpretation\b/.test(text)) penalties.push("interpretation_version");
+  if (/\bremix\b|\brework\b/.test(text)) penalties.push("remix_version");
+  if (/\bedit\b|\bradio edit\b/.test(text)) penalties.push("edit_version");
+  if (/\blive\b|\ben vivo\b|\bdirecto\b/.test(text)) penalties.push("live_version");
+  if (/\bremaster(?:ed)?\b/.test(text)) penalties.push("remaster_version");
+  if (/\bcover\b|\btribute\b/.test(text)) penalties.push("cover_version");
+  if (/\bversion\b/.test(text)) penalties.push("alternate_version");
+  if (/\bmix\b/.test(text) && !penalties.includes("remix_version")) {
+    penalties.push("mix_version");
+  }
+
+  if (penalties.includes("binaural_version") || penalties.includes("alternate_3d")) {
+    return { version_hint: "alternate", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.includes("remix_version") || penalties.includes("mix_version")) {
+    return { version_hint: "remix", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.includes("edit_version")) {
+    return { version_hint: "edit", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.includes("live_version")) {
+    return { version_hint: "live", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.includes("remaster_version")) {
+    return { version_hint: "remaster", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.includes("cover_version")) {
+    return { version_hint: "cover", is_alternate_version: true, version_penalties: penalties };
+  }
+  if (penalties.length > 0) {
+    return { version_hint: "alternate", is_alternate_version: true, version_penalties: penalties };
+  }
+  return { version_hint: "studio", is_alternate_version: false, version_penalties: [] };
 }
 
 export function mediaRelevanceScore(result: MediaResult, query: string): number {
@@ -381,16 +436,16 @@ export function scoreSearchResult(
   }
 
   if (result.playable) {
-    score += 18;
+    score += 8;
     reasons.push("playable");
   }
 
   if (title) {
     if (resultTitle === title) {
-      score += 28;
+      score += 34;
       reasons.push("exact_title", "exact title");
     } else if (resultTitle.includes(title) || title.includes(resultTitle)) {
-      score += 14;
+      score += 8;
       reasons.push("partial_title", "partial title");
       penalties.push("title_partial");
     }
@@ -442,6 +497,14 @@ export function scoreSearchResult(
       score += tokenScore;
       reasons.push("query_token_match");
     }
+    const titleTokens = resultTitle.split(" ").filter((token) => token.length > 2);
+    const subtitleTokens = resultSubtitle.split(" ").filter((token) => token.length > 2);
+    const titleCovered = titleTokens.length > 0 && titleTokens.every((token) => query.includes(token));
+    const artistCovered = subtitleTokens.length > 0 && subtitleTokens.some((token) => query.includes(token));
+    if (result.media_type === "track" && titleCovered && artistCovered) {
+      score += 35;
+      reasons.push("query_title_artist_match");
+    }
   }
 
   const quality = qualityScore(result.quality);
@@ -464,6 +527,25 @@ export function scoreSearchResult(
   if (!result.playable) {
     score -= 30;
     penalties.push("not_playable");
+  }
+
+  const uniqueVersionPenalties = Array.from(new Set(result.version_penalties || []));
+  const wantsAlternate = requestedAlternateVersion(request);
+  if (!wantsAlternate && uniqueVersionPenalties.length > 0) {
+    const severe = uniqueVersionPenalties.filter((penalty) =>
+      penalty !== "edit_version" && penalty !== "remaster_version"
+    ).length;
+    const mild = uniqueVersionPenalties.length - severe;
+    score -= severe * 22 + mild * 10;
+    penalties.push(...uniqueVersionPenalties);
+  }
+  if (
+    !wantsAlternate &&
+    result.version_hint === "studio" &&
+    ((title && resultTitle === title) || (!title && query.includes(resultTitle)))
+  ) {
+    score += 10;
+    reasons.push("clean_studio_version");
   }
 
   if (result.source === "unknown") {
@@ -497,9 +579,13 @@ export function scoreSearchResult(
   }
 
   const bounded = Math.max(0, Math.min(100, Math.round(score)));
+  const confidence =
+    !result.roon_item_key || penalties.includes("artist_mismatch") || penalties.includes("not_playable")
+      ? (bounded >= 75 ? "medium" : confidenceFromScore(bounded))
+      : confidenceFromScore(bounded);
   return {
     score: bounded,
-    confidence: confidenceFromScore(bounded),
+    confidence,
     reasons,
     penalties
   };
@@ -588,6 +674,7 @@ export class RoonMediaService {
     source_preference: SourcePreference;
     results: MediaResult[];
     ambiguous: boolean;
+    ambiguity_reason: string | null;
     recommended_result_id: string | null;
     selection_required: boolean;
     warnings: string[];
@@ -637,20 +724,47 @@ export class RoonMediaService {
     scored.sort((a, b) => b.match_score - a.match_score);
     const best = scored[0] || null;
     const second = scored[1] || null;
-    const ambiguous = Boolean(
+    const closeCandidates = Boolean(
       best &&
       second &&
       second.match_score >= 60 &&
-      Math.abs(best.match_score - second.match_score) <= 30
+      Math.abs(best.match_score - second.match_score) <= 12
     );
+    const recommendedResultId =
+      best && !closeCandidates && best.playable && best.roon_item_key && best.confidence !== "low"
+        ? best.result_id
+        : null;
+    const selectionRequired =
+      closeCandidates || !recommendedResultId || Boolean(best && best.confidence !== "high");
+    const publicResults = scored.map((result) => ({
+      ...result,
+      is_best_match: recommendedResultId === result.result_id,
+      selection_required: recommendedResultId === result.result_id
+        ? selectionRequired
+        : Boolean(best && result.match_score >= 60 && Math.abs(best.match_score - result.match_score) <= 12)
+    }));
+    for (const result of publicResults) {
+      const reference = this.references.get(result.result_id);
+      if (reference) {
+        reference.is_best_match = result.is_best_match;
+        reference.selection_required = result.selection_required;
+        reference.match_score = result.match_score;
+        reference.confidence = result.confidence;
+        reference.match_reasons = result.match_reasons;
+        reference.match_penalties = result.match_penalties;
+        reference.version_penalties = result.version_penalties;
+        reference.warnings = result.warnings;
+      }
+    }
 
     return {
       query,
       source_preference: preference,
-      results: scored,
-      ambiguous,
-      recommended_result_id: best?.result_id || null,
-      selection_required: ambiguous || Boolean(best && best.confidence !== "high"),
+      results: publicResults,
+      ambiguous: closeCandidates,
+      ambiguity_reason: closeCandidates ? "multiple_close_candidates" : null,
+      recommended_result_id: recommendedResultId,
+      selection_required: selectionRequired,
       warnings
     };
   }
@@ -912,6 +1026,7 @@ export class RoonMediaService {
     const album = pickNestedString(item, ["album", "album_name"]);
     const albumArtist = pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"]);
     const subtitle = typeof item.subtitle === "string" ? item.subtitle : null;
+    const version = inferVersionDetails(String(item.title || ""), subtitle);
     const reference: MediaReference = {
       result_id: resultId,
       type,
@@ -921,7 +1036,7 @@ export class RoonMediaService {
       artist,
       album,
       album_artist: albumArtist,
-      version_hint: inferVersionHint(String(item.title || ""), subtitle),
+      version_hint: version.version_hint,
       subtitle,
       image_key: typeof item.image_key === "string" ? item.image_key : null,
       source: source.source,
@@ -929,10 +1044,13 @@ export class RoonMediaService {
       quality,
       is_library: libraryFlag(source.source),
       playable: Boolean(item.item_key),
+      is_best_match: false,
+      selection_required: true,
       match_score: 0,
       confidence: "low",
       match_reasons: [],
       match_penalties: [],
+      version_penalties: version.version_penalties,
       warnings: [],
       expires_at: expiresAt,
       query,
@@ -961,6 +1079,23 @@ export class RoonMediaService {
       confidence: scoring.confidence,
       match_reasons: scoring.reasons,
       match_penalties: scoring.penalties,
+      version_penalties: Array.from(new Set([
+        ...(result.version_penalties || []),
+        ...scoring.penalties.filter((penalty) =>
+          [
+            "alternate_3d",
+            "binaural_version",
+            "interpretation_version",
+            "remix_version",
+            "edit_version",
+            "live_version",
+            "remaster_version",
+            "cover_version",
+            "alternate_version",
+            "mix_version"
+          ].includes(penalty)
+        )
+      ])),
       warnings: [
         ...(result.source === "unknown" ? ["source_unknown"] : []),
         ...(result.quality === null ? ["quality_unknown"] : []),

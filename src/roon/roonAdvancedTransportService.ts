@@ -36,24 +36,35 @@ function getOutputOrThrow(roonClient: RoonClient, outputId: string): RoonOutput 
   return output;
 }
 
-export function listOutputs(roonClient: RoonClient): Array<RoonOutput & Record<string, unknown>> {
+export function listOutputs(
+  roonClient: RoonClient,
+  options: { includeUnavailable?: boolean } = {}
+): Array<RoonOutput & Record<string, unknown>> {
   requireTransport(roonClient);
   const currentIds = new Set(roonClient.getOutputs().map((output) => output.output_id));
   const knownOutputs = typeof roonClient.getKnownOutputs === "function"
     ? roonClient.getKnownOutputs()
     : roonClient.getOutputs();
-  return knownOutputs.map((output) => ({
-    ...output,
-    currently_available: typeof output.currently_available === "boolean"
-      ? output.currently_available
-      : currentIds.has(output.output_id),
-    last_seen: output.last_seen ?? null,
-    can_control_volume: Boolean(output.volume),
-    volume_type: output.volume?.type || null,
-    can_group_with_output_ids: output.can_group_with_output_ids || [],
-    source_control_status: output.source_control_status ?? null,
-    device_type: output.device_type ?? output.protocol ?? null
-  }));
+  return knownOutputs
+    .map((output) => {
+      const currentlyAvailable = typeof output.currently_available === "boolean"
+        ? output.currently_available
+        : currentIds.has(output.output_id);
+      return {
+        ...output,
+        currently_available: currentlyAvailable,
+        last_seen: output.last_seen ?? null,
+        last_known_zone_id: output.zone_id ?? null,
+        can_control_volume: Boolean(output.volume),
+        volume_type: output.volume?.type || null,
+        last_known_volume_type: output.volume?.type || null,
+        can_group_with_output_ids: output.can_group_with_output_ids || [],
+        source_controls: output.source_controls ?? output.source_control_status ?? null,
+        source_control_status: output.source_control_status ?? null,
+        device_type: output.device_type ?? output.protocol ?? null
+      };
+    })
+    .filter((output) => options.includeUnavailable !== false || output.currently_available);
 }
 
 export async function seekZone(

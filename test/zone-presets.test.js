@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const { createDatabase } = require("../dist/db/database");
 const { ZonePresetService } = require("../dist/services/zonePresetService");
+const { listOutputs } = require("../dist/roon/roonAdvancedTransportService");
 
 test("stores and applies a zone preset with primary output first", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-presets-"));
@@ -123,6 +124,70 @@ test("creates zone presets from modern grouping refs and supports dry-run reads"
     const dryRun = await service.apply(client, "zone_ref", { dryRun: true });
     assert.equal(dryRun.dry_run, true);
     service.delete("no_grouping");
+  } finally {
+    database.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("lists known unavailable outputs and dry-runs presets with clear warnings", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-presets-known-"));
+  const config = { dataDir };
+  const database = createDatabase(config);
+  const service = new ZonePresetService(config, database);
+  const visible = {
+    output_id: "visible-output",
+    zone_id: "visible-zone",
+    display_name: "Visible",
+    volume: { type: "number", min: 0, max: 100, value: 20 }
+  };
+  const unavailable = {
+    output_id: "old-output",
+    zone_id: "old-zone",
+    display_name: "Old Output",
+    currently_available: false,
+    last_seen: "2026-07-09T10:00:00.000Z",
+    volume: { type: "number", min: 0, max: 100, value: 18 }
+  };
+  const zones = [{ zone_id: "visible-zone", display_name: "Visible Zone", state: "paused", outputs: [visible] }];
+  const client = {
+    isCoreConnected: () => true,
+    isTransportReady: () => true,
+    getTransport: () => ({
+      group_outputs(_outputs, callback) { callback(false); },
+      ungroup_outputs(_outputs, callback) { callback(false); },
+      control(_zone, _command, callback) { callback(false); },
+      change_volume(_output, _mode, _value, callback) { callback(false); }
+    }),
+    getOutput: (id) => id === visible.output_id ? visible : null,
+    getOutputs: () => [visible],
+    getKnownOutputs: () => [visible, unavailable],
+    getZones: () => zones,
+    getZone: (id) => zones.find((zone) => zone.zone_id === id) || null
+  };
+
+  try {
+    const allOutputs = listOutputs(client, { includeUnavailable: true });
+    assert.equal(allOutputs.length, 2);
+    assert.equal(allOutputs.find((output) => output.output_id === "old-output").currently_available, false);
+    assert.equal(allOutputs.find((output) => output.output_id === "old-output").last_known_zone_id, "old-zone");
+    assert.equal(allOutputs.find((output) => output.output_id === "old-output").last_known_volume_type, "number");
+
+    const availableOnly = listOutputs(client, { includeUnavailable: false });
+    assert.deepEqual(availableOnly.map((output) => output.output_id), ["visible-output"]);
+
+    const preset = service.create(client, {
+      preset_id: "known_missing_output",
+      name: "Known Missing Output",
+      grouping: {
+        enabled: false,
+        members: [{ type: "output_id", value: "old-output" }]
+      },
+      volumes: [{ target_ref: { type: "output_id", value: "old-output" }, volume: 22 }]
+    });
+    const dryRun = await service.apply(client, preset.preset_id, { dryRun: true });
+    assert.equal(dryRun.dry_run, true);
+    assert.ok(dryRun.warnings.some((warning) => warning.includes("old-output")));
   } finally {
     database.close();
     fs.rmSync(dataDir, { recursive: true, force: true });

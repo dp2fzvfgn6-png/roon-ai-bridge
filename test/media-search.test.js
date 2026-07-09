@@ -158,7 +158,7 @@ test("search_media leaves unavailable source and quality unknown without guessin
   assert.deepEqual(service.get(result.result_id), result);
 });
 
-test("search_media returns scored candidates and marks ambiguous close matches", async () => {
+test("search_media returns scored candidates and prefers clean matches over alternate versions", async () => {
   const service = new RoonMediaService(
     createSearchClient([
       {
@@ -187,12 +187,108 @@ test("search_media returns scored candidates and marks ambiguous close matches",
   });
 
   assert.equal(search.results.length, 2);
-  assert.equal(search.ambiguous, true);
-  assert.equal(search.selection_required, true);
+  assert.equal(search.ambiguous, false);
+  assert.equal(search.selection_required, false);
   assert.ok(search.recommended_result_id);
   assert.equal(search.results[0].confidence, "high");
   assert.ok(search.results[0].match_reasons.includes("playable"));
   assert.equal(search.results[1].version_hint, "live");
+});
+
+test("search_media prefers clean studio versions over playable alternate versions", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Repetition 3D (Binaural Version - Headphones Only)",
+        subtitle: "Max Cooper",
+        item_key: "binaural-key",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Repetition",
+        subtitle: "Max Cooper",
+        item_key: "clean-key",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Repetition (Josh Wink Interpretation)",
+        subtitle: "Max Cooper",
+        item_key: "interpretation-key",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Repetition (Edit)",
+        subtitle: "Max Cooper",
+        item_key: "edit-key",
+        hint: "action_list",
+        source_context: "library"
+      }
+    ]),
+    "tidal"
+  );
+
+  const search = await service.search({
+    query: "Max Cooper Repetition",
+    types: ["track"],
+    count: 10,
+    sourcePreference: "library_first"
+  });
+
+  assert.equal(search.results[0].title, "Repetition");
+  assert.equal(search.results[0].roon_item_key, "clean-key");
+  assert.equal(search.recommended_result_id, search.results[0].result_id);
+  assert.equal(search.results[0].is_best_match, true);
+  assert.equal(search.results.find((result) => result.roon_item_key === "binaural-key").version_hint, "alternate");
+  assert.ok(search.results.find((result) => result.roon_item_key === "binaural-key").version_penalties.includes("binaural_version"));
+  assert.equal(search.results.find((result) => result.roon_item_key === "interpretation-key").version_penalties.includes("interpretation_version"), true);
+  assert.equal(search.results.find((result) => result.roon_item_key === "edit-key").version_hint, "edit");
+});
+
+test("search_media classifies remixes remasters edits and keeps selection flags coherent", async () => {
+  const service = new RoonMediaService(
+    createSearchClient([
+      {
+        title: "Angel",
+        subtitle: "Massive Attack",
+        item_key: "angel-clean",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Angel (Remastered 2006)",
+        subtitle: "Massive Attack",
+        item_key: "angel-remaster",
+        hint: "action_list",
+        source_context: "library"
+      },
+      {
+        title: "Angel (Blur Remix)",
+        subtitle: "Massive Attack",
+        item_key: "angel-remix",
+        hint: "action_list",
+        source_context: "library"
+      }
+    ]),
+    "tidal"
+  );
+
+  const search = await service.search({
+    query: "Massive Attack Angel",
+    types: ["track"],
+    count: 10,
+    sourcePreference: "library_first"
+  });
+
+  assert.equal(search.results[0].title, "Angel");
+  assert.equal(search.results[0].roon_item_key, "angel-clean");
+  assert.equal(search.ambiguous, false);
+  assert.equal(search.selection_required, false);
+  assert.equal(search.ambiguity_reason, null);
+  assert.equal(search.results.find((result) => result.roon_item_key === "angel-remix").version_hint, "remix");
+  assert.equal(search.results.find((result) => result.roon_item_key === "angel-remaster").version_hint, "remaster");
 });
 
 test("expand_media_search tries context-stripped searches and returns best candidates", async () => {

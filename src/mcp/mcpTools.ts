@@ -1963,9 +1963,15 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
         "Use this when output-level volume, mute, standby, source control or presets require stable output IDs.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
-      _meta: widgetMeta
+      _meta: widgetMeta,
+      inputSchema: {
+        include_unavailable: z.boolean().default(true)
+      }
     },
-    async () => runTool(context, "roon_list_outputs", () => listOutputs(context.roonClient))
+    async ({ include_unavailable }) =>
+      runTool(context, "roon_list_outputs", () =>
+        listOutputs(context.roonClient, { includeUnavailable: include_unavailable })
+      )
   );
 
   registerTool(

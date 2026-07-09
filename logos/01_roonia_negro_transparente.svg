@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1983" height="793" viewBox="0 0 1983 793" role="img" aria-label="roonIA logo">
+  <title>roonIA logo</title>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="28">
+    <path d="M166 542 L166 354 C166 297 211 254 266 254 L294 254" stroke="#000000"/>
+    <circle cx="468" cy="397" r="145" stroke="#000000"/>
+    <circle cx="832" cy="397" r="145" stroke="#000000"/>
+    <path d="M1046 542 L1046 361 C1046 300 1096 254 1167 254 C1238 254 1285 300 1285 361 L1285 542" stroke="#000000"/>
+    <path d="M1410 254 L1410 542" stroke="#000000"/>
+    <path d="M1494 542 L1615 258 C1622 242 1646 242 1653 258 L1772 542" stroke="#000000"/>
+    <path d="M1548 424 L1718 424" stroke="#000000"/>
+  </g>
+</svg>

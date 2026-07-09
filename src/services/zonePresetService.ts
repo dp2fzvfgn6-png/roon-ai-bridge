@@ -236,7 +236,7 @@ export class ZonePresetService {
     if (!preset.enabled) throw new ApiError("ZONE_PRESET_DISABLED", "Zone preset is disabled");
 
     const before = this.snapshot(roonClient);
-    const plan = this.plan(roonClient, preset, options.volumeLimitService);
+    const plan = this.plan(roonClient, preset, options.volumeLimitService, Boolean(options.dryRun));
     const unsafe = plan.volume_policy.outputs.find((policy) => policy.requires_confirmation);
     const responseBase = {
       ok: true,
@@ -304,16 +304,23 @@ export class ZonePresetService {
   private plan(
     roonClient: RoonClient,
     preset: ZonePreset,
-    volumeLimitService?: VolumeLimitService
+    volumeLimitService?: VolumeLimitService,
+    allowUnavailable = false
   ) {
     const warnings: string[] = [];
     const memberOutputs = preset.grouping.enabled
-      ? preset.grouping.members.map((ref) => this.resolveOutput(roonClient, ref))
+      ? preset.grouping.members
+          .map((ref) => allowUnavailable
+            ? this.tryResolveOutput(roonClient, ref, warnings)
+            : this.resolveOutput(roonClient, ref))
+          .filter((output): output is RoonOutput => Boolean(output))
       : preset.grouping.members
           .map((ref) => this.tryResolveOutput(roonClient, ref, warnings))
           .filter((output): output is RoonOutput => Boolean(output));
     const primaryOutput = preset.grouping.primary_zone_ref
-      ? this.resolveOutput(roonClient, preset.grouping.primary_zone_ref)
+      ? allowUnavailable
+        ? this.tryResolveOutput(roonClient, preset.grouping.primary_zone_ref, warnings)
+        : this.resolveOutput(roonClient, preset.grouping.primary_zone_ref)
       : memberOutputs[0];
     const groupOutputs = primaryOutput
       ? [
@@ -321,10 +328,14 @@ export class ZonePresetService {
           ...memberOutputs.filter((output) => output.output_id !== primaryOutput.output_id)
         ]
       : memberOutputs;
-    const volumeOutputs = preset.volumes.map((item) => ({
-      output: this.resolveOutput(roonClient, item.target_ref),
-      volume: item.volume
-    }));
+    const volumeOutputs = preset.volumes
+      .map((item) => {
+        const output = allowUnavailable
+          ? this.tryResolveOutput(roonClient, item.target_ref, warnings)
+          : this.resolveOutput(roonClient, item.target_ref);
+        return output ? { output, volume: item.volume } : null;
+      })
+      .filter((item): item is { output: RoonOutput; volume: number } => Boolean(item));
     const affectedIds = new Set([
       ...groupOutputs.map((output) => output.output_id),
       ...volumeOutputs.map((item) => item.output.output_id)
