@@ -250,7 +250,7 @@ collect_config() {
   prompt_default REPO_URL "Git repository URL" "${DEFAULT_REPO_URL}"
   prompt_default GIT_REF "Git branch/tag" "${DEFAULT_GIT_REF}"
   prompt_default PORT "HTTP port" "${DEFAULT_PORT}"
-  prompt_default ROON_EXTENSION_NAME "Roon extension name" "Roon AI Bridge"
+  prompt_default ROON_EXTENSION_NAME "Roon extension name" "RoonIA"
   prompt_default ROON_EXTENSION_ID "Roon extension ID" "com.local.roon-ai-bridge"
   prompt_default START_ON_BOOT "Start LXC on Proxmox boot, 1/0" "${DEFAULT_START_ON_BOOT}"
   prompt_default PRIVILEGED "Privileged LXC for Docker, 1/0" "${DEFAULT_PRIVILEGED}"
@@ -461,7 +461,7 @@ print_summary() {
   printf 'API health:    http://%s:%s/health\n' "${ip:-LXC_IP}" "${PORT}"
   printf '\n'
   printf 'Next steps:\n'
-  printf '1. Open Roon: Settings > Setup > Extensions > Roon AI Bridge > Enable\n'
+  printf '1. Open Roon: Settings > Setup > Extensions > RoonIA > Enable\n'
   printf '2. Logs: pct exec %s -- bash -lc "cd /opt/%s && docker compose logs -f"\n' "${VMID}" "${APP_NAME}"
   printf '3. Test: curl http://%s:%s/roon/status\n' "${ip:-LXC_IP}" "${PORT}"
   printf '\n'

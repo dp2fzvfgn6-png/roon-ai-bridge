@@ -1152,6 +1152,7 @@ async function loadSettings() {
   state.system = system;
   $("#system-api-port").value = system.api_port;
   $("#system-portal-port").value = system.portal_port;
+  $("#system-allow-beta").checked = system.allow_beta_updates === true;
   $("#service-addresses").innerHTML = system.addresses?.length
     ? system.addresses.map((item) => `<code>${escapeHtml(item.portal_url)}</code><code>${escapeHtml(item.api_url)}</code>`).join("")
     : `<span class="muted">No se pudo detectar una dirección IPv4.</span>`;
@@ -1164,7 +1165,7 @@ async function loadSettings() {
         ? "Al día"
         : "Sin comprobar";
   const groups = [
-    ["Servicio", [["Versión", settings.version], ["API HTTP", settings.api_port], ["Portal", settings.portal_port], ["Entorno", settings.node_environment]]],
+    ["Servicio", [["Versión", settings.version], ["API HTTP", settings.api_port], ["Portal", settings.portal_port], ["Canal", settings.update_channel || "stable"], ["Entorno", settings.node_environment]]],
     ["Capacidades", [["Browse", settings.browse_enabled], ["MCP", settings.mcp_enabled], ["Fuente", settings.streaming_source || "Sin definir"], ["URL pública", settings.public_base_url]]],
     ["Autenticación", [["API protegida", settings.api_auth_enabled], ["API token", settings.api_token_configured], ["Token del portal", settings.portal_admin_token_configured]]]
   ];
@@ -1180,10 +1181,11 @@ $("#save-ports").addEventListener("click", async () => {
       method: "PATCH",
       body: JSON.stringify({
         api_port: Number($("#system-api-port").value),
-        portal_port: Number($("#system-portal-port").value)
+        portal_port: Number($("#system-portal-port").value),
+        allow_beta_updates: $("#system-allow-beta").checked
       })
     });
-    toast(result.restart_required ? "Puertos guardados; reinicia para aplicarlos" : "Puertos guardados");
+    toast(result.restart_required ? "Configuración guardada; reinicia para aplicarla" : "Configuración guardada");
   } catch (error) { toast(error.message, "error"); }
 });
 $("#check-update").addEventListener("click", async () => {
@@ -1202,10 +1204,14 @@ $("#check-update").addEventListener("click", async () => {
   } finally { setBusy(button, false); }
 });
 $("#request-update").addEventListener("click", async () => {
-  if (!confirm("El LXC descargará main, reconstruirá Docker y reiniciará RoonIA. ¿Actualizar?")) return;
+  const channel = $("#system-allow-beta").checked ? "beta" : "estable";
+  if (!confirm(`El LXC descargará la versión ${channel}, reconstruirá Docker y reiniciará RoonIA. ¿Actualizar?`)) return;
   try {
-    await api("/api/admin/system/update", { method: "POST", body: "{}" });
-    toast("Actualización solicitada al LXC");
+    const result = await api("/api/admin/system/update", {
+      method: "POST",
+      body: JSON.stringify({ allow_beta_updates: $("#system-allow-beta").checked })
+    });
+    toast(`Actualización solicitada al LXC (${result.channel || "stable"})`);
   } catch (error) { toast(error.message, "error"); }
 });
 $("#restart-service").addEventListener("click", async () => {

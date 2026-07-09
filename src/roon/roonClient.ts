@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import RoonApi = require("node-roon-api");
 import RoonApiBrowse = require("node-roon-api-browse");
@@ -46,6 +47,14 @@ export function createRoonClient(
   let zonesById = new Map<string, RoonZone>();
   let outputsById = new Map<string, RoonOutput>();
   let knownOutputsById = new Map<string, RoonOutput>();
+
+  function portalWebsite(): string {
+    const address = Object.values(os.networkInterfaces())
+      .flatMap((entries) => entries || [])
+      .find((entry) => entry.family === "IPv4" && !entry.internal)
+      ?.address || "localhost";
+    return `http://${address}:${config.portalPort}`;
+  }
 
   function ensureDataDir(): void {
     fs.mkdirSync(config.dataDir, { recursive: true });
@@ -117,9 +126,9 @@ export function createRoonClient(
     extension_id: config.roonExtensionId,
     display_name: config.roonExtensionName,
     display_version: APP_VERSION,
-    publisher: "Local",
+    publisher: "LINE-dev",
     email: "local@localhost",
-    website: "http://localhost",
+    website: portalWebsite(),
     log_level: process.env.ROON_LOG_LEVEL || "none",
     force_server: true,
     get_persisted_state: readRoonState,
@@ -214,6 +223,7 @@ export function createRoonClient(
     return {
       bridge_port: config.port,
       portal_port: config.portalPort,
+      allow_beta_updates: config.updateChannel === "beta",
       service_address:
         firstAddress?.portal_url || `http://localhost:${config.portalPort}`,
       action: "none"
@@ -244,13 +254,18 @@ export function createRoonClient(
         setting: "portal_port"
       },
       {
+        type: "boolean",
+        title: "Allow beta updates",
+        setting: "allow_beta_updates"
+      },
+      {
         type: "dropdown",
         title: "Operation applied when settings are saved",
         values: [
           { value: "none", title: "No operation" },
           { value: "check_update", title: "Check for updates" },
           { value: "restart", title: "Restart RoonIA" },
-          { value: "update", title: "Update to latest main version" }
+          { value: "update", title: "Update to selected channel" }
         ],
         setting: "action"
       }
@@ -267,6 +282,7 @@ export function createRoonClient(
         const requested = settings?.values || {};
         const bridgePort = Number(requested.bridge_port);
         const portalPort = Number(requested.portal_port);
+        const allowBetaUpdates = requested.allow_beta_updates === true;
         const action = String(requested.action || "none");
         if (!systemManagement) throw new Error("System management is unavailable");
         if (
@@ -284,13 +300,15 @@ export function createRoonClient(
           ...managementValues(),
           bridge_port: bridgePort,
           portal_port: portalPort,
+          allow_beta_updates: allowBetaUpdates,
           action: "none"
         });
         req.send_complete("Success", { settings: layout });
         if (isDryRun) return;
-        systemManagement.savePorts({
+        systemManagement.saveRuntimeConfig({
           api_port: bridgePort,
-          portal_port: portalPort
+          portal_port: portalPort,
+          allow_beta_updates: allowBetaUpdates
         });
         settingsService.update_settings(layout);
         if (action === "check_update") {
@@ -305,7 +323,7 @@ export function createRoonClient(
             );
           });
         } else if (action === "update") {
-          systemManagement.requestUpdate();
+          systemManagement.requestUpdate({ allow_beta_updates: allowBetaUpdates });
           statusService.set_status("Update requested; waiting for LXC updater", false);
         } else if (action === "restart") {
           systemManagement.requestRestart();

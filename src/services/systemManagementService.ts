@@ -8,6 +8,7 @@ import { Logger } from "../utils/logger";
 
 type VersionStatus = {
   current_version: string;
+  channel: "stable" | "beta";
   latest_version: string | null;
   update_available: boolean | null;
   checked_at: string | null;
@@ -57,13 +58,7 @@ export class SystemManagementService {
   private readonly runtimeConfigPath: string;
   private readonly updateRequestPath: string;
   private readonly updateStatusPath: string;
-  private versionStatus: VersionStatus = {
-    current_version: APP_VERSION,
-    latest_version: null,
-    update_available: null,
-    checked_at: null,
-    error: null
-  };
+  private versionStatus: VersionStatus;
 
   constructor(config: AppConfig, logger: Logger) {
     this.config = config;
@@ -71,6 +66,14 @@ export class SystemManagementService {
     this.runtimeConfigPath = path.join(config.dataDir, "runtime-config.json");
     this.updateRequestPath = path.join(config.dataDir, "update-request.json");
     this.updateStatusPath = path.join(config.dataDir, "update-status.json");
+    this.versionStatus = {
+      current_version: APP_VERSION,
+      channel: this.currentChannel(),
+      latest_version: null,
+      update_available: null,
+      checked_at: null,
+      error: null
+    };
   }
 
   getSystemInfo(): Record<string, unknown> {
@@ -78,19 +81,24 @@ export class SystemManagementService {
       version: APP_VERSION,
       api_port: this.config.port,
       portal_port: this.config.portalPort,
+      update_channel: this.currentChannel(),
+      allow_beta_updates: this.currentChannel() === "beta",
       addresses: serviceAddresses(this.config.port, this.config.portalPort),
       version_status: this.versionStatus,
       update_status: this.readUpdateStatus()
     };
   }
 
-  savePorts(input: { api_port?: unknown; portal_port?: unknown }): {
+  saveRuntimeConfig(input: { api_port?: unknown; portal_port?: unknown; allow_beta_updates?: unknown }): {
     api_port: number;
     portal_port: number;
+    update_channel: "stable" | "beta";
+    allow_beta_updates: boolean;
     restart_required: boolean;
   } {
     const apiPort = validatePort(input.api_port, "api_port");
     const portalPort = validatePort(input.portal_port, "portal_port");
+    const updateChannel = input.allow_beta_updates === true ? "beta" : "stable";
     if (apiPort === portalPort) {
       throw new ApiError(
         "INVALID_SYSTEM_CONFIG",
@@ -100,14 +108,38 @@ export class SystemManagementService {
     fs.mkdirSync(this.config.dataDir, { recursive: true });
     fs.writeFileSync(
       this.runtimeConfigPath,
-      JSON.stringify({ port: apiPort, portal_port: portalPort }, null, 2),
+      JSON.stringify({
+        port: apiPort,
+        portal_port: portalPort,
+        update_channel: updateChannel
+      }, null, 2),
       { mode: 0o600 }
     );
     return {
       api_port: apiPort,
       portal_port: portalPort,
+      update_channel: updateChannel,
+      allow_beta_updates: updateChannel === "beta",
       restart_required:
-        apiPort !== this.config.port || portalPort !== this.config.portalPort
+        apiPort !== this.config.port ||
+        portalPort !== this.config.portalPort ||
+        updateChannel !== this.currentChannel()
+    };
+  }
+
+  savePorts(input: { api_port?: unknown; portal_port?: unknown }): {
+    api_port: number;
+    portal_port: number;
+    restart_required: boolean;
+  } {
+    const saved = this.saveRuntimeConfig({
+      ...input,
+      allow_beta_updates: this.currentChannel() === "beta"
+    });
+    return {
+      api_port: saved.api_port,
+      portal_port: saved.portal_port,
+      restart_required: saved.restart_required
     };
   }
 
@@ -123,7 +155,7 @@ export class SystemManagementService {
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch(
-        "https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/package.json",
+        `https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/${this.updateGitRef()}/package.json`,
         {
           headers: { "user-agent": `roon-ai-bridge/${APP_VERSION}` },
           signal: controller.signal
@@ -138,6 +170,7 @@ export class SystemManagementService {
       if (!latest) throw new Error("Latest package version is missing");
       this.versionStatus = {
         current_version: APP_VERSION,
+        channel: this.currentChannel(),
         latest_version: latest,
         update_available: compareVersions(latest, APP_VERSION) > 0,
         checked_at: new Date().toISOString(),
@@ -155,8 +188,10 @@ export class SystemManagementService {
     return this.versionStatus;
   }
 
-  requestUpdate(): { ok: true; action: "update"; requested_at: string } {
+  requestUpdate(input: { allow_beta_updates?: unknown } = {}): { ok: true; action: "update"; target: string; channel: "stable" | "beta"; requested_at: string } {
     const requestedAt = new Date().toISOString();
+    const channel = input.allow_beta_updates === true ? "beta" : this.currentChannel();
+    const target = this.updateGitRef(channel);
     fs.mkdirSync(this.config.dataDir, { recursive: true });
     fs.writeFileSync(
       this.updateRequestPath,
@@ -164,15 +199,28 @@ export class SystemManagementService {
         {
           requested_at: requestedAt,
           current_version: APP_VERSION,
-          target: "main"
+          channel,
+          target
         },
         null,
         2
       ),
       { mode: 0o600 }
     );
-    this.logger.warn("Application update requested", { requestedAt });
-    return { ok: true, action: "update", requested_at: requestedAt };
+    this.logger.warn("Application update requested", {
+      requestedAt,
+      channel,
+      target
+    });
+    return { ok: true, action: "update", target, channel, requested_at: requestedAt };
+  }
+
+  private updateGitRef(channel: "stable" | "beta" = this.currentChannel()): string {
+    return channel === "beta" ? "beta" : "main";
+  }
+
+  private currentChannel(): "stable" | "beta" {
+    return this.config.updateChannel === "beta" ? "beta" : "stable";
   }
 
   private readUpdateStatus(): Record<string, unknown> | null {

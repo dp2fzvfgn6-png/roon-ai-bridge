@@ -224,7 +224,9 @@ export function createPortalServer(context: ApiContext): express.Express {
       api_token_configured: Boolean(context.config.apiToken),
       portal_admin_token_configured: Boolean(context.config.portalAdminToken),
       public_base_url: context.config.publicBaseUrl,
-      streaming_source: context.config.roonStreamingSource
+      streaming_source: context.config.roonStreamingSource,
+      update_channel: context.config.updateChannel,
+      allow_beta_updates: context.config.updateChannel === "beta"
     });
   });
 
@@ -234,7 +236,7 @@ export function createPortalServer(context: ApiContext): express.Express {
 
   app.patch("/api/admin/system/ports", (req, res, next) => {
     try {
-      res.json(context.systemManagementService.savePorts(req.body || {}));
+      res.json(context.systemManagementService.saveRuntimeConfig(req.body || {}));
     } catch (error) {
       next(error);
     }
@@ -248,9 +250,9 @@ export function createPortalServer(context: ApiContext): express.Express {
     }
   });
 
-  app.post("/api/admin/system/update", (_req, res, next) => {
+  app.post("/api/admin/system/update", (req, res, next) => {
     try {
-      res.status(202).json(context.systemManagementService.requestUpdate());
+      res.status(202).json(context.systemManagementService.requestUpdate(req.body || {}));
     } catch (error) {
       next(error);
     }

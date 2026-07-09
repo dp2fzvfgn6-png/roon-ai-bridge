@@ -68,13 +68,14 @@ flock -n 9 || exit 0
 REQUEST_PATH='${request_path}'
 STATUS_PATH='${status_path}'
 [[ -f "\${REQUEST_PATH}" ]] || exit 0
+TARGET="\$(node -e 'try{const fs=require("fs");const req=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const target=String(req.target||"main");if(!["main","beta"].includes(target)) process.exit(2);process.stdout.write(target)}catch{process.exit(1)}' "\${REQUEST_PATH}")"
 rm -f "\${REQUEST_PATH}"
-printf '{"state":"running","started_at":"%s"}\\n' "\$(date -Is)" >"\${STATUS_PATH}"
-if bash '${APP_DIR}/scripts/lxc-update-app.sh'; then
-  printf '{"state":"completed","completed_at":"%s"}\\n' "\$(date -Is)" >"\${STATUS_PATH}"
+printf '{"state":"running","target":"%s","started_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
+if GIT_REF="\${TARGET}" bash '${APP_DIR}/scripts/lxc-update-app.sh'; then
+  printf '{"state":"completed","target":"%s","completed_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
 else
   rc=\$?
-  printf '{"state":"failed","completed_at":"%s","exit_code":%s}\\n' "\$(date -Is)" "\${rc}" >"\${STATUS_PATH}"
+  printf '{"state":"failed","target":"%s","completed_at":"%s","exit_code":%s}\\n' "\${TARGET}" "\$(date -Is)" "\${rc}" >"\${STATUS_PATH}"
   exit "\${rc}"
 fi
 EOF
@@ -122,6 +123,7 @@ main() {
 
   log "Applying browse environment defaults"
   ensure_env_value ENABLE_BROWSE true .env
+  ensure_env_value ROON_EXTENSION_NAME RoonIA .env
   ensure_env_default ENABLE_AUTH false .env
   ensure_env_default API_TOKEN "" .env
 

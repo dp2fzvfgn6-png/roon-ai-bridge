@@ -131,8 +131,10 @@ td code { color: var(--accent-2); }
 .setting-row span { color: var(--muted); }
 .warning-card { border-color: #4a3e28; }
 .system-manager { margin-bottom: 16px; }
-.port-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; margin: 18px 0; }
+.port-grid { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 12px; align-items: end; margin: 18px 0; }
 .port-grid label { margin: 0; }
+.port-grid .check-line { min-height: 48px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; }
+.port-grid .check-line input { width: auto; }
 .system-actions { justify-content: flex-start; }
 .address-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .address-list code { background: #0d1014; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--accent-2); }

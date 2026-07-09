@@ -14,7 +14,8 @@ test("persists safe runtime ports and emits a fixed update request", () => {
   const config = {
     port: 3000,
     portalPort: 3001,
-    dataDir
+    dataDir,
+    updateChannel: "stable"
   };
   const noop = () => {};
   const service = new SystemManagementService(config, {
@@ -24,11 +25,16 @@ test("persists safe runtime ports and emits a fixed update request", () => {
     debug: noop
   });
   try {
-    const saved = service.savePorts({ api_port: 4100, portal_port: 4101 });
+    const saved = service.saveRuntimeConfig({
+      api_port: 4100,
+      portal_port: 4101,
+      allow_beta_updates: false
+    });
     assert.equal(saved.restart_required, true);
     assert.deepEqual(loadRuntimePortOverrides(dataDir), {
       port: 4100,
-      portalPort: 4101
+      portalPort: 4101,
+      updateChannel: "stable"
     });
     assert.throws(
       () => service.savePorts({ api_port: 4100, portal_port: 4100 }),
@@ -40,8 +46,26 @@ test("persists safe runtime ports and emits a fixed update request", () => {
       fs.readFileSync(path.join(dataDir, "update-request.json"), "utf8")
     );
     assert.equal(requested.action, "update");
+    assert.equal(requested.channel, "stable");
     assert.equal(file.target, "main");
     assert.equal(Object.prototype.hasOwnProperty.call(file, "command"), false);
+
+    const betaService = new SystemManagementService({
+      ...config,
+      updateChannel: "beta"
+    }, {
+      info: noop,
+      warn: noop,
+      error: noop,
+      debug: noop
+    });
+    const betaRequested = betaService.requestUpdate();
+    const betaFile = JSON.parse(
+      fs.readFileSync(path.join(dataDir, "update-request.json"), "utf8")
+    );
+    assert.equal(betaRequested.channel, "beta");
+    assert.equal(betaRequested.target, "beta");
+    assert.equal(betaFile.target, "beta");
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

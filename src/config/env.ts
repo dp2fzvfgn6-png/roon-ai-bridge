@@ -19,6 +19,7 @@ export type AppConfig = {
   oauthIssuer: string;
   oauthApprovalPin: string | null;
   roonStreamingSource: "tidal" | "qobuz" | null;
+  updateChannel: "stable" | "beta";
 };
 
 function boolFromEnv(value: string | undefined, fallback = false): boolean {
@@ -40,6 +41,7 @@ function validPort(value: unknown): number | null {
 export function loadRuntimePortOverrides(dataDir: string): {
   port?: number;
   portalPort?: number;
+  updateChannel?: "stable" | "beta";
 } {
   try {
     const parsed = JSON.parse(
@@ -47,9 +49,14 @@ export function loadRuntimePortOverrides(dataDir: string): {
     ) as Record<string, unknown>;
     const port = validPort(parsed.port);
     const portalPort = validPort(parsed.portal_port);
+    const updateChannel =
+      parsed.update_channel === "beta" ? "beta" :
+        parsed.update_channel === "stable" ? "stable" :
+          undefined;
     return {
       ...(port ? { port } : {}),
-      ...(portalPort ? { portalPort } : {})
+      ...(portalPort ? { portalPort } : {}),
+      ...(updateChannel ? { updateChannel } : {})
     };
   } catch {
     return {};
@@ -82,6 +89,8 @@ export function loadConfig(): AppConfig {
       : null;
   const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const runtimePorts = loadRuntimePortOverrides(dataDir);
+  const envUpdateChannel =
+    process.env.UPDATE_CHANNEL === "beta" ? "beta" : "stable";
 
   return {
     port: runtimePorts.port ?? intFromEnv(process.env.PORT, 3000),
@@ -90,7 +99,7 @@ export function loadConfig(): AppConfig {
     enablePortal: boolFromEnv(process.env.ENABLE_PORTAL, true),
     nodeEnv: process.env.NODE_ENV || "production",
     logLevel: process.env.LOG_LEVEL || "info",
-    roonExtensionName: process.env.ROON_EXTENSION_NAME || "Roon AI Bridge",
+    roonExtensionName: process.env.ROON_EXTENSION_NAME || "RoonIA",
     roonExtensionId:
       process.env.ROON_EXTENSION_ID || "com.local.roon-ai-bridge",
     dataDir,
@@ -106,6 +115,7 @@ export function loadConfig(): AppConfig {
     publicBaseUrl,
     oauthIssuer,
     oauthApprovalPin,
-    roonStreamingSource
+    roonStreamingSource,
+    updateChannel: runtimePorts.updateChannel ?? envUpdateChannel
   };
 }
