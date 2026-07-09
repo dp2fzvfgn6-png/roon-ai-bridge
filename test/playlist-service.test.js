@@ -737,9 +737,9 @@ test("play_now virtual playlist replaces the queue then starts verified playback
   const playlist = service.createPlaylist({
     name: "Playback Smoke",
     tracks: [
-      { query: "first track", title: "First" },
-      { query: "second track", title: "Second" },
-      { query: "third track", title: "Third" }
+      { query: "first track noisy text", roon_item_key: "stored:first", title: "First" },
+      { query: "second track noisy text", roon_item_key: "stored:second", title: "Second" },
+      { query: "third track noisy text", roon_item_key: "stored:third", title: "Third" }
     ]
   });
   const calls = [];
@@ -805,6 +805,12 @@ test("play_now virtual playlist replaces the queue then starts verified playback
       .filter((call) => call.type === "browse" && call.opts.item_key?.startsWith("action:"))
       .map((call) => call.opts.item_key),
     ["action:play", "action:add-to-queue", "action:add-to-queue"]
+  );
+  assert.deepEqual(
+    calls
+      .filter((call) => call.type === "browse" && call.opts.item_key?.startsWith("stored:"))
+      .map((call) => call.opts.item_key),
+    ["stored:first", "stored:second", "stored:third"]
   );
   assert.equal(calls.at(-1).type, "control");
   assert.equal(calls.at(-1).command, "play");

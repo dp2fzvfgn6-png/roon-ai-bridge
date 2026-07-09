@@ -108,6 +108,13 @@ export type QueueActionInspection = {
   actions: BrowseItem[];
 };
 
+type ItemKeyActionRequest = {
+  zoneId: string;
+  itemKey: string;
+  label?: string;
+  sessionKey?: string;
+};
+
 export const browseImplemented = true;
 
 export function requireBrowse(roonClient: RoonClient): any {
@@ -254,6 +261,7 @@ function titleLooksLikeQueueAction(title: string, mode: QueueByQueryMode): boole
 
   return [
     "queue",
+    "add to queue",
     "add at end",
     "add to end",
     "add to end of queue",
@@ -279,6 +287,27 @@ function choosePlayableItem(items: BrowseItem[]): BrowseItem | null {
   );
 }
 
+function choosePlaybackStep(items: BrowseItem[]): BrowseItem | null {
+  return (
+    items.find(
+      (item) =>
+        item.item_key &&
+        item.hint === "action" &&
+        titleLooksPlayable(String(item.title || ""))
+    ) ||
+    items.find((item) => item.item_key && item.hint === "action") ||
+    items.find(
+      (item) =>
+        item.item_key &&
+        item.hint !== "header" &&
+        titleLooksPlayable(String(item.title || ""))
+    ) ||
+    items.find((item) => item.item_key && item.hint === "action_list") ||
+    items.find((item) => item.item_key && item.hint === "list") ||
+    null
+  );
+}
+
 function chooseSearchResult(items: BrowseItem[]): BrowseItem | null {
   return (
     items.find(
@@ -298,6 +327,26 @@ function chooseQueueAction(items: BrowseItem[], mode: QueueByQueryMode): BrowseI
         item.hint !== "header" &&
         titleLooksLikeQueueAction(String(item.title || ""), mode)
     ) || null
+  );
+}
+
+function chooseQueueStep(items: BrowseItem[], mode: QueueByQueryMode): BrowseItem | null {
+  return (
+    items.find(
+      (item) =>
+        item.item_key &&
+        item.hint === "action" &&
+        titleLooksLikeQueueAction(String(item.title || ""), mode)
+    ) ||
+    items.find(
+      (item) =>
+        item.item_key &&
+        item.hint !== "header" &&
+        titleLooksLikeQueueAction(String(item.title || ""), mode)
+    ) ||
+    items.find((item) => item.item_key && item.hint === "action_list") ||
+    items.find((item) => item.item_key && item.hint === "list") ||
+    null
   );
 }
 
@@ -588,6 +637,62 @@ export async function playByQuery(
   });
 }
 
+export async function playByItemKey(
+  roonClient: RoonClient,
+  request: ItemKeyActionRequest
+): Promise<PlayByQueryResponse> {
+  getZoneOrThrow(roonClient, request.zoneId);
+  const browse = requireBrowse(roonClient);
+  const sessionKey =
+    request.sessionKey || `roon-ai-bridge-play-key-${Date.now().toString(36)}`;
+  let selected: BrowseItem = {
+    title: request.label || request.itemKey,
+    item_key: request.itemKey
+  };
+  let lastActions: BrowseItem[] = [];
+
+  for (let depth = 0; depth < 6; depth += 1) {
+    const browseResult = await browseCall(browse, {
+      hierarchy: "search",
+      multi_session_key: sessionKey,
+      item_key: selected.item_key,
+      zone_or_output_id: request.zoneId
+    });
+
+    if (browseResult.action !== "list") {
+      return {
+        ok: !browseResult.is_error,
+        zone_id: request.zoneId,
+        query: request.label || request.itemKey,
+        selected,
+        action: browseResult.action,
+        message: browseResult.message || null,
+        is_error:
+          typeof browseResult.is_error === "boolean" ? browseResult.is_error : null
+      };
+    }
+
+    const actionList = await loadCurrentList(
+      browse,
+      "search",
+      sessionKey,
+      0,
+      50
+    );
+    lastActions = actionItems(actionList.items);
+    const next = choosePlaybackStep(actionList.items);
+    if (!next?.item_key || next.item_key === selected.item_key) break;
+    selected = next;
+  }
+
+  throw new ApiError("PLAYBACK_ACTION_NOT_FOUND", "Could not find a playback action for stored item key", {
+    item_key: request.itemKey,
+    label: request.label,
+    zone_id: request.zoneId,
+    available_actions: lastActions
+  });
+}
+
 export async function queueByQuery(
   roonClient: RoonClient,
   request: QueueByQueryRequest
@@ -682,6 +787,64 @@ export async function queueByQuery(
     zone_id: request.zoneId,
     mode: request.mode,
     selected,
+    available_actions: lastActions
+  });
+}
+
+export async function queueByItemKey(
+  roonClient: RoonClient,
+  request: ItemKeyActionRequest & { mode: QueueByQueryMode }
+): Promise<QueueByQueryResponse> {
+  getZoneOrThrow(roonClient, request.zoneId);
+  const browse = requireBrowse(roonClient);
+  const sessionKey =
+    request.sessionKey || `roon-ai-bridge-queue-key-${Date.now().toString(36)}`;
+  let selected: BrowseItem = {
+    title: request.label || request.itemKey,
+    item_key: request.itemKey
+  };
+  let lastActions: BrowseItem[] = [];
+
+  for (let depth = 0; depth < 6; depth += 1) {
+    const browseResult = await browseCall(browse, {
+      hierarchy: "search",
+      multi_session_key: sessionKey,
+      item_key: selected.item_key,
+      zone_or_output_id: request.zoneId
+    });
+
+    if (browseResult.action !== "list") {
+      return {
+        ok: !browseResult.is_error,
+        zone_id: request.zoneId,
+        query: request.label || request.itemKey,
+        mode: request.mode,
+        selected,
+        action: browseResult.action,
+        message: browseResult.message || null,
+        is_error:
+          typeof browseResult.is_error === "boolean" ? browseResult.is_error : null
+      };
+    }
+
+    const actionList = await loadCurrentList(
+      browse,
+      "search",
+      sessionKey,
+      0,
+      50
+    );
+    lastActions = actionItems(actionList.items);
+    const next = chooseQueueStep(actionList.items, request.mode);
+    if (!next?.item_key || next.item_key === selected.item_key) break;
+    selected = next;
+  }
+
+  throw new ApiError("QUEUE_ACTION_NOT_FOUND", "Could not find a queue action for stored item key", {
+    item_key: request.itemKey,
+    label: request.label,
+    zone_id: request.zoneId,
+    mode: request.mode,
     available_actions: lastActions
   });
 }

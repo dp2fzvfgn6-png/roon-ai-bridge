@@ -1,6 +1,6 @@
 import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
-import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
+import { playByItemKey, playByQuery, queueByItemKey, queueByQuery } from "../roon/roonBrowseService";
 import { RoonClient } from "../roon/roonClient";
 import { controlPlayback } from "../roon/roonPlaybackService";
 import {
@@ -1592,21 +1592,36 @@ export class PlaylistService {
   ): Promise<void> {
     try {
       if (mode === "play_now") {
-        const result = await playByQuery(roonClient, {
-          zoneId,
-          query: track.query,
-          sessionKey
-        });
+        const result = track.roon_item_key
+          ? await playByItemKey(roonClient, {
+            zoneId,
+            itemKey: track.roon_item_key,
+            label: track.title || track.query,
+            sessionKey
+          })
+          : await playByQuery(roonClient, {
+            zoneId,
+            query: track.query,
+            sessionKey
+          });
         results.push({ track, result });
         return;
       }
 
-      const result = await queueByQuery(roonClient, {
-        zoneId,
-        query: track.query,
-        mode,
-        sessionKey
-      });
+      const result = track.roon_item_key
+        ? await queueByItemKey(roonClient, {
+          zoneId,
+          itemKey: track.roon_item_key,
+          label: track.title || track.query,
+          mode,
+          sessionKey
+        })
+        : await queueByQuery(roonClient, {
+          zoneId,
+          query: track.query,
+          mode,
+          sessionKey
+        });
       results.push({ track, result });
     } catch (error) {
       if (error instanceof ApiError) {
