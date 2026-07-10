@@ -46,11 +46,15 @@ export function buildToolsManifest(context: McpContext): Record<string, unknown>
       });
     }
   };
-  registerRoonMcpTools(server as any, context);
+  registerRoonMcpTools(server as any, { ...context, manifestMode: true });
+  for (const tool of tools) {
+    tool.enabled = context.toolAccessService?.isGloballyEnabled(String(tool.name)) !== false;
+  }
   return {
     ok: true,
     generated_at: new Date().toISOString(),
     tools_count: tools.length,
+    enabled_tools_count: tools.filter((tool) => tool.enabled).length,
     tools
   };
 }

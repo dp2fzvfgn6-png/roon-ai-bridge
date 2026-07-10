@@ -360,7 +360,11 @@ export function createPlaylistsRouter(context: ApiContext): Router {
         await context.playlistService.playPlaylist(
           context.roonClient,
           req.params.playlist_id,
-          req.body || {}
+          req.body || {},
+          {
+            mediaService: context.mediaService,
+            logger: context.logger
+          }
         )
       );
     } catch (error) {

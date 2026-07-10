@@ -383,9 +383,15 @@ curl -X POST http://localhost:3000/playlists \
 
 Creation, track addition and full replacement automatically try to resolve
 tracks against Roon search. Entries can pass `query`, or `title` plus optional
-`artist`; unresolved entries keep `roon_item_key: null` and store
-`metadata.resolution.status` as `unresolved`, `low_confidence` or `error` with a
-reason.
+`artist`. Every entry has a permanent RoonIA `track_id`, a versioned
+`identity.fingerprint`, a canonical query and the best available recording
+metadata. Resolution status is `resolved`, `manual`, `stale`, `ambiguous`,
+`missing` or `error`.
+
+`roon_item_key` and search `result_id` values are Browse-session references,
+not recording identifiers. They are retained only as the last diagnostic
+observation (`roon_binding.reusable:false`). RoonIA reconstructs a fresh
+reference from the stored identity before every playback or queue action.
 
 Get one virtual playlist:
 
@@ -440,7 +446,8 @@ Full replacement is destructive and returns `requires_confirmation:true` unless
 `confirm:true` is supplied in the JSON body. Pass `dry_run:true` to preview the
 replacement without changing the playlist.
 
-Retry resolution for unresolved entries, or force re-resolution of all entries:
+Retry resolution for missing, stale, ambiguous or failed entries, or force
+re-resolution of all entries:
 
 ```bash
 curl -X POST http://localhost:3000/playlists/bad-bunny-test/resolve \
@@ -492,7 +499,17 @@ Supported play modes:
 - `add_next`
 - `play_now`
 
-Virtual playlists are local to Roon AI Bridge and are stored in `data/roonia.sqlite`. On first start, legacy data from `data/virtual-playlists.json` is migrated automatically if the SQLite store is still empty. Tracks are still played through stable search queries, with optional saved metadata including cover `image_key`.
+For `play_now`, RoonIA resolves the first recording before replacing the queue.
+If that identity is missing or ambiguous, the current queue is left unchanged.
+After the first track starts, remaining identities are reconstructed and added
+in order. A persisted `roon_item_key` is never sent back to Roon as an action
+target.
+
+Virtual playlists are local to RoonIA and are stored in `data/roonia.sqlite`.
+On startup, legacy rows are enriched with persistent identity metadata without
+changing their `track_id`; legacy Browse keys are marked `stale`. Legacy JSON
+from `data/virtual-playlists.json` is migrated automatically when the SQLite
+store is empty.
 
 ## MCP Tools
 

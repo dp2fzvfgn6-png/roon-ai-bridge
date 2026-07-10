@@ -18,6 +18,7 @@ import { createWidgetsRouter } from "../api/routes/widgets.routes";
 import { ApiError, sendError } from "../utils/errors";
 import { APP_VERSION } from "../config/version";
 import { createActionAuditMiddleware, createObservabilityRouter } from "../api/routes/observability.routes";
+import { buildToolsManifest } from "../services/toolManifestService";
 
 function createPortalAuth(context: ApiContext) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -68,13 +69,18 @@ export function createPortalServer(context: ApiContext): express.Express {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+      "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     );
     if (req.path.startsWith("/api/")) {
       res.setHeader("Cache-Control", "no-store");
     }
     next();
   });
+
+  app.use("/assets/brand", express.static(path.join(process.cwd(), "logos"), {
+    etag: true,
+    maxAge: "1d"
+  }));
 
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -270,6 +276,20 @@ export function createPortalServer(context: ApiContext): express.Express {
     res.json(context.apiKeyService.list());
   });
 
+  app.patch("/api/admin/api-keys/:key_id", (req, res, next) => {
+    try {
+      const updated = context.apiKeyService.update(req.params.key_id, req.body || {});
+      context.logger.info("Managed API key permissions updated", {
+        keyId: updated.key_id,
+        role: updated.role,
+        restrictedTools: updated.tool_permissions?.length ?? null
+      });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/admin/api-keys", (req, res, next) => {
     try {
       const created = context.apiKeyService.create(req.body || {});
@@ -292,6 +312,43 @@ export function createPortalServer(context: ApiContext): express.Express {
         name: revoked.name
       });
       res.json(revoked);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/api-keys/:key_id/reactivate", (req, res, next) => {
+    try {
+      const reactivated = context.apiKeyService.reactivate(req.params.key_id);
+      context.logger.info("Managed API key reactivated", {
+        keyId: reactivated.key_id,
+        name: reactivated.name
+      });
+      res.json(reactivated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/tools", (_req, res) => {
+    res.json(buildToolsManifest(context));
+  });
+
+  app.patch("/api/admin/tools/:tool_name", (req, res, next) => {
+    try {
+      const manifest = buildToolsManifest(context) as any;
+      const tool = manifest.tools.find((item: any) => item.name === req.params.tool_name);
+      if (!tool) {
+        throw new ApiError("TOOL_NOT_FOUND", "MCP tool not found", {
+          tool_name: req.params.tool_name
+        });
+      }
+      if (typeof req.body?.enabled !== "boolean") {
+        throw new ApiError("INVALID_TOOL_SETTING", "enabled must be a boolean");
+      }
+      const setting = context.toolAccessService.setEnabled(tool.name, req.body.enabled);
+      context.logger.info("MCP tool availability changed", setting);
+      res.json({ ...tool, ...setting });
     } catch (error) {
       next(error);
     }

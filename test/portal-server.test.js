@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const { createPortalServer } = require("../dist/portal/server");
 const { ApiKeyService } = require("../dist/services/apiKeyService");
+const { ToolAccessService } = require("../dist/services/toolAccessService");
 const { createDatabase } = require("../dist/db/database");
 const { PortalAuthService } = require("../dist/services/portalAuthService");
 
@@ -36,6 +37,7 @@ test("serves portal assets publicly but protects every administration endpoint",
   const config = createConfig(dataDir);
   const database = createDatabase(config);
   const apiKeyService = new ApiKeyService(config, database);
+  const toolAccessService = new ToolAccessService(database);
   const portalAuthService = new PortalAuthService(config, database);
   const noop = () => {};
   const context = {
@@ -63,6 +65,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     mediaService: {},
     apiKeyService,
     portalAuthService,
+    toolAccessService,
     systemManagementService: { getSystemInfo: () => ({}) },
     zonePresetService: {},
     outputVolumeSettingsService: {}
@@ -75,7 +78,7 @@ test("serves portal assets publicly but protects every administration endpoint",
   try {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /RoonIA Control/);
+    assert.match(await page.text(), /roonIA/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);
@@ -109,6 +112,43 @@ test("serves portal assets publicly but protects every administration endpoint",
     });
     assert.equal(userSession.status, 200);
     assert.equal((await userSession.json()).user.username, "administrator");
+
+    const managed = apiKeyService.create({ name: "Scoped", role: "control" });
+    const restricted = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ tool_permissions: ["roon_status"] })
+    });
+    assert.deepEqual((await restricted.json()).tool_permissions, ["roon_status"]);
+
+    const revokedResponse = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.ok((await revokedResponse.json()).revoked_at);
+    const reactivatedResponse = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}/reactivate`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await reactivatedResponse.json()).revoked_at, null);
+
+    const toolsResponse = await fetch(`${baseUrl}/api/admin/tools`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    const tools = await toolsResponse.json();
+    assert.ok(tools.tools.some((tool) => tool.name === "roon_status"));
+    const disabledToolResponse = await fetch(`${baseUrl}/api/admin/tools/roon_status`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ enabled: false })
+    });
+    assert.equal((await disabledToolResponse.json()).enabled, false);
 
     const readKey = apiKeyService.create({ name: "Read only", role: "read" });
     const forbidden = await fetch(`${baseUrl}/api/session`, {

@@ -161,7 +161,7 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
     );
     assert.equal(
       getPlaylist._meta["openai/outputTemplate"],
-      "ui://roon-ai-bridge/control-v7/roon_get_virtual_playlist.html"
+      "ui://roon-ai-bridge/control-v8/roon_get_virtual_playlist.html"
     );
     assert.notEqual(
       tools.get("roon_status")._meta["openai/outputTemplate"],

@@ -8,6 +8,7 @@ const express = require("express");
 const { ApiKeyService, roleCanControl } = require("../dist/services/apiKeyService");
 const { createDatabase } = require("../dist/db/database");
 const { createAuthMiddleware } = require("../dist/api/middleware/auth");
+const { ToolAccessService } = require("../dist/services/toolAccessService");
 
 function config(dataDir) {
   return {
@@ -108,6 +109,47 @@ test("enforces read and control roles on the main HTTP API", async () => {
     assert.equal(allowedWrite.status, 200);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    database.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("reactivates revoked keys and persists per-tool permissions", () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-key-tools-"));
+  const database = createDatabase(config(dataDir));
+  const service = new ApiKeyService(config(dataDir), database);
+  try {
+    const created = service.create({
+      name: "Restricted controller",
+      role: "control",
+      tool_permissions: ["roon_status", "roon_list_zones"]
+    });
+    assert.deepEqual(created.tool_permissions, ["roon_list_zones", "roon_status"]);
+    service.revoke(created.key_id);
+    assert.equal(service.authenticate(created.token), null);
+    service.reactivate(created.key_id);
+    assert.deepEqual(service.authenticate(created.token).tool_permissions, ["roon_list_zones", "roon_status"]);
+    const updated = service.update(created.key_id, { tool_permissions: ["roon_status"] });
+    assert.deepEqual(updated.tool_permissions, ["roon_status"]);
+  } finally {
+    database.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("global tool settings and key allowlists are both enforced", () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-tool-access-"));
+  const database = createDatabase(config(dataDir));
+  const keyService = new ApiKeyService(config(dataDir), database);
+  const access = new ToolAccessService(database);
+  try {
+    const key = keyService.create({ name: "One tool", role: "control", tool_permissions: ["roon_status"] });
+    assert.equal(access.canUse("roon_status", key), true);
+    assert.equal(access.canUse("roon_list_zones", key), false);
+    access.setEnabled("roon_status", false);
+    assert.equal(access.canUse("roon_status", key), false);
+    assert.equal(access.list(["roon_status"])[0].enabled, false);
+  } finally {
     database.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

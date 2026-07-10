@@ -1,6 +1,7 @@
+import crypto from "crypto";
 import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
-import { playByItemKey, playByQuery, queueByItemKey, queueByQuery } from "../roon/roonBrowseService";
+import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
 import { RoonClient } from "../roon/roonClient";
 import { controlPlayback } from "../roon/roonPlaybackService";
 import {
@@ -18,6 +19,29 @@ export const playlistServiceImplemented = true;
 export type VirtualPlaylistTrackMetadata = Record<string, unknown>;
 export type AudioMetadata = Record<string, unknown>;
 export type ResolutionMetadata = Record<string, unknown>;
+export type TrackIdentityMetadata = {
+  version: 1;
+  fingerprint: string;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  album_artist: string | null;
+  duration_seconds: number | null;
+  isrc: string | null;
+  release_year: number | null;
+  track_number: number | null;
+  disc_number: number | null;
+  version_hint: string | null;
+  source: string | null;
+  canonical_query: string;
+};
+
+export type RoonBinding = {
+  state: "stale" | "missing";
+  item_key: string | null;
+  reusable: false;
+  last_observed_at: string | null;
+};
 
 export type VirtualPlaylistTrack = {
   track_id: string;
@@ -32,7 +56,9 @@ export type VirtualPlaylistTrack = {
   metadata: VirtualPlaylistTrackMetadata | null;
   audio_metadata: AudioMetadata | null;
   user_metadata: VirtualPlaylistTrackMetadata | null;
+  identity: TrackIdentityMetadata;
   resolution: ResolutionMetadata | null;
+  roon_binding: RoonBinding;
   created_at: string;
 };
 
@@ -40,6 +66,8 @@ export type VirtualPlaylist = {
   playlist_id: string;
   name: string;
   description: string | null;
+  cover_image_key: string | null;
+  cover: { image_key: string } | null;
   tracks: VirtualPlaylistTrack[];
   track_count: number;
   tracks_count: number;
@@ -84,10 +112,17 @@ export type VirtualPlaylistDetailResult = Omit<VirtualPlaylist, "tracks"> & {
 
 export type PlaylistPlayMode = "add_to_queue" | "add_next" | "play_now";
 
+export type PlaylistPlaybackRuntime = {
+  mediaService?: RoonMediaService;
+  logger?: Logger;
+  sourcePreference?: SourcePreference;
+};
+
 type PlaylistRow = {
   playlist_id: string;
   name: string;
   description: string | null;
+  cover_image_key: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -184,6 +219,7 @@ function serializeMetadata(value: unknown): string | null {
 function splitStoredMetadata(value: VirtualPlaylistTrackMetadata | null): {
   audio_metadata: AudioMetadata | null;
   user_metadata: VirtualPlaylistTrackMetadata | null;
+  identity: TrackIdentityMetadata | null;
   resolution: ResolutionMetadata | null;
   legacy_metadata: VirtualPlaylistTrackMetadata | null;
 } {
@@ -191,6 +227,7 @@ function splitStoredMetadata(value: VirtualPlaylistTrackMetadata | null): {
     return {
       audio_metadata: null,
       user_metadata: null,
+      identity: null,
       resolution: null,
       legacy_metadata: null
     };
@@ -198,13 +235,14 @@ function splitStoredMetadata(value: VirtualPlaylistTrackMetadata | null): {
 
   const explicitAudio = objectValue(value.audio_metadata);
   const explicitUser = objectValue(value.user_metadata);
+  const explicitIdentity = objectValue(value.identity) as TrackIdentityMetadata | null;
   const explicitResolution =
     objectValue(value.resolution) || objectValue(value.resolution_metadata);
   const derivedAudio: Record<string, unknown> = {};
   const derivedUser: Record<string, unknown> = {};
 
   for (const [key, entry] of Object.entries(value)) {
-    if (key === "audio_metadata" || key === "user_metadata" || key === "resolution" || key === "resolution_metadata") continue;
+    if (key === "audio_metadata" || key === "user_metadata" || key === "identity" || key === "resolution" || key === "resolution_metadata") continue;
     if (AUDIO_METADATA_KEYS.has(key)) derivedAudio[key] = entry;
     else derivedUser[key] = entry;
   }
@@ -215,10 +253,12 @@ function splitStoredMetadata(value: VirtualPlaylistTrackMetadata | null): {
   return {
     audio_metadata: audio,
     user_metadata: user,
+    identity: explicitIdentity,
     resolution,
     legacy_metadata: {
       ...(user || {}),
       ...(audio || {}),
+      ...(explicitIdentity ? { identity: explicitIdentity } : {}),
       ...(resolution ? { resolution } : {})
     }
   };
@@ -228,6 +268,7 @@ function buildStoredMetadata(input: {
   metadata?: unknown;
   audio_metadata?: unknown;
   user_metadata?: unknown;
+  identity?: unknown;
   resolution?: unknown;
 }): VirtualPlaylistTrackMetadata | null {
   const legacy = splitStoredMetadata(objectValue(input.metadata));
@@ -240,9 +281,11 @@ function buildStoredMetadata(input: {
     ? { ...(legacy.user_metadata || {}), ...(explicitUser || {}) }
     : null;
   const resolution = objectValue(input.resolution) || legacy.resolution;
+  const identity = objectValue(input.identity) || legacy.identity;
   const stored: Record<string, unknown> = {};
   if (audio && Object.keys(audio).length > 0) stored.audio_metadata = audio;
   if (user && Object.keys(user).length > 0) stored.user_metadata = user;
+  if (identity && Object.keys(identity).length > 0) stored.identity = identity;
   if (resolution && Object.keys(resolution).length > 0) stored.resolution = resolution;
   return Object.keys(stored).length > 0 ? stored : null;
 }
@@ -253,18 +296,52 @@ function audioMetadataFromMedia(result: Partial<MediaResult> & Record<string, un
     artist: typeof result.artist === "string" ? result.artist : typeof result.subtitle === "string" ? result.subtitle : null,
     album: typeof result.album === "string" ? result.album : null,
     album_artist: typeof result.album_artist === "string" ? result.album_artist : null,
-    composer: null,
-    genre: null,
-    release_year: null,
-    track_number: null,
-    disc_number: null,
-    duration_seconds: null,
-    isrc: null,
+    composer: optionalString(result.composer),
+    genre: result.genre || null,
+    release_year: optionalFiniteInteger(result.release_year),
+    track_number: optionalFiniteInteger(result.track_number),
+    disc_number: optionalFiniteInteger(result.disc_number),
+    duration_seconds: optionalFiniteInteger(result.duration_seconds),
+    isrc: optionalString(result.isrc),
+    version_hint: typeof result.version_hint === "string" ? result.version_hint : null,
     source: result.source || "unknown",
     quality: result.quality || null,
     image_key: typeof result.image_key === "string" ? result.image_key : null,
     cover: typeof result.image_key === "string" ? { image_key: result.image_key } : null
   };
+}
+
+function mediaCandidateSnapshot(result: Record<string, unknown>): Record<string, unknown> {
+  return {
+    media_type: result.media_type || result.type || null,
+    title: result.title || null,
+    artist: result.artist || result.subtitle || null,
+    album: result.album || null,
+    album_artist: result.album_artist || null,
+    duration_seconds: result.duration_seconds || null,
+    isrc: result.isrc || null,
+    release_year: result.release_year || null,
+    track_number: result.track_number || null,
+    disc_number: result.disc_number || null,
+    version_hint: result.version_hint || null,
+    source: result.source || null,
+    quality: result.quality || null,
+    image_key: result.image_key || null,
+    playable: result.playable ?? null,
+    confidence: result.confidence || null,
+    match_score: result.match_score ?? null
+  };
+}
+
+function sameRecordingCandidate(left: MediaResult, right: MediaResult): boolean {
+  if (!left.album || !right.album) return false;
+  const semanticKey = (result: MediaResult) => [
+    result.title,
+    result.artist || result.subtitle,
+    result.album,
+    result.version_hint
+  ].map(canonicalText).join("|");
+  return semanticKey(left) === semanticKey(right);
 }
 
 function imageKeyFromMetadata(metadata: VirtualPlaylistTrackMetadata | null): string | null {
@@ -288,22 +365,64 @@ function buildCover(imageKey: string | null): { image_key: string } | null {
   return imageKey ? { image_key: imageKey } : null;
 }
 
-function playbackQueryForTrack(track: VirtualPlaylistTrack): string {
-  const resolutionQuery = optionalString(track.resolution?.query);
-  const userQuery = optionalString(track.user_metadata?.query);
-  const title = optionalString(track.audio_metadata?.title) || track.title;
-  const artist = optionalString(track.audio_metadata?.artist) || track.artist;
-  const metadataQuery = [artist, title].filter(Boolean).join(" ").trim();
-  return resolutionQuery || userQuery || metadataQuery || track.query;
+function canonicalText(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
-function shouldFallbackFromStoredKey(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.code === "PLAYBACK_ACTION_NOT_FOUND" ||
-      error.code === "QUEUE_ACTION_NOT_FOUND" ||
-      error.code === "SEARCH_NO_RESULTS")
-  );
+function identityFromTrack(input: {
+  query: string;
+  title?: unknown;
+  artist?: unknown;
+  album?: unknown;
+  audioMetadata?: AudioMetadata | null;
+  existing?: TrackIdentityMetadata | null;
+}): TrackIdentityMetadata {
+  const audio = input.audioMetadata || {};
+  const existing = input.existing || null;
+  const title = optionalString(audio.title) || optionalString(input.title) || existing?.title || null;
+  const artist = optionalString(audio.artist) || optionalString(input.artist) || existing?.artist || null;
+  const album = optionalString(audio.album) || optionalString(input.album) || existing?.album || null;
+  const albumArtist = optionalString(audio.album_artist) || existing?.album_artist || null;
+  const duration = optionalFiniteInteger(audio.duration_seconds) ?? existing?.duration_seconds ?? null;
+  const isrc = optionalString(audio.isrc) || existing?.isrc || null;
+  const releaseYear = optionalFiniteInteger(audio.release_year) ?? existing?.release_year ?? null;
+  const trackNumber = optionalFiniteInteger(audio.track_number) ?? existing?.track_number ?? null;
+  const discNumber = optionalFiniteInteger(audio.disc_number) ?? existing?.disc_number ?? null;
+  const versionHint = optionalString(audio.version_hint) || existing?.version_hint || null;
+  const source = optionalString(audio.source) || existing?.source || null;
+  const canonicalQuery = [artist, title, album, versionHint && versionHint !== "studio" ? versionHint : null]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || input.query;
+  const fingerprintMaterial = [isrc || "", title || input.query, artist || "", album || "", duration || "", versionHint || ""]
+    .map(canonicalText)
+    .join("|");
+
+  return {
+    version: 1,
+    fingerprint: `sha256:${crypto.createHash("sha256").update(fingerprintMaterial).digest("hex")}`,
+    title,
+    artist,
+    album,
+    album_artist: albumArtist,
+    duration_seconds: duration,
+    isrc,
+    release_year: releaseYear,
+    track_number: trackNumber,
+    disc_number: discNumber,
+    version_hint: versionHint,
+    source,
+    canonical_query: canonicalQuery
+  };
+}
+
+function playbackQueryForTrack(track: VirtualPlaylistTrack): string {
+  return track.identity.canonical_query || optionalString(track.user_metadata?.query) || track.query;
 }
 
 type NormalizedTrackInput = {
@@ -320,10 +439,11 @@ type NormalizedTrackInput = {
 
 export type VirtualPlaylistResolutionStatus =
   | "resolved"
-  | "unresolved"
+  | "stale"
   | "ambiguous"
   | "manual"
-  | "failed";
+  | "missing"
+  | "error";
 
 export type VirtualPlaylistResolutionResult = {
   track_id: string;
@@ -348,6 +468,7 @@ const AUDIO_METADATA_KEYS = new Set([
   "disc_number",
   "duration_seconds",
   "isrc",
+  "version_hint",
   "source",
   "quality",
   "image_key",
@@ -374,6 +495,43 @@ function resolutionConfidence(input: {
   if (input.score !== null && input.score >= 85) return "high";
   if (input.score !== null && input.score >= 60) return "medium";
   return "low";
+}
+
+function canonicalResolutionStatus(value: unknown, roonItemKey: string | null): VirtualPlaylistResolutionStatus {
+  if (value === "resolved" || value === "manual" || value === "ambiguous" || value === "stale" || value === "missing" || value === "error") {
+    return value;
+  }
+  if (value === "unresolved") return "missing";
+  if (value === "failed") return "error";
+  return roonItemKey ? "stale" : "missing";
+}
+
+function roonBinding(roonItemKey: string | null, resolution: ResolutionMetadata | null): RoonBinding {
+  const storedBinding = objectValue(resolution?.binding);
+  return {
+    state: roonItemKey ? "stale" : "missing",
+    item_key: roonItemKey,
+    reusable: false,
+    last_observed_at: roonItemKey
+      ? optionalString(storedBinding?.observed_at) || optionalString(resolution?.resolved_at) || null
+      : null
+  };
+}
+
+function canonicalResolution(
+  resolution: ResolutionMetadata | null,
+  roonItemKey: string | null
+): ResolutionMetadata {
+  return {
+    ...(resolution || {}),
+    status: canonicalResolutionStatus(resolution?.status, roonItemKey),
+    binding: {
+      ...(objectValue(resolution?.binding) || {}),
+      ...roonBinding(roonItemKey, resolution)
+    },
+    persistent_identity: "track_id",
+    roon_item_key_persistent: false
+  };
 }
 
 function normalizeTrackInput(
@@ -406,20 +564,39 @@ function normalizeTrackInput(
     derivedAudio.album = optionalString(payload.album);
   }
 
+  const trackId = nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`;
+  const storedMetadata = buildStoredMetadata({
+    metadata: objectValue(payload.metadata) || objectValue(payload.metadata_json),
+    audio_metadata: (objectValue(payload.audio_metadata) || Object.keys(derivedAudio).length)
+      ? { ...derivedAudio, ...(objectValue(payload.audio_metadata) || {}) }
+      : null,
+    user_metadata: objectValue(payload.user_metadata),
+    identity: objectValue(payload.identity),
+    resolution: objectValue(payload.resolution) || objectValue(payload.resolution_metadata)
+  }) || {};
+  const split = splitStoredMetadata(storedMetadata);
+  storedMetadata.identity = identityFromTrack({
+    query,
+    title,
+    artist,
+    album: optionalString(payload.album),
+    audioMetadata: split.audio_metadata,
+    existing: split.identity
+  });
+  storedMetadata.resolution = canonicalResolution(
+    split.resolution,
+    optionalString(payload.roon_item_key)
+  );
+
   return {
-    track_id: nonEmptyString(payload.track_id) || fallbackTrackId || `track-${randomSuffix()}`,
+    track_id: trackId,
     query,
     roon_item_key: optionalString(payload.roon_item_key),
     title,
     artist,
     album: optionalString(payload.album),
     position: optionalFiniteInteger(payload.position) ?? fallbackPosition ?? null,
-    metadata_json: serializeMetadata(buildStoredMetadata({
-      metadata: objectValue(payload.metadata) || objectValue(payload.metadata_json),
-      audio_metadata: objectValue(payload.audio_metadata) || (Object.keys(derivedAudio).length ? derivedAudio : null),
-      user_metadata: objectValue(payload.user_metadata),
-      resolution: objectValue(payload.resolution) || objectValue(payload.resolution_metadata)
-    })),
+    metadata_json: serializeMetadata(storedMetadata),
     created_at: optionalString(payload.created_at) || fallbackCreatedAt || nowIso()
   };
 }
@@ -429,6 +606,7 @@ export class PlaylistService {
 
   constructor(config: AppConfig, database?: SqliteDatabase) {
     this.database = database || createDatabase(config);
+    this.backfillPersistentTrackIdentity();
   }
 
   listPlaylists(options: VirtualPlaylistListOptions = {}): VirtualPlaylistListResult {
@@ -440,7 +618,7 @@ export class PlaylistService {
     const total = this.countPlaylists();
     const playlistRows = this.database.db
       .prepare(
-        `SELECT playlist_id, name, description, created_at, updated_at
+        `SELECT playlist_id, name, description, cover_image_key, created_at, updated_at
          FROM virtual_playlists
          ORDER BY updated_at DESC, name ASC
          LIMIT ? OFFSET ?`
@@ -486,6 +664,8 @@ export class PlaylistService {
       playlist_id: row.playlist_id,
       name: row.name,
       description: row.description,
+      cover_image_key: row.cover_image_key,
+      cover: buildCover(row.cover_image_key),
       track_count: trackCount,
       tracks_count: trackCount,
       include_tracks: includeTracks,
@@ -504,6 +684,7 @@ export class PlaylistService {
     playlist_id?: unknown;
     name?: unknown;
     description?: unknown;
+    cover_image_key?: unknown;
     tracks?: unknown;
   }): VirtualPlaylist {
     const name = nonEmptyString(input.name);
@@ -523,13 +704,14 @@ export class PlaylistService {
     this.database.transaction(() => {
       this.database.db
         .prepare(
-          `INSERT INTO virtual_playlists (playlist_id, name, description, created_at, updated_at)
-           VALUES (:playlist_id, :name, :description, :created_at, :updated_at)`
+          `INSERT INTO virtual_playlists (playlist_id, name, description, cover_image_key, created_at, updated_at)
+           VALUES (:playlist_id, :name, :description, :cover_image_key, :created_at, :updated_at)`
         )
         .run({
           playlist_id: playlistId,
           name,
           description: optionalString(input.description),
+          cover_image_key: optionalString(input.cover_image_key),
           created_at: createdAt,
           updated_at: createdAt
         });
@@ -547,6 +729,7 @@ export class PlaylistService {
       playlist_id?: unknown;
       name?: unknown;
       description?: unknown;
+      cover_image_key?: unknown;
       tracks?: unknown;
     },
     options: {
@@ -562,7 +745,7 @@ export class PlaylistService {
 
   updatePlaylist(
     playlistId: string,
-    input: { name?: unknown; description?: unknown }
+    input: { name?: unknown; description?: unknown; cover_image_key?: unknown }
   ): VirtualPlaylist {
     const current = this.getPlaylistById(playlistId);
     const nextName =
@@ -576,17 +759,21 @@ export class PlaylistService {
       input.description === undefined
         ? current.description
         : optionalString(input.description);
+    const nextCoverImageKey = input.cover_image_key === undefined
+      ? current.cover_image_key
+      : optionalString(input.cover_image_key);
 
     this.database.db
       .prepare(
         `UPDATE virtual_playlists
-         SET name = :name, description = :description, updated_at = :updated_at
+         SET name = :name, description = :description, cover_image_key = :cover_image_key, updated_at = :updated_at
          WHERE playlist_id = :playlist_id`
       )
       .run({
         playlist_id: playlistId,
         name: nextName,
         description: nextDescription,
+        cover_image_key: nextCoverImageKey,
         updated_at: nowIso()
       });
 
@@ -636,7 +823,45 @@ export class PlaylistService {
         position: payload.position
       });
     }
-    const normalized = normalizeTrackInput(input, row.track_id, row.position, row.created_at);
+    const existing = this.mapTrack(row);
+    const incomingMetadata = splitStoredMetadata(objectValue(payload.metadata));
+    const incomingAudio = {
+      ...(incomingMetadata.audio_metadata || {}),
+      ...(objectValue(payload.audio_metadata) || {})
+    };
+    const matchingFieldsChanged = ["query", "title", "artist", "album"].some(
+      (field) => hasOwn(payload, field) && optionalString(payload[field]) !== optionalString((existing as any)[field])
+    ) || ["title", "artist", "album", "album_artist", "duration_seconds", "isrc", "version_hint"].some(
+      (field) => hasOwn(incomingAudio, field) && incomingAudio[field] !== existing.audio_metadata?.[field]
+    ) || hasOwn(payload, "identity");
+    const merged: Record<string, unknown> = {
+      ...existing,
+      ...payload,
+      audio_metadata: {
+        ...(existing.audio_metadata || {}),
+        ...(incomingMetadata.audio_metadata || {}),
+        ...(objectValue(payload.audio_metadata) || {})
+      },
+      user_metadata: {
+        ...(existing.user_metadata || {}),
+        ...(incomingMetadata.user_metadata || {}),
+        ...(objectValue(payload.user_metadata) || {})
+      },
+      identity: hasOwn(payload, "identity") ? payload.identity : existing.identity,
+      resolution: hasOwn(payload, "resolution") ? payload.resolution : existing.resolution
+    };
+    if (matchingFieldsChanged && !hasOwn(payload, "resolution")) {
+      merged.roon_item_key = null;
+      merged.resolution = {
+        ...(existing.resolution || {}),
+        status: "missing",
+        reason: "identity_metadata_changed",
+        selected_result_id: null,
+        selected_roon_item_key: null,
+        binding: roonBinding(null, null)
+      };
+    }
+    const normalized = normalizeTrackInput(merged, row.track_id, row.position, row.created_at);
     const rows = this.listTrackRows(playlistId);
     if (requestedPosition !== null) {
       this.validateTrackPositionRange(playlistId, trackId, requestedPosition, rows.length);
@@ -725,7 +950,11 @@ export class PlaylistService {
     const trackIdFilter = options.trackIds ? new Set(options.trackIds) : null;
     const rows = this.listTrackRows(playlistId).filter((track) => {
       if (trackIdFilter && !trackIdFilter.has(track.track_id)) return false;
-      return options.force || !track.roon_item_key;
+      const status = canonicalResolutionStatus(
+        splitStoredMetadata(parseMetadata(track.metadata_json)).resolution?.status,
+        track.roon_item_key
+      );
+      return options.force || (status !== "resolved" && status !== "manual");
     });
     const resolution: VirtualPlaylistResolutionResult[] = [];
 
@@ -825,17 +1054,28 @@ export class PlaylistService {
     const playlist = this.getPlaylistById(playlistId);
     const issues: Record<string, unknown>[] = [];
     const titleArtist = new Map<string, VirtualPlaylistTrack[]>();
-    const roonKeys = new Map<string, VirtualPlaylistTrack[]>();
+    const identities = new Map<string, VirtualPlaylistTrack[]>();
     const positions = new Map<number, VirtualPlaylistTrack[]>();
 
     for (const track of playlist.tracks) {
+      const status = canonicalResolutionStatus(track.resolution?.status, track.roon_item_key);
       if (!track.query) {
         issues.push({ track_id: track.track_id, type: "missing_query", severity: "error", message: "Track has no query", suggested_actions: ["edit_track"] });
       }
-      if (!track.roon_item_key) {
-        issues.push({ track_id: track.track_id, type: "unresolved", severity: "warning", message: "No playable Roon result stored", suggested_actions: ["search_broader", "manual_select"] });
+      if (status === "missing" || status === "stale" || status === "error") {
+        issues.push({
+          track_id: track.track_id,
+          type: status,
+          severity: status === "error" ? "error" : "warning",
+          message: status === "stale"
+            ? "Legacy Roon reference must be reconstructed from the stored identity"
+            : status === "error"
+              ? "The last identity resolution failed"
+              : "No confident Roon recording match has been stored",
+          suggested_actions: ["resolve", "manual_select"]
+        });
       }
-      if (track.resolution?.status === "ambiguous") {
+      if (status === "ambiguous") {
         issues.push({ track_id: track.track_id, type: "ambiguous", severity: "warning", message: "Several close candidates were found", suggested_actions: ["manual_select"] });
       }
       if (!track.audio_metadata?.title || !track.audio_metadata?.artist) {
@@ -844,7 +1084,7 @@ export class PlaylistService {
       positions.set(track.position, [...(positions.get(track.position) || []), track]);
       const normalized = this.duplicateKey(track);
       if (normalized) titleArtist.set(normalized, [...(titleArtist.get(normalized) || []), track]);
-      if (track.roon_item_key) roonKeys.set(track.roon_item_key, [...(roonKeys.get(track.roon_item_key) || []), track]);
+      identities.set(track.identity.fingerprint, [...(identities.get(track.identity.fingerprint) || []), track]);
     }
 
     for (const [position, group] of positions.entries()) {
@@ -854,16 +1094,29 @@ export class PlaylistService {
         }
       }
     }
-    for (const group of [...titleArtist.values(), ...roonKeys.values()]) {
+    const duplicateSignatures = new Set<string>();
+    for (const group of [...identities.values(), ...titleArtist.values()]) {
       if (group.length > 1) {
+        const signature = group.map((track) => track.track_id).sort().join("|");
+        if (duplicateSignatures.has(signature)) continue;
+        duplicateSignatures.add(signature);
         issues.push({ track_id: group.map((track) => track.track_id), type: "duplicates", severity: "info", message: "Probable duplicate tracks", suggested_actions: ["deduplicate"] });
       }
     }
 
+    const statusCount = (status: VirtualPlaylistResolutionStatus) =>
+      playlist.tracks.filter((track) => canonicalResolutionStatus(track.resolution?.status, track.roon_item_key) === status).length;
+    const resolved = statusCount("resolved");
+    const manual = statusCount("manual");
     const summary = {
-      resolved: playlist.tracks.filter((track) => track.roon_item_key && track.resolution?.status !== "ambiguous").length,
-      unresolved: playlist.tracks.filter((track) => !track.roon_item_key).length,
-      ambiguous: playlist.tracks.filter((track) => track.resolution?.status === "ambiguous").length,
+      ready: resolved + manual,
+      resolved,
+      manual,
+      stale: statusCount("stale"),
+      missing: statusCount("missing"),
+      error: statusCount("error"),
+      unresolved: playlist.tracks.length - resolved - manual,
+      ambiguous: statusCount("ambiguous"),
       missing_metadata: playlist.tracks.filter((track) => !track.audio_metadata?.title || !track.audio_metadata?.artist).length,
       duplicates: issues.filter((issue) => issue.type === "duplicates").length
     };
@@ -880,12 +1133,20 @@ export class PlaylistService {
       groups.set(key, [...(groups.get(key) || []), track]);
     };
     for (const track of playlist.tracks) {
-      if (strategy.match_by_roon_item_key !== false) add(track.roon_item_key ? `roon:${track.roon_item_key}` : null, track);
+      if (strategy.match_by_identity !== false) add(`identity:${track.identity.fingerprint}`, track);
       if (strategy.match_by_normalized_title_artist !== false) add(this.duplicateKey(track), track);
+      if (strategy.match_by_roon_item_key === true) add(track.roon_item_key ? `legacy_roon_reference:${track.roon_item_key}` : null, track);
     }
+    const seenGroups = new Set<string>();
     const duplicateGroups = [...groups.entries()]
       .map(([key, tracks]) => ({ key, tracks: tracks.filter((track, index, arr) => arr.findIndex((other) => other.track_id === track.track_id) === index) }))
       .filter((group) => group.tracks.length > 1)
+      .filter((group) => {
+        const signature = group.tracks.map((track) => track.track_id).sort().join("|");
+        if (seenGroups.has(signature)) return false;
+        seenGroups.add(signature);
+        return true;
+      })
       .map((group) => ({
         match_key: group.key,
         tracks: group.tracks,
@@ -925,19 +1186,25 @@ export class PlaylistService {
     const playlist = this.getPlaylistById(playlistId);
     if (format === "csv") {
       const userKeys = Array.from(new Set(playlist.tracks.flatMap((track) => Object.keys(track.user_metadata || {}))));
-      const headers = ["track_id", "position", "query", "roon_item_key", "title", "artist", "album", "resolution_status", ...userKeys.map((key) => `user_metadata.${key}`)];
+      const headers = ["track_id", "identity_fingerprint", "position", "query", "title", "artist", "album", "resolution_status", "roon_binding_status", "last_roon_item_key", ...userKeys.map((key) => `user_metadata.${key}`)];
       const rows = playlist.tracks.map((track) => headers.map((header) => {
         const value = header.startsWith("user_metadata.")
           ? track.user_metadata?.[header.slice("user_metadata.".length)]
+          : header === "identity_fingerprint"
+            ? track.identity.fingerprint
           : header === "resolution_status"
             ? track.resolution?.status
+            : header === "roon_binding_status"
+              ? track.roon_binding.state
+              : header === "last_roon_item_key"
+                ? track.roon_item_key
             : (track as any)[header] ?? track.audio_metadata?.[header];
         return `"${String(value ?? "").replaceAll('"', '""')}"`;
       }).join(","));
       return [headers.join(","), ...rows].join("\n");
     }
     if (format === "m3u") {
-      return ["#EXTM3U", ...playlist.tracks.map((track) => `#EXTINF:${track.audio_metadata?.duration_seconds ?? -1},${track.artist || track.audio_metadata?.artist || ""} - ${track.title || track.audio_metadata?.title || track.query}\n${track.roon_item_key || track.query}`)].join("\n");
+      return ["#EXTM3U", ...playlist.tracks.map((track) => `#EXTINF:${track.audio_metadata?.duration_seconds ?? -1},${track.artist || track.audio_metadata?.artist || ""} - ${track.title || track.audio_metadata?.title || track.query}\n${track.identity.canonical_query}`)].join("\n");
     }
     return { ok: true, format: "json", playlist };
   }
@@ -995,10 +1262,18 @@ export class PlaylistService {
         status: "manual",
         selected_result_id: result.result_id,
         selected_roon_item_key: result.roon_item_key || null,
+        selected_candidate: mediaCandidateSnapshot(result as unknown as Record<string, unknown>),
         score: result.match_score,
         confidence: result.confidence,
         reason: "added_from_search_result",
-        resolved_at: nowIso()
+        resolved_at: nowIso(),
+        binding: {
+          state: result.roon_item_key ? "stale" : "missing",
+          item_key: result.roon_item_key || null,
+          reusable: false
+        },
+        persistent_identity: "track_id",
+        roon_item_key_persistent: false
       }
     });
     if (input.position !== undefined) {
@@ -1011,7 +1286,8 @@ export class PlaylistService {
   async playPlaylist(
     roonClient: RoonClient,
     playlistId: string,
-    input: { zone_id?: unknown; mode?: unknown; limit?: unknown; session_key?: unknown }
+    input: { zone_id?: unknown; mode?: unknown; limit?: unknown; session_key?: unknown },
+    runtime: PlaylistPlaybackRuntime = {}
   ): Promise<Record<string, unknown>> {
     const playlist = this.getPlaylistById(playlistId);
     const zoneId = nonEmptyString(input.zone_id);
@@ -1033,42 +1309,59 @@ export class PlaylistService {
       `roon-ai-bridge-playlist-${playlist.playlist_id}-${Date.now().toString(36)}`;
 
     if (mode === "play_now" && tracks.length > 0) {
-      await this.applyTrack(
+      const firstStarted = await this.applyTrack(
         roonClient,
+        playlistId,
         zoneId,
         tracks[0],
         "play_now",
         `${sessionPrefix}-0`,
         results,
-        failures
+        failures,
+        runtime
       );
 
-      for (const [index, track] of tracks.slice(1).entries()) {
-        await this.applyTrack(
-          roonClient,
-          zoneId,
-          track,
-          "add_to_queue",
-          `${sessionPrefix}-${index + 1}`,
-          results,
-          failures
-        );
-      }
-
-      if (failures.length === 0) {
+      if (firstStarted) {
+        for (const [index, track] of tracks.slice(1).entries()) {
+          await this.applyTrack(
+            roonClient,
+            playlistId,
+            zoneId,
+            track,
+            "add_to_queue",
+            `${sessionPrefix}-${index + 1}`,
+            results,
+            failures,
+            runtime
+          );
+        }
         playback = await controlPlayback(roonClient, zoneId, "play");
+      } else {
+        for (const track of tracks.slice(1)) {
+          failures.push({
+            track_id: track.track_id,
+            identity: track.identity,
+            skipped: true,
+            error: {
+              code: "PLAYLIST_START_ABORTED",
+              message: "The first track could not be reconstructed; the existing queue was left unchanged"
+            }
+          });
+        }
       }
     } else {
       const orderedTracks = mode === "add_next" ? tracks.slice().reverse() : tracks;
       for (const [index, track] of orderedTracks.entries()) {
         await this.applyTrack(
           roonClient,
+          playlistId,
           zoneId,
           track,
           mode,
           `${sessionPrefix}-${index}`,
           results,
-          failures
+          failures,
+          runtime
         );
       }
     }
@@ -1081,6 +1374,52 @@ export class PlaylistService {
       requested: tracks.length,
       succeeded: results.length,
       failed: failures.length,
+      playback,
+      results,
+      failures
+    };
+  }
+
+  async playPlaylistTrack(
+    roonClient: RoonClient,
+    playlistId: string,
+    trackId: string,
+    input: { zone_id?: unknown; mode?: unknown; session_key?: unknown },
+    runtime: PlaylistPlaybackRuntime = {}
+  ): Promise<Record<string, unknown>> {
+    const playlist = this.getPlaylistById(playlistId);
+    const track = playlist.tracks.find((candidate) => candidate.track_id === trackId);
+    if (!track) {
+      throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found", {
+        playlist_id: playlistId,
+        track_id: trackId
+      });
+    }
+    const zoneId = nonEmptyString(input.zone_id);
+    if (!zoneId) throw new ApiError("ZONE_NOT_FOUND", "zone_id is required");
+    const mode = this.parsePlayMode(input.mode);
+    const results: Record<string, unknown>[] = [];
+    const failures: Record<string, unknown>[] = [];
+    const succeeded = await this.applyTrack(
+      roonClient,
+      playlistId,
+      zoneId,
+      track,
+      mode,
+      nonEmptyString(input.session_key) || `roon-ai-bridge-playlist-track-${track.track_id}-${Date.now().toString(36)}`,
+      results,
+      failures,
+      runtime
+    );
+    const playback = succeeded && mode === "play_now"
+      ? await controlPlayback(roonClient, zoneId, "play")
+      : null;
+    return {
+      ok: succeeded,
+      playlist_id: playlistId,
+      track_id: trackId,
+      zone_id: zoneId,
+      mode,
       playback,
       results,
       failures
@@ -1138,7 +1477,7 @@ export class PlaylistService {
   private getPlaylistRowOrThrow(playlistId: string): PlaylistRow {
     const row = this.database.db
       .prepare(
-        `SELECT playlist_id, name, description, created_at, updated_at
+        `SELECT playlist_id, name, description, cover_image_key, created_at, updated_at
          FROM virtual_playlists
          WHERE playlist_id = ?`
       )
@@ -1160,6 +1499,8 @@ export class PlaylistService {
       playlist_id: row.playlist_id,
       name: row.name,
       description: row.description,
+      cover_image_key: row.cover_image_key,
+      cover: buildCover(row.cover_image_key),
       tracks,
       track_count: trackCount,
       tracks_count: trackCount,
@@ -1177,6 +1518,8 @@ export class PlaylistService {
       playlist_id: row.playlist_id,
       name: row.name,
       description: row.description,
+      cover_image_key: row.cover_image_key,
+      cover: buildCover(row.cover_image_key),
       track_count: trackCount,
       tracks_count: trackCount,
       created_at: row.created_at,
@@ -1219,6 +1562,55 @@ export class PlaylistService {
     return this.database.db.prepare(sql).all(playlistId) as TrackRow[];
   }
 
+  private backfillPersistentTrackIdentity(): void {
+    const rows = this.database.db
+      .prepare(
+        `SELECT track_id, playlist_id, query, roon_item_key, title, artist, album, position, metadata_json, created_at
+         FROM virtual_playlist_tracks`
+      )
+      .all() as TrackRow[];
+    const update = this.database.db.prepare(
+      `UPDATE virtual_playlist_tracks
+       SET metadata_json = :metadata_json
+       WHERE playlist_id = :playlist_id AND track_id = :track_id`
+    );
+
+    this.database.transaction(() => {
+      for (const row of rows) {
+        const metadata = parseMetadata(row.metadata_json) || {};
+        const split = splitStoredMetadata(metadata);
+        const rawStatus = split.resolution?.status;
+        const needsBackfill =
+          !split.identity ||
+          split.identity.version !== 1 ||
+          !optionalString(split.identity.fingerprint) ||
+          rawStatus === "unresolved" ||
+          rawStatus === "failed" ||
+          !objectValue(split.resolution?.binding) ||
+          split.resolution?.roon_item_key_persistent !== false;
+        if (!needsBackfill) continue;
+        const identity = identityFromTrack({
+          query: row.query,
+          title: row.title,
+          artist: row.artist,
+          album: row.album,
+          audioMetadata: split.audio_metadata,
+          existing: split.identity
+        });
+        update.run({
+          playlist_id: row.playlist_id,
+          track_id: row.track_id,
+          metadata_json: JSON.stringify({
+            ...(split.audio_metadata ? { audio_metadata: split.audio_metadata } : {}),
+            ...(split.user_metadata ? { user_metadata: split.user_metadata } : {}),
+            identity,
+            resolution: canonicalResolution(split.resolution, row.roon_item_key)
+          })
+        });
+      }
+    });
+  }
+
   private countTrackRows(playlistId: string): number {
     const row = this.database.db
       .prepare(
@@ -1251,6 +1643,15 @@ export class PlaylistService {
     const metadata = parseMetadata(row.metadata_json);
     const split = splitStoredMetadata(metadata);
     const imageKey = imageKeyFromMetadata(metadata);
+    const identity = identityFromTrack({
+      query: row.query,
+      title: row.title,
+      artist: row.artist,
+      album: row.album,
+      audioMetadata: split.audio_metadata,
+      existing: split.identity
+    });
+    const resolution = canonicalResolution(split.resolution, row.roon_item_key);
 
     return {
       track_id: row.track_id,
@@ -1265,7 +1666,9 @@ export class PlaylistService {
       metadata: split.legacy_metadata,
       audio_metadata: split.audio_metadata,
       user_metadata: split.user_metadata,
-      resolution: split.resolution,
+      identity,
+      resolution,
+      roon_binding: roonBinding(row.roon_item_key, resolution),
       created_at: row.created_at
     };
   }
@@ -1381,7 +1784,8 @@ export class PlaylistService {
     }
   ): Promise<VirtualPlaylistResolutionResult> {
     const logger = options.logger;
-    const query = row.query || [row.title, row.artist].filter(Boolean).join(" ");
+    const storedTrack = this.mapTrack(row);
+    const query = row.query || playbackQueryForTrack(storedTrack);
     logger?.info("Virtual playlist entry resolution started", {
       playlistId: row.playlist_id,
       trackId: row.track_id,
@@ -1420,7 +1824,7 @@ export class PlaylistService {
       const best = candidates[0];
       if (!best) {
         const unresolved = this.updateTrackResolution(row, {
-          status: "unresolved",
+          status: "missing",
           query,
           roonItemKey: null,
           score: null,
@@ -1436,14 +1840,15 @@ export class PlaylistService {
         second &&
         second.result.media_type === best.result.media_type &&
         second.scoring.score >= 60 &&
+        !sameRecordingCandidate(best.result, second.result) &&
         Math.abs(best.scoring.score - second.scoring.score) <= AMBIGUOUS_SCORE_DELTA
       );
-      const hasStablePlayableKey = Boolean(best.result.roon_item_key);
+      const hasActionableBrowseReference = Boolean(best.result.roon_item_key);
       const baseConfidence = best.result.confidence || best.scoring.confidence;
       const accepted =
         best.result.media_type === "track" &&
         best.result.playable &&
-        hasStablePlayableKey &&
+        hasActionableBrowseReference &&
         best.scoring.score >= RESOLUTION_SCORE_THRESHOLD &&
         baseConfidence !== "low" &&
         !ambiguous;
@@ -1451,7 +1856,7 @@ export class PlaylistService {
         ? "resolved"
         : ambiguous
           ? "ambiguous"
-          : "unresolved";
+          : "missing";
       const reason = best.scoring.reasons.join(", ") || "best available candidate";
       const stored = this.updateTrackResolution(row, {
         status,
@@ -1479,7 +1884,7 @@ export class PlaylistService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const failed = this.updateTrackResolution(row, {
-        status: "failed",
+        status: "error",
         query,
         roonItemKey: null,
         score: null,
@@ -1507,17 +1912,31 @@ export class PlaylistService {
   ): VirtualPlaylistResolutionResult {
     const metadata = parseMetadata(row.metadata_json) || {};
     const split = splitStoredMetadata(metadata);
-    const audioMetadata = resolution.result
-      ? audioMetadataFromMedia(resolution.result as MediaResult)
+    const accepted = resolution.status === "resolved" || resolution.status === "manual";
+    const audioMetadata = accepted && resolution.result
+      ? { ...(split.audio_metadata || {}), ...audioMetadataFromMedia(resolution.result as MediaResult) }
       : split.audio_metadata;
+    const identity = identityFromTrack({
+      query: row.query,
+      title: accepted ? resolution.result?.title : row.title,
+      artist: accepted ? resolution.result?.artist || resolution.result?.subtitle : row.artist,
+      album: accepted ? resolution.result?.album : row.album,
+      audioMetadata,
+      existing: split.identity
+    });
+    const resolvedAt = nowIso();
     const nextMetadata: Record<string, unknown> = {
       ...(split.user_metadata ? { user_metadata: split.user_metadata } : {}),
       ...(audioMetadata ? { audio_metadata: audioMetadata } : {}),
+      identity,
       resolution: {
         status: resolution.status,
         query: resolution.query,
         selected_result_id: resolution.result?.result_id || null,
         selected_roon_item_key: resolution.roonItemKey,
+        selected_candidate: accepted && resolution.result
+          ? mediaCandidateSnapshot(resolution.result)
+          : null,
         score: resolution.score,
         confidence: resolutionConfidence({
           status: resolution.status,
@@ -1527,29 +1946,16 @@ export class PlaylistService {
           candidates: resolution.candidates
         }),
         reason: resolution.reason,
-        resolved_at: nowIso(),
-        candidates: resolution.candidates?.map((candidate) => ({
-          result_id: candidate.result_id,
-          roon_item_key: candidate.roon_item_key,
-          title: candidate.title,
-          artist: candidate.artist,
-          album: candidate.album,
-          source: candidate.source,
-          playable: candidate.playable,
-          match_score: candidate.match_score,
-          confidence: candidate.confidence
-        })) || [],
-        result: resolution.result
-          ? {
-              result_id: resolution.result.result_id,
-              media_type: resolution.result.media_type,
-              title: resolution.result.title,
-              subtitle: resolution.result.subtitle,
-              source: resolution.result.source,
-              quality: resolution.result.quality,
-              playable: resolution.result.playable
-            }
-          : null
+        resolved_at: resolvedAt,
+        candidates: resolution.candidates?.map(mediaCandidateSnapshot) || [],
+        binding: {
+          state: resolution.roonItemKey ? "stale" : "missing",
+          item_key: resolution.roonItemKey,
+          reusable: false,
+          observed_at: resolution.roonItemKey ? resolvedAt : null
+        },
+        persistent_identity: "track_id",
+        roon_item_key_persistent: false
       }
     };
     const imageKey =
@@ -1568,6 +1974,9 @@ export class PlaylistService {
       .prepare(
         `UPDATE virtual_playlist_tracks
          SET roon_item_key = :roon_item_key,
+             title = :title,
+             artist = :artist,
+             album = :album,
              metadata_json = :metadata_json
          WHERE playlist_id = :playlist_id AND track_id = :track_id`
       )
@@ -1575,6 +1984,9 @@ export class PlaylistService {
         playlist_id: row.playlist_id,
         track_id: row.track_id,
         roon_item_key: resolution.roonItemKey,
+        title: identity.title,
+        artist: identity.artist,
+        album: identity.album,
         metadata_json: JSON.stringify(nextMetadata)
       });
 
@@ -1615,80 +2027,185 @@ export class PlaylistService {
       });
   }
 
+  private async resolvePlaybackCandidate(
+    track: VirtualPlaylistTrack,
+    mediaService: RoonMediaService,
+    sourcePreference: SourcePreference = "highest_quality"
+  ): Promise<{ result: MediaResult; score: number }> {
+    const query = playbackQueryForTrack(track);
+    const payload = await mediaService.search({
+      query,
+      types: ["track"],
+      count: 10,
+      sourcePreference
+    });
+    const candidates = payload.results
+      .filter((result) => result.media_type === "track" && result.playable && Boolean(result.roon_item_key))
+      .map((result) => ({
+        result,
+        scoring: scoreSearchResult(result, {
+          query,
+          title: track.identity.title,
+          artist: track.identity.artist,
+          album: track.identity.album,
+          sourcePreference
+        })
+      }))
+      .sort((a, b) => b.scoring.score - a.scoring.score);
+    const best = candidates[0];
+    if (!best) {
+      throw new ApiError("SEARCH_NO_RESULTS", "The stored track identity could not be found in Roon", {
+        track_id: track.track_id,
+        identity_fingerprint: track.identity.fingerprint,
+        query
+      });
+    }
+    const second = candidates[1];
+    const ambiguous = Boolean(
+      second &&
+      second.scoring.score >= 60 &&
+      !sameRecordingCandidate(best.result, second.result) &&
+      Math.abs(best.scoring.score - second.scoring.score) <= AMBIGUOUS_SCORE_DELTA
+    );
+    if (best.scoring.score < RESOLUTION_SCORE_THRESHOLD || ambiguous) {
+      throw new ApiError(
+        ambiguous ? "PLAYLIST_TRACK_AMBIGUOUS" : "PLAYLIST_TRACK_NOT_CONFIDENT",
+        ambiguous
+          ? "Several Roon recordings match the stored identity too closely"
+          : "No Roon recording matches the stored identity with enough confidence",
+        {
+          track_id: track.track_id,
+          identity_fingerprint: track.identity.fingerprint,
+          query,
+          best_score: best.scoring.score,
+          second_score: second?.scoring.score ?? null,
+          candidates: candidates.slice(0, 5).map(({ result, scoring }) => ({
+            ...mediaCandidateSnapshot(result as unknown as Record<string, unknown>),
+            score: scoring.score
+          }))
+        }
+      );
+    }
+    return { result: best.result, score: best.scoring.score };
+  }
+
   private async applyTrack(
     roonClient: RoonClient,
+    playlistId: string,
     zoneId: string,
     track: VirtualPlaylistTrack,
     mode: PlaylistPlayMode,
     sessionKey: string,
     results: Record<string, unknown>[],
-    failures: Record<string, unknown>[]
-  ): Promise<void> {
+    failures: Record<string, unknown>[],
+    runtime: PlaylistPlaybackRuntime
+  ): Promise<boolean> {
     try {
-      if (mode === "play_now") {
-        let result;
-        if (track.roon_item_key) {
-          try {
-            result = await playByItemKey(roonClient, {
-              zoneId,
-              itemKey: track.roon_item_key,
-              label: track.title || track.query,
-              sessionKey
-            });
-          } catch (error) {
-            if (!shouldFallbackFromStoredKey(error)) throw error;
-          }
+      let result: Record<string, unknown>;
+      let candidate: Record<string, unknown> | null = null;
+      let resolvedCandidate: { result: MediaResult; score: number } | null = null;
+      if (runtime.mediaService) {
+        resolvedCandidate = await this.resolvePlaybackCandidate(
+          track,
+          runtime.mediaService,
+          runtime.sourcePreference
+        );
+        candidate = {
+          ...mediaCandidateSnapshot(resolvedCandidate.result as unknown as Record<string, unknown>),
+          score: resolvedCandidate.score
+        };
+        result = await runtime.mediaService.play(
+          resolvedCandidate.result.result_id,
+          zoneId,
+          mode === "play_now" ? "replace_queue" : mode === "add_next" ? "play_next" : "append"
+        );
+        if (result.ok === false) {
+          throw new ApiError(
+            mode === "play_now" ? "PLAYBACK_ACTION_NOT_FOUND" : "QUEUE_ACTION_NOT_FOUND",
+            "Roon rejected the action for the freshly reconstructed recording",
+            { track_id: track.track_id, mode, result }
+          );
         }
-        result ||= await playByQuery(roonClient, {
+      } else if (mode === "play_now") {
+        result = await playByQuery(roonClient, {
           zoneId,
           query: playbackQueryForTrack(track),
-          sessionKey: `${sessionKey}-fallback-${track.track_id}`
+          sessionKey
         });
-        results.push({ track, result });
-        return;
+      } else {
+        result = await queueByQuery(roonClient, {
+          zoneId,
+          query: playbackQueryForTrack(track),
+          mode,
+          sessionKey
+        });
       }
-
-      let result;
-      if (track.roon_item_key) {
-        try {
-          result = await queueByItemKey(roonClient, {
-            zoneId,
-            itemKey: track.roon_item_key,
-            label: track.title || track.query,
-            mode,
-            sessionKey
-          });
-        } catch (error) {
-          if (!shouldFallbackFromStoredKey(error)) throw error;
-        }
-      }
-      result ||= await queueByQuery(roonClient, {
-        zoneId,
-        query: playbackQueryForTrack(track),
+      runtime.logger?.info("Virtual playlist track reconstructed for playback", {
+        trackId: track.track_id,
+        identityFingerprint: track.identity.fingerprint,
         mode,
-        sessionKey: `${sessionKey}-fallback-${track.track_id}`
+        candidate
       });
-      results.push({ track, result });
+      if (resolvedCandidate) {
+        const row = this.getTrackRowOrThrow(playlistId, track.track_id);
+        this.updateTrackResolution(row, {
+          status: track.resolution?.status === "manual" ? "manual" : "resolved",
+          query: track.query,
+          roonItemKey: resolvedCandidate.result.roon_item_key,
+          score: resolvedCandidate.score,
+          reason: "reconstructed_for_playback",
+          result: resolvedCandidate.result as unknown as Record<string, unknown>
+        });
+        this.touchPlaylist(playlistId);
+      }
+      results.push({
+        track_id: track.track_id,
+        identity: track.identity,
+        reconstructed: true,
+        cached_roon_item_key_used: false,
+        candidate,
+        result
+      });
+      return true;
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        (error.code === "PLAYLIST_TRACK_AMBIGUOUS" ||
+          error.code === "PLAYLIST_TRACK_NOT_CONFIDENT" ||
+          error.code === "SEARCH_NO_RESULTS")
+      ) {
+        const row = this.getTrackRowOrThrow(playlistId, track.track_id);
+        this.updateTrackResolution(row, {
+          status: error.code === "PLAYLIST_TRACK_AMBIGUOUS" ? "ambiguous" : "missing",
+          query: track.query,
+          roonItemKey: null,
+          score: typeof error.details.best_score === "number" ? error.details.best_score : null,
+          reason: error.message
+        });
+        this.touchPlaylist(playlistId);
+      }
       if (error instanceof ApiError) {
         failures.push({
-          track,
+          track_id: track.track_id,
+          identity: track.identity,
           error: {
             code: error.code,
             message: error.message,
             details: error.details
           }
         });
-        return;
+        return false;
       }
 
       failures.push({
-        track,
+        track_id: track.track_id,
+        identity: track.identity,
         error: {
           code: "INTERNAL_ERROR",
           message: error instanceof Error ? error.message : String(error)
         }
       });
+      return false;
     }
   }
 }

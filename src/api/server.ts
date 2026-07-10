@@ -37,6 +37,7 @@ import { ActionLogService } from "../services/actionLogService";
 import { TechnicalLogService } from "../services/technicalLogService";
 import { ExtensionManagerService } from "../services/extensionManagerService";
 import { DiagnosticsService } from "../services/diagnosticsService";
+import { ToolAccessService } from "../services/toolAccessService";
 
 export type ApiContext = {
   config: AppConfig;
@@ -55,6 +56,7 @@ export type ApiContext = {
   technicalLogService?: TechnicalLogService;
   extensionManagerService?: ExtensionManagerService;
   diagnosticsService?: DiagnosticsService;
+  toolAccessService: ToolAccessService;
 };
 
 export function createServer(context: ApiContext): express.Express {
@@ -88,7 +90,10 @@ export function createServer(context: ApiContext): express.Express {
         method: req.method,
         path: req.path
       });
-      const server = createRoonMcpServer(context);
+      const server = createRoonMcpServer({
+        ...context,
+        activeApiKey: res.locals.apiKey || null
+      });
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined
       });

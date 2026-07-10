@@ -87,6 +87,8 @@ export function createAuthMiddleware(context: ApiContext) {
       return;
     }
 
+    if (managedKey) _res.locals.apiKey = managedKey;
+
     next();
   };
 }

@@ -10,6 +10,8 @@ import { ActionLogService } from "../services/actionLogService";
 import { TechnicalLogService } from "../services/technicalLogService";
 import { ExtensionManagerService } from "../services/extensionManagerService";
 import { DiagnosticsService } from "../services/diagnosticsService";
+import { ToolAccessService } from "../services/toolAccessService";
+import type { ApiKeyRecord } from "../services/apiKeyService";
 
 export type McpContext = {
   config: AppConfig;
@@ -24,4 +26,7 @@ export type McpContext = {
   technicalLogService?: TechnicalLogService;
   extensionManagerService?: ExtensionManagerService;
   diagnosticsService?: DiagnosticsService;
+  toolAccessService?: ToolAccessService;
+  activeApiKey?: ApiKeyRecord | null;
+  manifestMode?: boolean;
 };

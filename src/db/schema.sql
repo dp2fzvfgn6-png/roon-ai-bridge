@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS virtual_playlists (
   playlist_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
+  cover_image_key TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,7 +85,14 @@ CREATE TABLE IF NOT EXISTS api_keys (
   role TEXT NOT NULL CHECK (role IN ('read', 'control', 'admin')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_used_at TEXT,
-  revoked_at TEXT
+  revoked_at TEXT,
+  tool_permissions_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tool_settings (
+  tool_name TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS portal_users (

@@ -17,6 +17,7 @@ import { ActionLogService } from "./services/actionLogService";
 import { TechnicalLogService, createObservedLogger } from "./services/technicalLogService";
 import { ExtensionManagerService } from "./services/extensionManagerService";
 import { DiagnosticsService } from "./services/diagnosticsService";
+import { ToolAccessService } from "./services/toolAccessService";
 
 const config = loadConfig();
 const baseLogger = createLogger(config.logLevel);
@@ -43,6 +44,7 @@ const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 const apiKeyService = new ApiKeyService(config, database);
+const toolAccessService = new ToolAccessService(database);
 const portalAuthService = new PortalAuthService(config, database);
 const zonePresetService = new ZonePresetService(config, database);
 const outputVolumeSettingsService = new OutputVolumeSettingsService(
@@ -67,7 +69,8 @@ const context = {
   volumeLimitService,
   actionLogService,
   technicalLogService,
-  extensionManagerService
+  extensionManagerService,
+  toolAccessService
 };
 const diagnosticsService = new DiagnosticsService(
   config,

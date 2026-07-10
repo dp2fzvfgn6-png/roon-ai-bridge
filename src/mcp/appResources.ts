@@ -1,6 +1,6 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const ROON_CONTROL_WIDGET_VERSION = "v7";
+const ROON_CONTROL_WIDGET_VERSION = "v8";
 const ROON_CONTROL_WIDGET_URI = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/default.html`;
 const ROON_CONTROL_WIDGET_TEMPLATE = `ui://roon-ai-bridge/control-${ROON_CONTROL_WIDGET_VERSION}/{tool}.html`;
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -215,7 +215,7 @@ const controlWidgetHtml = `
         title.textContent = track.title || track.track_id;
         const meta = document.createElement("p");
         meta.className = "meta";
-        meta.textContent = [track.artist, track.album, track.resolution_status].filter(Boolean).join(" | ");
+        meta.textContent = [track.artist, track.album, track.resolution_status, track.roon_binding_status ? "Roon: " + track.roon_binding_status : null].filter(Boolean).join(" | ");
         copy.append(title, meta);
         const actions = document.createElement("div");
         actions.className = "actions";

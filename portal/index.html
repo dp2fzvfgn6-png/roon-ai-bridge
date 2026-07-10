@@ -2,299 +2,129 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>RoonIA Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111614">
+  <title>roonIA · Tu música, conectada</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-25..0&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div id="login" class="login-shell">
-    <section class="login-card">
-      <div class="brand-mark" aria-hidden="true">R</div>
-      <p class="eyebrow" id="login-eyebrow">Roon AI Bridge</p>
-      <h1 id="login-title">Tu música.<br>Todo bajo control.</h1>
-      <p class="muted" id="login-description">Accede con tu usuario administrador.</p>
-      <form id="setup-form" hidden>
-        <label for="setup-bootstrap">Token bootstrap</label>
-        <input id="setup-bootstrap" type="password" autocomplete="one-time-code" placeholder="API_TOKEN actual" required>
-        <label for="setup-username">Usuario administrador</label>
-        <input id="setup-username" autocomplete="username" minlength="3" maxlength="40" required>
-        <label for="setup-password">Contraseña</label>
-        <input id="setup-password" type="password" autocomplete="new-password" minlength="10" required>
-        <label for="setup-password-confirm">Repite la contraseña</label>
-        <input id="setup-password-confirm" type="password" autocomplete="new-password" minlength="10" required>
-        <button class="button primary wide" type="submit">Crear administrador</button>
-        <p id="setup-error" class="form-error" role="alert"></p>
-      </form>
-      <form id="login-form">
-        <label for="login-username">Usuario</label>
-        <input id="login-username" autocomplete="username" required>
-        <label for="login-password">Contraseña</label>
-        <input id="login-password" type="password" autocomplete="current-password" required>
-        <button class="button primary wide" type="submit">Entrar al portal</button>
-        <p id="login-error" class="form-error" role="alert"></p>
-      </form>
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-ambient auth-ambient-a"></div><div class="auth-ambient auth-ambient-b"></div>
+    <section class="auth-story">
+      <img class="auth-logo" src="/assets/brand/04_roonia_678475_C16048_transparente.svg" alt="roonIA">
+      <div class="auth-copy">
+        <span class="overline">Tu música · Tu espacio</span>
+        <h1>Escucha todo.<br><em>Controla cada detalle.</em></h1>
+        <p>Un puente visual entre tu biblioteca Roon, tus zonas y la inteligencia que las conecta.</p>
+      </div>
+      <div class="auth-art" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="auth-mobile-brand"><img src="/assets/brand/04_roonia_678475_C16048_transparente.svg" alt="roonIA"></div>
+        <span class="overline" id="auth-overline">Acceso privado</span>
+        <h2 id="auth-title">Bienvenido de nuevo</h2>
+        <p class="subtle" id="auth-description">Entra para gestionar tu música y tu bridge.</p>
+        <form id="setup-form" hidden>
+          <label>Token bootstrap<div class="field"><span class="material-symbols-rounded">key</span><input id="setup-bootstrap" type="password" autocomplete="one-time-code" required></div></label>
+          <label>Usuario administrador<div class="field"><span class="material-symbols-rounded">person</span><input id="setup-username" autocomplete="username" minlength="3" maxlength="40" required></div></label>
+          <label>Contraseña<div class="field"><span class="material-symbols-rounded">lock</span><input id="setup-password" type="password" autocomplete="new-password" minlength="10" required></div></label>
+          <label>Repite la contraseña<div class="field"><span class="material-symbols-rounded">lock_reset</span><input id="setup-password-confirm" type="password" autocomplete="new-password" minlength="10" required></div></label>
+          <button class="btn primary full" type="submit"><span>Crear administrador</span><span class="material-symbols-rounded">arrow_forward</span></button>
+          <p id="setup-error" class="form-error" role="alert"></p>
+        </form>
+        <form id="login-form">
+          <label>Usuario<div class="field"><span class="material-symbols-rounded">person</span><input id="login-username" autocomplete="username" required autofocus></div></label>
+          <label>Contraseña<div class="field"><span class="material-symbols-rounded">lock</span><input id="login-password" type="password" autocomplete="current-password" required></div></label>
+          <button class="btn primary full" type="submit"><span>Entrar en roonIA</span><span class="material-symbols-rounded">arrow_forward</span></button>
+          <p id="login-error" class="form-error" role="alert"></p>
+        </form>
+      </div>
     </section>
   </div>
 
-  <div id="app" class="app-shell" hidden>
-    <aside class="sidebar">
-      <a class="brand" href="#dashboard" aria-label="RoonIA Control">
-        <span class="brand-mark small">R</span>
-        <span><strong>RoonIA</strong><small>Control portal</small></span>
-      </a>
-      <nav id="main-nav">
-        <button class="nav-item active" data-view="dashboard"><span>◫</span> Inicio</button>
-        <button class="nav-item" data-view="zones"><span>▶</span> Reproducción</button>
-        <button class="nav-item" data-view="library"><span>⌕</span> Explorar</button>
-        <button class="nav-item" data-view="widgets"><span>◧</span> Widgets</button>
-        <button class="nav-item" data-view="playlists"><span>≡</span> Playlists</button>
-        <button class="nav-item" data-view="presets"><span>◇</span> Presets</button>
-        <button class="nav-item" data-view="operation"><span>●</span> Operación</button>
-        <button class="nav-item" data-view="keys"><span>⌁</span> API keys</button>
-        <button class="nav-item" data-view="settings"><span>⚙</span> Sistema</button>
+  <div id="app" class="app" hidden>
+    <aside class="rail">
+      <a class="brand" href="#home"><img src="/assets/brand/04_roonia_678475_C16048_transparente.svg" alt="roonIA"></a>
+      <nav id="main-nav" aria-label="Navegación principal">
+        <button class="nav-link active" data-view="home"><span class="material-symbols-rounded">home</span><span>Inicio</span></button>
+        <button class="nav-link" data-view="music"><span class="material-symbols-rounded">library_music</span><span>Música</span></button>
+        <button class="nav-link" data-view="playback"><span class="material-symbols-rounded">speaker_group</span><span>Reproducción</span></button>
+        <button class="nav-link" data-view="admin"><span class="material-symbols-rounded">tune</span><span>Administración</span></button>
       </nav>
-      <div class="sidebar-footer">
-        <div class="connection"><i id="connection-dot"></i><span id="connection-label">Comprobando Roon</span></div>
-        <button id="logout" class="text-button">Cerrar sesión</button>
+      <div class="rail-foot">
+        <div class="core-chip"><i id="connection-dot"></i><span id="connection-label">Conectando</span></div>
+        <button class="icon-btn" id="logout" title="Cerrar sesión"><span class="material-symbols-rounded">logout</span></button>
       </div>
     </aside>
 
-    <main>
+    <div class="workspace">
       <header class="topbar">
-        <div>
-          <p class="eyebrow" id="view-eyebrow">Vista general</p>
-          <h2 id="view-title">Buenos días</h2>
-        </div>
+        <button class="icon-btn mobile-menu" id="mobile-menu"><span class="material-symbols-rounded">menu</span></button>
+        <form id="global-search" class="search-box" role="search">
+          <span class="material-symbols-rounded">search</span>
+          <input id="global-search-input" placeholder="Busca artistas, álbumes, canciones…" autocomplete="off">
+          <kbd>⌘ K</kbd>
+        </form>
         <div class="top-actions">
-          <span id="version-badge" class="badge">v0.12.0</span>
-          <button id="refresh" class="button ghost">↻ Actualizar</button>
+          <button class="icon-btn" id="refresh" title="Actualizar"><span class="material-symbols-rounded">refresh</span></button>
+          <button class="profile-btn" data-go="admin"><span class="avatar">IA</span><span><strong>Administrador</strong><small id="version-badge">v—</small></span><span class="material-symbols-rounded">expand_more</span></button>
         </div>
       </header>
 
-      <div id="toast-region" class="toast-region" aria-live="polite"></div>
-
-      <section id="view-dashboard" class="view active">
-        <div id="status-hero" class="hero-card loading-card"></div>
-        <div id="metric-grid" class="metric-grid"></div>
-        <div class="section-heading">
-          <div><p class="eyebrow">En este momento</p><h3>Sonando ahora</h3></div>
-          <button class="text-button" data-go="zones">Ver controles →</button>
-        </div>
-        <div id="now-playing-grid" class="card-grid"></div>
-      </section>
-
-      <section id="view-zones" class="view">
-        <div class="section-toolbar">
-          <div><p class="muted">Control directo y estado verificado por Roon Core.</p></div>
-          <div class="top-actions">
-            <button id="pause-all" class="button ghost">Pausar todo</button>
-            <button id="mute-all" class="button ghost">Silenciar todo</button>
-            <button id="open-group-dialog" class="button ghost">Agrupar zonas</button>
+      <main id="main-content">
+        <section class="view active" id="view-home">
+          <div id="home-hero" class="home-hero skeleton-block"></div>
+          <div class="section-title"><div><span class="overline">Ahora mismo</span><h2>Sonando en tu casa</h2></div><button class="btn text" data-go="playback">Ver todas las zonas <span class="material-symbols-rounded">arrow_forward</span></button></div>
+          <div id="home-now-playing" class="now-grid"></div>
+          <div class="home-columns">
+            <section class="panel"><div class="panel-head"><div><span class="overline">Acceso rápido</span><h3>Tu música</h3></div></div><div id="quick-actions" class="quick-grid"></div></section>
+            <section class="panel"><div class="panel-head"><div><span class="overline">Actividad</span><h3>Últimas acciones</h3></div><button class="icon-btn" data-admin-tab="operation"><span class="material-symbols-rounded">arrow_forward</span></button></div><div id="home-activity" class="activity-list"></div></section>
           </div>
-        </div>
-        <div id="zones-grid" class="zone-grid"></div>
-      </section>
+        </section>
 
-      <section id="view-library" class="view">
-        <div class="section-toolbar">
-          <div><p class="muted">Navegación genérica del árbol Browse de Roon, incluidas acciones y prompts.</p></div>
-          <div class="top-actions">
-            <select id="browse-hierarchy" aria-label="Jerarquía">
-              <option value="browse">Biblioteca</option>
-              <option value="albums">Álbumes</option>
-              <option value="artists">Artistas</option>
-              <option value="genres">Géneros</option>
-              <option value="composers">Compositores</option>
-              <option value="playlists">Playlists de Roon</option>
-              <option value="internet_radio">Radio por Internet</option>
-              <option value="settings">Settings</option>
-            </select>
-            <button id="browse-home" class="button ghost">Inicio</button>
-            <button id="browse-back" class="button ghost">Atrás</button>
+        <section class="view" id="view-music">
+          <div class="page-heading"><div><span class="overline">Biblioteca Roon</span><h1>Descubre tu música</h1><p>Busca, explora y actúa sin perder el contexto.</p></div><button class="btn primary" id="new-playlist"><span class="material-symbols-rounded">playlist_add</span>Nueva playlist</button></div>
+          <div class="segmented" id="music-tabs"><button class="active" data-tab="search">Buscar</button><button data-tab="browse">Explorar</button><button data-tab="playlists">Playlists</button></div>
+          <div class="tab-page active" id="music-search">
+            <form id="music-search-form" class="search-stage"><span class="material-symbols-rounded">search</span><input id="music-query" placeholder="¿Qué quieres escuchar?" autocomplete="off"><button class="btn primary" type="submit">Buscar</button></form>
+            <div id="search-empty" class="discovery-stage"><div class="discovery-copy"><span class="overline">Búsqueda enriquecida</span><h2>Todo tu universo musical,<br>bien organizado.</h2><p>Los resultados aparecen separados por artistas, álbumes, canciones y playlists, con metadatos y acciones directas.</p></div><div class="vinyl-art" aria-hidden="true"><i></i><i></i><i></i></div></div>
+            <div id="search-results" hidden></div>
           </div>
-        </div>
-        <div id="browse-heading" class="section-heading"></div>
-        <div id="browse-list" class="browse-list"></div>
-      </section>
+          <div class="tab-page" id="music-browse">
+            <div class="browse-toolbar"><div id="browse-breadcrumbs" class="breadcrumbs"></div><div class="inline-actions"><select id="browse-hierarchy"><option value="browse">Biblioteca</option><option value="albums">Álbumes</option><option value="artists">Artistas</option><option value="genres">Géneros</option><option value="composers">Compositores</option><option value="playlists">Playlists de Roon</option><option value="internet_radio">Radio por Internet</option></select><button class="icon-btn" id="browse-back"><span class="material-symbols-rounded">arrow_back</span></button><button class="icon-btn" id="browse-home"><span class="material-symbols-rounded">home</span></button></div></div>
+            <div id="browse-heading" class="section-title compact"></div><div id="browse-grid" class="media-grid"></div>
+          </div>
+          <div class="tab-page" id="music-playlists"><div id="playlist-grid" class="playlist-grid"></div></div>
+        </section>
 
-      <section id="view-widgets" class="view">
-        <div class="section-toolbar">
-          <div><p class="muted">Contratos interactivos compartidos con ChatGPT Apps.</p></div>
-          <div class="top-actions">
-            <select id="widget-zone"></select>
-            <button id="widget-refresh" class="button ghost">Refrescar</button>
-          </div>
-        </div>
-        <div id="widget-now-playing" class="card-grid"></div>
-        <div class="section-toolbar">
-          <div><p class="eyebrow">Playlists virtuales</p><h3>Navegación</h3></div>
-        </div>
-        <div id="widget-playlists" class="playlist-list"></div>
-        <aside id="widget-playlist-detail" class="editor-panel empty-panel">
-          <span class="empty-icon">♫</span>
-          <h3>Abre una playlist</h3>
-          <p class="muted">El detalle usa el mismo contrato de ChatGPT.</p>
-        </aside>
-        <div class="section-toolbar">
-          <div><p class="eyebrow">Búsqueda musical</p><h3>Canciones, álbumes y artistas</h3></div>
-          <div class="top-actions">
-            <input id="widget-search-query" placeholder="Everything In Its Right Place Radiohead">
-            <select id="widget-search-type">
-              <option value="track">Canción</option>
-              <option value="album">Álbum</option>
-              <option value="artist">Artista</option>
-              <option value="">Todo</option>
-            </select>
-            <button id="widget-search-submit" class="button primary">Buscar</button>
-          </div>
-        </div>
-        <div id="widget-search-results" class="playlist-list"></div>
-      </section>
+        <section class="view" id="view-playback">
+          <div class="page-heading"><div><span class="overline">Multiroom</span><h1>Reproducción</h1><p>Cada zona, su cola y su sonido en un solo lugar.</p></div><div class="inline-actions"><button class="btn secondary" id="pause-all"><span class="material-symbols-rounded">pause_circle</span>Pausar todo</button><button class="btn secondary" id="mute-all"><span class="material-symbols-rounded">volume_off</span>Silenciar</button><button class="btn primary" id="open-group"><span class="material-symbols-rounded">speaker_group</span>Agrupar</button></div></div>
+          <div class="segmented" id="playback-tabs"><button class="active" data-tab="zones">Zonas</button><button data-tab="presets">Presets y volumen</button></div>
+          <div class="tab-page active" id="playback-zones"><div id="zones-grid" class="zone-grid"></div></div>
+          <div class="tab-page" id="playback-presets"><div class="two-column"><section class="panel"><div class="panel-head"><div><span class="overline">Escenas multiroom</span><h3>Presets de zonas</h3></div><button class="btn primary small" id="new-preset"><span class="material-symbols-rounded">add</span>Nuevo</button></div><div id="preset-list" class="stack-list"></div></section><section class="panel"><div class="panel-head"><div><span class="overline">Escucha segura</span><h3>Volumen por salida</h3></div></div><div id="output-volume-list" class="stack-list"></div></section></div></div>
+        </section>
 
-      <section id="view-playlists" class="view">
-        <div class="split-layout">
-          <div>
-            <div class="section-toolbar">
-              <div><p class="muted">Colecciones virtuales guardadas en el bridge.</p></div>
-              <button id="new-playlist" class="button primary">+ Nueva playlist</button>
-            </div>
-            <div id="playlist-list" class="playlist-list"></div>
-          </div>
-          <aside id="playlist-editor" class="editor-panel empty-panel">
-            <span class="empty-icon">♫</span>
-            <h3>Selecciona una playlist</h3>
-            <p class="muted">Edita pistas, orden y reproducción desde aquí.</p>
-          </aside>
-        </div>
-      </section>
+        <section class="view" id="view-admin">
+          <div class="page-heading"><div><span class="overline">Control del bridge</span><h1>Administración</h1><p>Accesos, capacidades y salud operativa.</p></div><div id="admin-health-badge" class="health-badge"><i></i>Comprobando</div></div>
+          <div class="segmented admin-tabs" id="admin-tabs"><button class="active" data-tab="access">Acceso</button><button data-tab="tools">Tools</button><button data-tab="operation">Operación</button><button data-tab="system">Sistema</button></div>
+          <div class="tab-page active" id="admin-access"><div class="panel"><div class="panel-head"><div><span class="overline">Credenciales</span><h3>API keys</h3><p>Los secretos solo se muestran una vez. Revocar una key la invalida de inmediato.</p></div><button class="btn primary" id="new-key"><span class="material-symbols-rounded">add</span>Nueva API key</button></div><div id="keys-list" class="key-list"></div></div></div>
+          <div class="tab-page" id="admin-tools"><div class="panel"><div class="panel-head"><div><span class="overline">Capacidades MCP</span><h3>Catálogo de tools</h3><p>Desactiva una tool globalmente o limita su uso desde los permisos de cada API key.</p></div><div class="tool-summary" id="tool-summary"></div></div><div class="tool-filter"><span class="material-symbols-rounded">search</span><input id="tool-filter" placeholder="Filtrar tools"><select id="tool-class-filter"><option value="all">Todas</option><option value="read">Solo lectura</option><option value="write">Acciones</option><option value="disabled">Deshabilitadas</option></select></div><div id="tools-list" class="tools-list"></div></div></div>
+          <div class="tab-page" id="admin-operation"><div class="metrics-strip" id="operation-health"></div><div class="two-column"><section class="panel"><div class="panel-head"><div><span class="overline">Auditoría</span><h3>Actividad reciente</h3></div><button class="icon-btn" id="refresh-actions"><span class="material-symbols-rounded">refresh</span></button></div><div id="action-log-list" class="activity-list tall"></div></section><section class="panel"><div class="panel-head"><div><span class="overline">Eventos técnicos</span><h3>Logs y errores</h3></div><button class="icon-btn" id="refresh-logs"><span class="material-symbols-rounded">refresh</span></button></div><div id="technical-log-list" class="activity-list tall"></div></section></div><details class="panel diagnostic"><summary>Diagnóstico JSON sanitizado <span class="material-symbols-rounded">expand_more</span></summary><div class="panel-head"><span></span><button class="btn secondary small" id="copy-diagnostics">Copiar</button></div><pre id="diagnostics-preview"></pre></details></div>
+          <div class="tab-page" id="admin-system"><div class="two-column"><section class="panel"><div class="panel-head"><div><span class="overline">Bridge</span><h3>Red y actualización</h3></div><span id="update-state" class="status-tag">Sin comprobar</span></div><div id="service-addresses" class="address-list"></div><div class="form-grid"><label>Puerto del bridge<input id="system-api-port" type="number" min="1" max="65535"></label><label>Puerto del portal<input id="system-portal-port" type="number" min="1" max="65535"></label><label class="toggle-row"><span>Permitir betas</span><input id="system-allow-beta" type="checkbox" class="switch"></label></div><div class="inline-actions wrap"><button class="btn secondary" id="save-ports">Guardar puertos</button><button class="btn secondary" id="check-update">Comprobar versión</button><button class="btn primary" id="request-update">Actualizar</button><button class="btn danger" id="restart-service">Reiniciar</button></div></section><section class="panel"><div class="panel-head"><div><span class="overline">Configuración</span><h3>Estado del sistema</h3></div></div><div id="settings-grid" class="settings-grid"></div></section></div></div>
+        </section>
+      </main>
 
-      <section id="view-presets" class="view">
-        <div class="preset-layout">
-          <article class="info-card">
-            <div class="section-toolbar"><div><p class="eyebrow">Agrupación</p><h3>Presets de zonas</h3></div><button id="new-preset" class="button primary">+ Nuevo</button></div>
-            <p class="muted">Guarda composiciones de outputs y sus volúmenes. Al aplicar, RoonIA pausa primero las zonas afectadas.</p>
-            <div id="preset-list" class="playlist-list"></div>
-          </article>
-          <article class="info-card">
-            <p class="eyebrow">Seguridad de escucha</p>
-            <h3>Volúmenes por output</h3>
-            <p class="muted">Define límites informativos y un volumen preferido que puedes aplicar desde aquí.</p>
-            <div id="output-volume-list" class="output-volume-list"></div>
-          </article>
-        </div>
-      </section>
-
-      <section id="view-keys" class="view">
-        <div class="section-toolbar">
-          <div>
-            <p class="muted">Credenciales revocables. Los secretos se muestran una sola vez.</p>
-          </div>
-          <button id="new-key" class="button primary">+ Crear API key</button>
-        </div>
-        <div class="table-shell">
-          <table>
-            <thead><tr><th>Nombre</th><th>Prefijo</th><th>Permiso</th><th>Último uso</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="keys-table"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="view-operation" class="view">
-        <div class="operation-grid">
-          <article class="info-card">
-            <div class="section-toolbar"><div><p class="eyebrow">Sistema</p><h3>Health y readiness</h3></div><button id="copy-diagnostics" class="button ghost">Copiar diagnóstico</button></div>
-            <div id="operation-health" class="settings-grid"></div>
-            <div class="top-actions system-actions">
-              <a class="button ghost" href="/api/health" target="_blank" rel="noopener">Health</a>
-              <a class="button ghost" href="/api/ready" target="_blank" rel="noopener">Ready</a>
-              <a class="button ghost" href="/api/diagnostics/bundle" target="_blank" rel="noopener">Bundle</a>
-            </div>
-          </article>
-          <article class="info-card">
-            <p class="eyebrow">Extension Manager</p>
-            <h3>Extensiones detectadas</h3>
-            <div id="extension-status" class="setting-row"></div>
-            <div id="extension-list" class="playlist-list"></div>
-          </article>
-        </div>
-        <div class="operation-grid">
-          <article class="info-card">
-            <div class="section-toolbar"><div><p class="eyebrow">Auditoría</p><h3>Acciones recientes</h3></div><button id="refresh-actions" class="button ghost">Refrescar</button></div>
-            <div id="action-log-list" class="log-list"></div>
-          </article>
-          <article class="info-card">
-            <div class="section-toolbar"><div><p class="eyebrow">Logs</p><h3>Errores y eventos</h3></div><button id="refresh-logs" class="button ghost">Refrescar</button></div>
-            <div id="technical-log-list" class="log-list"></div>
-          </article>
-        </div>
-        <article class="info-card">
-          <p class="eyebrow">Diagnóstico</p>
-          <h3>JSON sanitizado</h3>
-          <pre id="diagnostics-preview" class="json-preview"></pre>
-        </article>
-      </section>
-
-      <section id="view-settings" class="view">
-        <article class="info-card system-manager">
-          <div class="section-toolbar"><div><p class="eyebrow">Operación</p><h3>Bridge y actualizaciones</h3></div><span id="update-state" class="badge">Sin comprobar</span></div>
-          <div id="service-addresses" class="address-list"></div>
-          <div class="port-grid">
-            <label>Puerto del bridge<input id="system-api-port" type="number" min="1" max="65535"></label>
-            <label>Puerto del portal<input id="system-portal-port" type="number" min="1" max="65535"></label>
-            <label class="check-line"><input id="system-allow-beta" type="checkbox"> Permitir betas</label>
-            <button id="save-ports" class="button ghost">Guardar puertos</button>
-          </div>
-          <div class="top-actions system-actions">
-            <button id="check-update" class="button ghost">Comprobar versión</button>
-            <button id="request-update" class="button primary">Actualizar</button>
-            <button id="restart-service" class="button danger">Reiniciar servicio</button>
-          </div>
-        </article>
-        <div id="settings-grid" class="settings-grid"></div>
-        <article class="info-card warning-card">
-          <p class="eyebrow">Seguridad</p>
-          <h3>Los secretos no se muestran</h3>
-          <p>El portal informa si las credenciales están configuradas, pero nunca expone <code>API_TOKEN</code>, <code>PORTAL_ADMIN_TOKEN</code>, tokens OAuth ni claves privadas.</p>
-        </article>
-      </section>
-    </main>
+      <footer id="mini-player" class="mini-player" hidden></footer>
+    </div>
   </div>
 
-  <dialog id="form-dialog">
-    <form method="dialog" id="dialog-form">
-      <div class="dialog-heading"><div><p class="eyebrow" id="dialog-eyebrow"></p><h3 id="dialog-title"></h3></div><button value="cancel" class="icon-button">×</button></div>
-      <div id="dialog-fields"></div>
-      <p id="dialog-error" class="form-error"></p>
-      <div class="dialog-actions"><button value="cancel" class="button ghost">Cancelar</button><button id="dialog-submit" value="default" class="button primary">Guardar</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="secret-dialog">
-    <div class="dialog-heading"><div><p class="eyebrow">API key creada</p><h3>Copia esta clave ahora</h3></div><button class="icon-button" data-close-dialog="secret-dialog">×</button></div>
-    <p class="muted">No podremos volver a mostrar el secreto completo.</p>
-    <div class="copy-field"><code id="new-secret"></code><button id="copy-secret" class="button primary">Copiar</button></div>
-    <button class="button ghost wide" data-close-dialog="secret-dialog">Ya la he guardado</button>
-  </dialog>
-
-  <dialog id="group-dialog">
-    <div class="dialog-heading"><div><p class="eyebrow">Audio sincronizado</p><h3>Agrupar zonas</h3></div><button class="icon-button" data-close-dialog="group-dialog">×</button></div>
-    <p class="muted">La zona principal conserva su cola. Las zonas añadidas adoptarán esa reproducción.</p>
-    <label>Zona principal<select id="group-primary"></select></label>
-    <fieldset><legend>Zonas adicionales</legend><div id="group-options" class="check-list"></div></fieldset>
-    <p id="group-error" class="form-error"></p>
-    <button id="group-submit" class="button primary wide">Crear grupo</button>
-  </dialog>
-
-  <dialog id="prompt-dialog">
-    <div class="dialog-heading"><div><p class="eyebrow">Roon solicita datos</p><h3 id="prompt-title">Entrada requerida</h3></div><button class="icon-button" data-close-dialog="prompt-dialog">×</button></div>
-    <form id="prompt-form">
-      <label id="prompt-label">Valor<input id="prompt-input"></label>
-      <p id="prompt-error" class="form-error"></p>
-      <button id="prompt-submit" class="button primary wide" type="submit">Enviar</button>
-    </form>
-  </dialog>
-
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <dialog id="modal"><div id="modal-content"></div></dialog>
+  <dialog id="secret-dialog" class="compact-dialog"><div class="modal-head"><div><span class="overline">API key creada</span><h2>Guárdala ahora</h2></div><button class="icon-btn" data-close><span class="material-symbols-rounded">close</span></button></div><p>Por seguridad no podremos volver a mostrar el secreto completo.</p><div class="secret-field"><code id="new-secret"></code><button class="btn primary" id="copy-secret"><span class="material-symbols-rounded">content_copy</span>Copiar</button></div></dialog>
   <script src="/app.js" defer></script>
 </body>
 </html>

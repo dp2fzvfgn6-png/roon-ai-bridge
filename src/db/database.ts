@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS virtual_playlists (
   playlist_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
+  cover_image_key TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -93,7 +94,14 @@ CREATE TABLE IF NOT EXISTS api_keys (
   role TEXT NOT NULL CHECK (role IN ('read', 'control', 'admin')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_used_at TEXT,
-  revoked_at TEXT
+  revoked_at TEXT,
+  tool_permissions_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tool_settings (
+  tool_name TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS portal_users (
@@ -291,6 +299,16 @@ export class SqliteDatabase {
   }
 
   private migrateSchema(): void {
+    const playlistColumns = this.db.prepare("PRAGMA table_info(virtual_playlists)").all() as Array<{ name: string }>;
+    if (!playlistColumns.some((column) => column.name === "cover_image_key")) {
+      this.db.exec("ALTER TABLE virtual_playlists ADD COLUMN cover_image_key TEXT");
+    }
+
+    const apiKeyColumns = this.db.prepare("PRAGMA table_info(api_keys)").all() as Array<{ name: string }>;
+    if (!apiKeyColumns.some((column) => column.name === "tool_permissions_json")) {
+      this.db.exec("ALTER TABLE api_keys ADD COLUMN tool_permissions_json TEXT");
+    }
+
     const zoneColumns = this.db.prepare("PRAGMA table_info(zone_presets)").all() as Array<{ name: string }>;
     const zoneColumnNames = new Set(zoneColumns.map((column) => column.name));
     const addZoneColumn = (name: string, sql: string) => {
@@ -378,6 +396,12 @@ export class SqliteDatabase {
         version TEXT,
         config_json TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS tool_settings (
+        tool_name TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE INDEX IF NOT EXISTS idx_action_logs_timestamp

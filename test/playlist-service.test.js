@@ -61,9 +61,13 @@ test("migrates legacy JSON playlists to SQLite and supports full track managemen
   const migrated = service.getPlaylist("legacy-mix");
   assert.equal(migrated.tracks_count, 1);
   assert.equal(migrated.tracks[0].query, "bad bunny dakiti");
+  assert.match(migrated.tracks[0].identity.fingerprint, /^sha256:/);
+  assert.equal(migrated.tracks[0].identity.title, migrated.tracks[0].title);
+  assert.equal(migrated.tracks[0].resolution.status, "missing");
 
   const created = service.createPlaylist({
     name: "SQLite Mix",
+    cover_image_key: "playlist-cover-1",
     tracks: [
       {
         query: "rosalia despecha",
@@ -80,6 +84,8 @@ test("migrates legacy JSON playlists to SQLite and supports full track managemen
   });
 
   assert.equal(created.tracks_count, 2);
+  assert.equal(created.cover_image_key, "playlist-cover-1");
+  assert.deepEqual(created.cover, { image_key: "playlist-cover-1" });
   assert.deepEqual(created.tracks[0].cover, { image_key: "img-1" });
 
   const renamed = service.updatePlaylist(created.playlist_id, {
@@ -411,7 +417,7 @@ test("runs virtual playlist CRUD cleanup without leaking temporary resources", (
   );
 });
 
-test("marks unresolved virtual playlist entries explicitly", async () => {
+test("marks missing virtual playlist identities explicitly", async () => {
   const config = tempConfig();
   const service = new PlaylistService(config);
   const mediaService = {
@@ -443,7 +449,7 @@ test("marks unresolved virtual playlist entries explicitly", async () => {
   assert.equal(playlist.tracks_count, 1);
   assert.equal(playlist.tracks[0].query, "Imaginary Song Imaginary Artist");
   assert.equal(playlist.tracks[0].roon_item_key, null);
-  assert.equal(playlist.tracks[0].metadata.resolution.status, "unresolved");
+  assert.equal(playlist.tracks[0].metadata.resolution.status, "missing");
   assert.match(
     playlist.tracks[0].metadata.resolution.reason,
     /no results/i
@@ -514,7 +520,9 @@ test("resolves virtual playlist entries with the best playable track", async () 
 
   assert.equal(playlist.tracks[0].roon_item_key, "track-key");
   assert.equal(playlist.tracks[0].metadata.resolution.status, "resolved");
-  assert.equal(playlist.tracks[0].metadata.resolution.result.result_id, "media_track");
+  assert.equal(playlist.tracks[0].metadata.resolution.selected_candidate.title, "Red Right Hand");
+  assert.equal(playlist.tracks[0].resolution.roon_item_key_persistent, false);
+  assert.equal(playlist.tracks[0].roon_binding.state, "stale");
   assert.equal(playlist.tracks[0].image_key, "cover-key");
 });
 
@@ -651,12 +659,14 @@ test("phase 2 validation, dedupe, sort and export work without modifying on dry 
   });
 
   const validation = service.validatePlaylist(playlist.playlist_id);
-  assert.equal(validation.summary.unresolved, 1);
+  assert.equal(validation.summary.unresolved, 3);
+  assert.equal(validation.summary.stale, 2);
+  assert.equal(validation.summary.missing, 1);
   assert.equal(validation.summary.missing_metadata, 1);
-  assert.ok(validation.issues.some((issue) => issue.type === "duplicates"));
+  assert.equal(validation.issues.some((issue) => issue.type === "duplicates"), false);
 
   const dedupe = service.deduplicatePlaylist(playlist.playlist_id, { dry_run: true });
-  assert.equal(dedupe.groups.length, 1);
+  assert.equal(dedupe.groups.length, 0);
 
   const sorted = service.sortPlaylist(playlist.playlist_id, {
     dry_run: true,
@@ -731,7 +741,7 @@ test("phase 2 manual selection and add-from-result keep user metadata", () => {
   assert.equal(added.tracks[1].resolution.status, "manual");
 });
 
-test("automatic resolver persists roon_item_key for clear virtual playlist matches", async () => {
+test("automatic resolver persists recording identity and only caches the last Roon item key", async () => {
   const config = tempConfig();
   const service = new PlaylistService(config);
   const mediaService = {
@@ -890,6 +900,10 @@ test("automatic resolver persists roon_item_key for clear virtual playlist match
   assert.equal(playlist.tracks[1].resolution.selected_roon_item_key, "223:0");
   assert.equal(playlist.tracks[0].resolution.status, "resolved");
   assert.equal(playlist.tracks[1].resolution.status, "resolved");
+  assert.equal(playlist.tracks[0].resolution.roon_item_key_persistent, false);
+  assert.equal(playlist.tracks[0].roon_binding.state, "stale");
+  assert.match(playlist.tracks[0].identity.fingerprint, /^sha256:/);
+  assert.equal(playlist.tracks[0].identity.title, "Repetition");
 
   const validation = service.validatePlaylist(playlist.playlist_id);
   assert.equal(validation.summary.resolved, 2);
@@ -1064,7 +1078,7 @@ test("play_now virtual playlist replaces the queue then starts verified playback
     calls
       .filter((call) => call.type === "browse" && call.opts.item_key?.startsWith("stored:"))
       .map((call) => call.opts.item_key),
-    ["stored:first", "stored:second", "stored:third"]
+    []
   );
   assert.deepEqual(
     calls
@@ -1074,4 +1088,156 @@ test("play_now virtual playlist replaces the queue then starts verified playback
   );
   assert.equal(calls.at(-1).type, "control");
   assert.equal(calls.at(-1).command, "play");
+});
+
+test("production playlist playback reconstructs fresh media references from persistent identities", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Fresh References",
+    tracks: [
+      { query: "old noisy one", roon_item_key: "stale:one", title: "One", artist: "Artist", album: "Album" },
+      { query: "old noisy two", roon_item_key: "stale:two", title: "Two", artist: "Artist", album: "Album" }
+    ]
+  });
+  const searches = [];
+  const plays = [];
+  const mediaService = {
+    async search(request) {
+      searches.push(request);
+      const title = request.query.includes("Two") ? "Two" : "One";
+      return {
+        results: [{
+          result_id: `fresh:${title}`,
+          roon_item_key: `fresh-key:${title}`,
+          type: "track",
+          media_type: "track",
+          title,
+          artist: "Artist",
+          subtitle: "Artist",
+          album: "Album",
+          album_artist: "Artist",
+          version_hint: "studio",
+          version_penalties: [],
+          source: "library",
+          source_confidence: "high",
+          quality: null,
+          image_key: null,
+          is_library: true,
+          playable: true,
+          is_best_match: true,
+          selection_required: false,
+          match_score: 100,
+          confidence: "high",
+          match_reasons: [],
+          match_penalties: [],
+          warnings: [],
+          expires_at: new Date(Date.now() + 60000).toISOString()
+        }],
+        warnings: []
+      };
+    },
+    async play(resultId, zoneId, mode) {
+      plays.push({ resultId, zoneId, mode });
+      return { ok: true, result_id: resultId, mode };
+    }
+  };
+  let controlCalls = 0;
+  const zone = { zone_id: "office", state: "paused", is_play_allowed: true };
+  const roonClient = {
+    isCoreConnected: () => true,
+    getZone: () => zone,
+    isTransportReady: () => true,
+    getTransport: () => ({
+      control(_zone, command, callback) {
+        controlCalls += 1;
+        if (command === "play") zone.state = "playing";
+        callback(false);
+      }
+    })
+  };
+
+  const result = await service.playPlaylist(
+    roonClient,
+    playlist.playlist_id,
+    { zone_id: "office", mode: "play_now" },
+    { mediaService }
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(searches.map((request) => request.query), ["Artist One Album", "Artist Two Album"]);
+  assert.deepEqual(plays.map((call) => call.mode), ["replace_queue", "append"]);
+  assert.deepEqual(plays.map((call) => call.resultId), ["fresh:One", "fresh:Two"]);
+  assert.equal(controlCalls, 1);
+  assert.ok(result.results.every((entry) => entry.cached_roon_item_key_used === false));
+});
+
+test("play_now leaves the current queue untouched when the first identity is ambiguous", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Ambiguous Start",
+    tracks: [
+      { query: "Same Song Artist", title: "Same Song", artist: "Artist" },
+      { query: "Second Song Artist", title: "Second Song", artist: "Artist" }
+    ]
+  });
+  let playCalls = 0;
+  let controlCalls = 0;
+  const candidate = (id) => ({
+    result_id: id,
+    roon_item_key: `key:${id}`,
+    type: "track",
+    media_type: "track",
+    title: "Same Song",
+    artist: "Artist",
+    subtitle: "Artist",
+    album: null,
+    album_artist: null,
+    version_hint: "studio",
+    version_penalties: [],
+    source: "unknown",
+    source_confidence: "low",
+    quality: null,
+    image_key: null,
+    is_library: null,
+    playable: true,
+    is_best_match: false,
+    selection_required: true,
+    match_score: 0,
+    confidence: "low",
+    match_reasons: [],
+    match_penalties: [],
+    warnings: [],
+    expires_at: new Date(Date.now() + 60000).toISOString()
+  });
+  const mediaService = {
+    async search() {
+      return { results: [candidate("one"), candidate("two")], warnings: [] };
+    },
+    async play() {
+      playCalls += 1;
+      return { ok: true };
+    }
+  };
+  const roonClient = {
+    getZone: () => ({ zone_id: "office", state: "playing", is_play_allowed: true }),
+    isTransportReady: () => true,
+    getTransport: () => ({ control() { controlCalls += 1; } })
+  };
+
+  const result = await service.playPlaylist(
+    roonClient,
+    playlist.playlist_id,
+    { zone_id: "office", mode: "play_now" },
+    { mediaService }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.succeeded, 0);
+  assert.equal(result.failed, 2);
+  assert.equal(result.failures[0].error.code, "PLAYLIST_TRACK_AMBIGUOUS");
+  assert.equal(result.failures[1].error.code, "PLAYLIST_START_ABORTED");
+  assert.equal(playCalls, 0);
+  assert.equal(controlCalls, 0);
 });

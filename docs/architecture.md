@@ -95,6 +95,14 @@ playlists and API-key database without registering a second extension.
 14. Typed search creates short-lived `result_id` references and re-resolves selected media in a fresh Roon Browse session before acting.
 15. `POST /mcp` and `GET /mcp` expose the same MCP tool set over Streamable HTTP for ChatGPT app development.
 
+Virtual playlist identity is owned by RoonIA. `track_id` is permanent and each
+row stores a semantic recording snapshot plus a versioned fingerprint in
+SQLite. Roon Browse `item_key` and media `result_id` values are explicitly
+ephemeral: playback searches and scores fresh candidates from the stored
+identity, rejects ambiguous matches, then performs the action in a fresh Browse
+session. `play_now` resolves the first track before replacing the existing
+queue.
+
 ## Persistence Plan
 
 `db/schema.sql` prepares future SQLite tables:
@@ -115,6 +123,10 @@ managed API keys in `data/roonia.sqlite`, and private
 OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an
 empty SQLite store, legacy playlists from `data/virtual-playlists.json` are
 imported automatically.
+
+Playlist rows created before the identity model are enriched on service start.
+The migration preserves `track_id`, user metadata and audio metadata, and marks
+any persisted Roon Browse reference as stale and non-reusable.
 
 Runtime port overrides live in `data/runtime-config.json`. Update requests and
 results use `data/update-request.json` and `data/update-status.json` as a narrow

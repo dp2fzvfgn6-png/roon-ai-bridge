@@ -1,5 +1,4 @@
 import { controlPlayback } from "../roon/roonPlaybackService";
-import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
 import { getRoonImage } from "../roon/roonImageService";
 import { MediaResult, MediaType, RoonMediaService, SearchStrategy, SourcePreference } from "../roon/roonMediaService";
 import { RoonClient } from "../roon/roonClient";
@@ -48,7 +47,7 @@ function outputHardLimit(output: RoonOutput | null): number | null {
 
 function resolutionStatus(track: VirtualPlaylistTrack): string {
   const status = track.resolution?.status;
-  return typeof status === "string" ? status : track.roon_item_key ? "resolved" : "unresolved";
+  return typeof status === "string" ? status : track.roon_item_key ? "stale" : "missing";
 }
 
 function trackImageKey(track: VirtualPlaylistTrack): string | null {
@@ -244,8 +243,10 @@ export class WidgetService {
           image_key,
           image_url: imageUrl(this.context.publicBaseUrl, image_key),
           user_metadata: track.user_metadata,
+          identity_fingerprint: track.identity.fingerprint,
           resolution_status: resolutionStatus(track),
-          roon_item_key: track.roon_item_key,
+          roon_binding_status: track.roon_binding.state,
+          last_roon_item_key: track.roon_item_key,
           recently_added: input.recent_track_ids?.includes(track.track_id) || false,
           actions: ["play_track", "add_track_to_queue", "open_details", "open_album", "open_artist"]
         };
@@ -272,24 +273,22 @@ export class WidgetService {
       result = await this.context.playlistService.playPlaylist(this.context.roonClient, input.playlist_id, {
         zone_id: input.zone_id,
         mode: input.action === "play_playlist" ? "play_now" : "add_to_queue"
+      }, {
+        mediaService: this.context.mediaService
       });
     } else if (input.action === "play_track" || input.action === "add_track_to_queue") {
       if (!input.zone_id || !input.track_id) throw new ApiError("INVALID_PLAYLIST_TRACK", "zone_id and track_id are required");
-      const playlist = this.context.playlistService.getPlaylist(input.playlist_id);
-      const track = playlist.tracks.find((candidate) => candidate.track_id === input.track_id);
-      if (!track) throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found");
-      result = input.action === "play_track"
-        ? await playByQuery(this.context.roonClient, {
-            zoneId: input.zone_id,
-            query: track.query,
-            sessionKey: `widget-track-${track.track_id}`
-          })
-        : await queueByQuery(this.context.roonClient, {
-            zoneId: input.zone_id,
-            query: track.query,
-            mode: "add_to_queue",
-            sessionKey: `widget-track-${track.track_id}`
-          });
+      result = await this.context.playlistService.playPlaylistTrack(
+        this.context.roonClient,
+        input.playlist_id,
+        input.track_id,
+        {
+          zone_id: input.zone_id,
+          mode: input.action === "play_track" ? "play_now" : "add_to_queue",
+          session_key: `widget-track-${input.track_id}`
+        },
+        { mediaService: this.context.mediaService }
+      );
     } else if (input.action !== "open_playlist" && input.action !== "refresh") {
       throw new ApiError("UNSUPPORTED_COMMAND", "Unsupported playlist widget action", { action: input.action });
     }

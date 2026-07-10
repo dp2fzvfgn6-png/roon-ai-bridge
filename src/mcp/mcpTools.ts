@@ -245,7 +245,7 @@ const zonePresetInputSchema = {
 const playlistTrackInputSchema = z.object({
   track_id: z.string().optional(),
   query: z.string().min(1).optional(),
-  roon_item_key: z.string().optional(),
+  roon_item_key: z.string().optional().describe("Legacy ephemeral Roon Browse reference; never use it as the persistent track identity."),
   title: z.string().optional(),
   artist: z.string().optional(),
   album: z.string().optional(),
@@ -253,6 +253,7 @@ const playlistTrackInputSchema = z.object({
   metadata: playlistTrackMetadataSchema.optional(),
   audio_metadata: playlistTrackMetadataSchema.optional(),
   user_metadata: playlistTrackMetadataSchema.optional(),
+  identity: playlistTrackMetadataSchema.optional(),
   resolution: playlistTrackMetadataSchema.optional(),
   image_key: z.string().optional(),
   duration_seconds: z.number().optional(),
@@ -273,7 +274,7 @@ const playlistTrackInputSchema = z.object({
 
 const playlistTrackWritableShape = {
   query: z.string().min(1).optional(),
-  roon_item_key: z.string().optional(),
+  roon_item_key: z.string().optional().describe("Legacy ephemeral Roon Browse reference; RoonIA reconstructs it before playback."),
   title: z.string().optional(),
   artist: z.string().optional(),
   album: z.string().optional(),
@@ -281,6 +282,7 @@ const playlistTrackWritableShape = {
   metadata: playlistTrackMetadataSchema.optional(),
   audio_metadata: playlistTrackMetadataSchema.optional(),
   user_metadata: playlistTrackMetadataSchema.optional(),
+  identity: playlistTrackMetadataSchema.optional(),
   resolution: playlistTrackMetadataSchema.optional(),
   image_key: z.string().optional(),
   duration_seconds: z.number().optional(),
@@ -353,6 +355,11 @@ function normalizeMediaTypesInput(value: unknown): MediaType[] | undefined {
 
 export function registerRoonMcpTools(server: McpServer, context: McpContext): void {
   const registerTool = (name: string, options: any, handler: any): void => {
+    if (
+      !context.manifestMode &&
+      context.toolAccessService &&
+      !context.toolAccessService.canUse(name, context.activeApiKey)
+    ) return;
     const visibility = options._meta === legacyWidgetMeta
       ? ["app" as const]
       : ["model" as const, "app" as const];
@@ -1143,7 +1150,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_create_virtual_playlist",
     {
       title: "Create Virtual Playlist",
-      description: "Create a local virtual playlist stored in SQLite with optional rich track metadata.",
+      description: "Create a local virtual playlist whose permanent track_id and rich recording identity are stored in SQLite; Roon Browse references remain temporary.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -1458,7 +1465,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Resolve Virtual Playlist",
       description:
-        "Use this when an existing local virtual playlist has unresolved or low-confidence tracks and should be re-matched against Roon search.",
+        "Use this when an existing local virtual playlist has missing, stale, ambiguous or low-confidence identities and should be re-matched against Roon search. Stored Roon item keys are never treated as permanent IDs.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -1504,7 +1511,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_validate_virtual_playlist",
     {
       title: "Validate Virtual Playlist",
-      description: "Use this when a virtual playlist should be checked for unresolved tracks, ambiguous matches, duplicate positions, missing metadata and probable duplicates without modifying it.",
+      description: "Use this when a virtual playlist should be checked for identity readiness, stale legacy references, ambiguous matches, duplicate positions, missing metadata and probable duplicates without modifying it.",
       ...structuredOutputSchema,
       annotations: readOnlyAnnotations,
       _meta: widgetMeta,
@@ -1611,7 +1618,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_set_virtual_playlist_track_match",
     {
       title: "Set Virtual Playlist Track Match",
-      description: "Use this when the user manually chooses a search result for an existing virtual playlist track; it preserves user_metadata.",
+      description: "Use this when the user manually chooses a search result for an existing virtual playlist track; it stores a full identity snapshot and preserves user_metadata, while treating result_id and roon_item_key as temporary.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -1635,7 +1642,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_add_search_result_to_virtual_playlist",
     {
       title: "Add Search Result To Virtual Playlist",
-      description: "Use this when a user-selected result_id should be added to a virtual playlist with audio metadata and arbitrary user_metadata.",
+      description: "Use this when a user-selected temporary result_id should be added to a virtual playlist as a permanent RoonIA track identity with audio metadata and arbitrary user_metadata.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -1724,7 +1731,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_play_virtual_playlist",
     {
       title: "Play Virtual Playlist",
-      description: "Play or enqueue a local virtual playlist in a Roon zone.",
+      description: "Play or enqueue a local virtual playlist by reconstructing every Roon reference from its persistent RoonIA identity immediately before use; play_now leaves the current queue unchanged if the first identity is not safe to resolve.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
@@ -1761,6 +1768,9 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
           mode,
           limit,
           session_key
+        }, {
+          mediaService: context.mediaService,
+          logger: context.logger
         });
       })
   );

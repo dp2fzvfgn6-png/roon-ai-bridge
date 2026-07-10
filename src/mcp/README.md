@@ -79,10 +79,13 @@ Implemented tools:
 - `roon_get_image`
 
 `roon_create_virtual_playlist`, `roon_add_virtual_playlist_track` and
-`roon_replace_virtual_playlist_tracks` resolve missing `roon_item_key` values
-against Roon search automatically. Use `roon_resolve_virtual_playlist` to retry
-an existing playlist. `roon_search_media` returns `image_key` metadata without
-base64 artwork unless `include_images` is true.
+`roon_replace_virtual_playlist_tracks` store permanent RoonIA track identities
+and try to match them against Roon search automatically. `roon_item_key` and
+`result_id` are temporary Browse references only. Playback reconstructs fresh
+references from identity metadata and never executes a persisted item key. Use
+`roon_resolve_virtual_playlist` to retry missing, stale or ambiguous identities.
+`roon_search_media` returns `image_key` metadata without base64 artwork unless
+`include_images` is true.
 
 Contract notes:
 
@@ -130,7 +133,7 @@ Future phases still need resource-bound tokens, enforced scopes, revocation/refr
 
 v0.15.0 adds renderable, reusable widget contracts for ChatGPT Apps and the
 RoonIA portal. The widget resource URI is cache-busted as
-`ui://roon-ai-bridge/control-v7/{tool}.html`.
+`ui://roon-ai-bridge/control-v8/{tool}.html`.
 
 Tools:
 
