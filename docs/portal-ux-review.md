@@ -102,3 +102,19 @@ Despliegue realizado el 2026-07-10 desde el canal `beta`:
 - verificadas: `roon_status`, `roon_search_media`, `roon_play_media` y
   `roon_list_virtual_playlists`;
 - logs de arranque: servidores HTTP y portal escuchando sin errores.
+
+### Carátulas, zona activa y acciones de pista
+
+Validación realizada el 2026-07-10 sobre el commit `a22fdc8` del canal `beta`:
+
+- suite completa: 78 pruebas superadas y compilación TypeScript correcta;
+- Roon Core, transport, browse e image: preparados;
+- zonas y outputs detectados: 4 y 4;
+- el portal entrega una carátula real autenticada con `200 image/jpeg`
+  (50 419 bytes en la muestra comprobada);
+- la política CSP admite las URL `blob:` usadas por la caché autenticada de
+  imágenes;
+- presentes el selector persistente de zona activa y las acciones de pista
+  `replace_queue`, `play_next` y `append`;
+- `tools/list`: 88 tools, incluidas las tools requeridas de estado, búsqueda,
+  reproducción y playlists.
