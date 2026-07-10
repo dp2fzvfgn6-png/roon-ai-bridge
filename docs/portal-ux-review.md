@@ -84,3 +84,21 @@ controles. Los iconos ahora tienen una caja fija de `1em` que evita ese salto.
 El navegador integrado permitió capturar y medir el estado inicial, pero su
 política de URL bloqueó una recarga posterior de localhost. No se intentó eludir
 esa restricción.
+
+## Validación en el LXC
+
+Despliegue realizado el 2026-07-10 desde el canal `beta`:
+
+- commit desplegado: `227ed2cd943caf10146b0c760a369f0034d7fd4b`;
+- contenedor `roon-ai-bridge`: `running`;
+- portal: `v0.16.1`, configuración de autenticación activa;
+- marcadores del logo, navegación `Explorar / Zonas / Ajustes` y nuevo layout:
+  presentes en los assets servidos;
+- Roon Core: conectado a `Roon Server`;
+- transport, browse e image: preparados;
+- zonas detectadas: 4;
+- outputs detectados: 4;
+- tools MCP publicadas: 88;
+- verificadas: `roon_status`, `roon_search_media`, `roon_play_media` y
+  `roon_list_virtual_playlists`;
+- logs de arranque: servidores HTTP y portal escuchando sin errores.
