@@ -79,7 +79,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-security-policy"), /img-src 'self' data: blob:/);
-    assert.match(await page.text(), /roonIA/);
+    const portalPageText = await page.text();
+    assert.match(portalPageText, /roonIA/);
+    assert.match(portalPageText, /id="context-modal"/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -93,9 +95,16 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /artist-detail/);
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /playlist-collage/);
+    assert.match(portalScriptText, /data-collage-key-index/);
+    assert.match(portalScriptText, /500,"fit"/);
     assert.match(portalScriptText, /setInterval\(animatePlaylistCollages,500\)/);
     assert.match(portalScriptText, /playlist-cover-file/);
     assert.match(portalScriptText, /event\.target!==dialog/);
+    assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
+    assert.match(portalScriptText, /data-mini-seek/);
+    assert.match(portalScriptText, /data-mini-volume/);
+    assert.match(portalScriptText, /data-queue-setting="shuffle"/);
+    assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);
