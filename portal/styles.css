@@ -226,6 +226,10 @@ select { color-scheme: dark; }
 .track-title small, .track-album { overflow: hidden; color: var(--text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .row-actions { display: flex; gap: 1px; }
 .row-actions .icon-btn { width: 32px; height: 32px; }
+.track-action-button { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--line-strong); color: var(--text); background: transparent; font-size: 10px; }
+.track-action-button:hover { border-color: var(--brand-green-light); background: rgba(103,132,117,.1); }
+.track-action-button .material-symbols-rounded { font-size: 17px; }
+.track-action-button .material-symbols-rounded:last-child { color: var(--text-dim); font-size: 15px; }
 .media-badge { padding: 3px 6px; font-size: 8px; }
 .media-badge.best { color: var(--good); }
 .browse-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
@@ -249,6 +253,7 @@ select { color-scheme: dark; }
 /* Playback */
 .zone-grid { display: grid; border-top: 1px solid var(--line); }
 .zone-card { min-height: 176px; display: grid; grid-template-columns: 250px minmax(0,1fr); border: 0; border-bottom: 1px solid var(--line); background: transparent; overflow: hidden; }
+.zone-card.selected-zone { box-shadow: inset 3px 0 var(--brand-green); background: rgba(103,132,117,.035); }
 .zone-artwork { height: 176px; position: relative; background: var(--surface); }
 .zone-artwork img { width: 100%; height: 100%; object-fit: cover; filter: brightness(.58); }
 .zone-artwork::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent, rgba(9,11,10,.78)); }
@@ -329,6 +334,16 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .modal-grid textarea { min-height: 90px; resize: vertical; }
 .secret-field { display: flex; gap: 10px; padding: 13px; background: #050706; }
 .secret-field code { flex: 1; overflow-wrap: anywhere; color: #b9d3c4; font: 11px/1.6 ui-monospace, monospace; }
+.action-dialog { width: min(520px, calc(100vw - 30px)); }
+#playback-actions-content { padding: 26px; }
+.playback-action-list { display: grid; border-top: 1px solid var(--line); }
+.playback-action-list > button { min-height: 72px; display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 12px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--line); color: var(--text); background: transparent; text-align: left; }
+.playback-action-list > button:hover { background: rgba(255,255,255,.035); }
+.playback-action-list > button:disabled { opacity: .45; }
+.playback-action-list > button > .material-symbols-rounded { color: var(--brand-green-light); font-size: 24px; }
+.playback-action-list strong, .playback-action-list small { display: block; }
+.playback-action-list strong { font-size: 13px; }
+.playback-action-list small { margin-top: 4px; color: var(--text-dim); font-size: 10px; line-height: 1.4; }
 .permission-list { display: grid; grid-template-columns: 1fr 1fr; max-height: 340px; overflow: auto; border-top: 1px solid var(--line); }
 .permission-item { display: flex; align-items: center; gap: 9px; padding: 9px 5px; border-bottom: 1px solid var(--line); font: 10px ui-monospace, monospace; }
 .permission-item input { accent-color: var(--brand-green); }
@@ -349,6 +364,11 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .mini-controls { display: flex; align-items: center; gap: 7px; }
 .mini-controls .main { width: 42px; height: 42px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #111; background: var(--text); }
 .mini-zone { color: var(--text-dim); font-size: 10px; text-align: right; }
+.mini-zone-picker { justify-self: end; display: grid; grid-template-columns: auto minmax(130px,190px); align-items: center; gap: 10px; margin: 0; color: var(--text-dim); font-size: 10px; }
+.mini-zone-picker > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mini-zone-picker select { width: 100%; padding: 8px 28px 8px 10px; border-color: var(--line-strong); background: var(--bg); color: var(--text); font-size: 11px; }
+.image-failed { background: linear-gradient(135deg, #1b211e, #111412); }
+.image-failed::before { content: "music_note"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-dim); font-family: "Material Symbols Rounded"; font-size: 28px; }
 .empty-state { min-height: 220px; display: grid; place-items: center; padding: 30px; color: var(--text-dim); text-align: center; }
 .empty-state .material-symbols-rounded { color: var(--brand-green); font-size: 40px; }
 .empty-state h3 { margin: 12px 0 7px; color: var(--text); }
@@ -408,6 +428,9 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   .media-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 13px; }
   .track-row { grid-template-columns: 25px 40px minmax(0,1fr) auto; gap: 8px; }
   .track-album { display: none; }
+  .track-action-button span { display: none; }
+  .track-action-button { width: 34px; padding: 0; justify-content: center; }
+  .track-action-button .material-symbols-rounded:last-child { display: none; }
   .playlist-grid { grid-template-columns: 1fr 1fr; gap: 24px 13px; }
   .playlist-card p { display: none; }
   .zone-card { grid-template-columns: 112px minmax(0,1fr); min-height: 136px; }
@@ -432,7 +455,9 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   .entity-copy h2 { font-size: 25px; }
   .mini-player { left: 0; bottom: 66px; height: var(--player-height); grid-template-columns: 1fr auto; padding: 7px 13px; }
   .mini-track .cover { width: 50px; height: 50px; }
-  .mini-zone, .mini-controls .skip { display: none; }
+  .mini-zone, .mini-controls .skip, .mini-zone-picker > span { display: none; }
+  .mini-zone-picker { grid-template-columns: minmax(98px,130px); gap: 0; }
+  .mini-zone-picker select { padding-inline: 7px 22px; font-size: 10px; }
   .toast-region { right: 13px; bottom: 148px; left: 13px; }
   .toast { max-width: none; }
   .auth-screen { display: block; }

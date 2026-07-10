@@ -78,7 +78,15 @@ test("serves portal assets publicly but protects every administration endpoint",
   try {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
+    assert.match(page.headers.get("content-security-policy"), /img-src 'self' data: blob:/);
     assert.match(await page.text(), /roonIA/);
+
+    const portalScript = await fetch(`${baseUrl}/app.js`);
+    assert.equal(portalScript.status, 200);
+    const portalScriptText = await portalScript.text();
+    assert.match(portalScriptText, /data-image-key/);
+    assert.match(portalScriptText, /active-zone-select/);
+    assert.match(portalScriptText, /data-play-mode="play_next"/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);
