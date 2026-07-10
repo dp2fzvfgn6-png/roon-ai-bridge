@@ -62,7 +62,7 @@ export function createPortalServer(context: ApiContext): express.Express {
   const assetsPath = path.join(process.cwd(), "portal");
 
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "8mb" }));
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");

@@ -54,6 +54,37 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
+  router.get("/playlists/covers/:cover_id", (req, res, next) => {
+    try {
+      const cover = context.playlistService.getCustomCover(req.params.cover_id);
+      res.setHeader("Content-Type", cover.content_type);
+      res.setHeader("Cache-Control", "private, max-age=86400, immutable");
+      res.send(cover.bytes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/playlists/:playlist_id/cover", (req, res, next) => {
+    try {
+      context.logger.info("Virtual playlist custom cover upload received", {
+        playlistId: req.params.playlist_id,
+        contentType: req.body?.content_type || String(req.body?.data_url || "").slice(5, 30)
+      });
+      res.json(context.playlistService.setCustomCover(req.params.playlist_id, req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/playlists/:playlist_id/cover", (req, res, next) => {
+    try {
+      res.json(context.playlistService.clearCustomCover(req.params.playlist_id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/playlists/:playlist_id", (req, res, next) => {
     try {
       res.json(

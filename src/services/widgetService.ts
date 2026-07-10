@@ -29,7 +29,9 @@ const DEFAULT_PAGE_LIMIT = 25;
 
 function imageUrl(publicBaseUrl: string | null | undefined, imageKey: string | null | undefined): string | null {
   if (!imageKey) return null;
-  const path = `/roon/images/${encodeURIComponent(imageKey)}`;
+  const path = imageKey.startsWith("custom:")
+    ? `/playlists/covers/${encodeURIComponent(imageKey.slice("custom:".length))}`
+    : `/roon/images/${encodeURIComponent(imageKey)}`;
   return publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}${path}` : path;
 }
 
@@ -176,7 +178,7 @@ export class WidgetService {
       view: "list",
       playlists: payload.playlists.map((playlist) => {
         const coverTrack = playlist.tracks?.find((track) => trackImageKey(track));
-        const image_key = coverTrack ? trackImageKey(coverTrack) : null;
+        const image_key = playlist.cover_image_key || (coverTrack ? trackImageKey(coverTrack) : null);
         return {
           playlist_id: playlist.playlist_id,
           name: playlist.name,
@@ -220,6 +222,8 @@ export class WidgetService {
         playlist_id: detail.playlist_id,
         name: detail.name,
         description: detail.description,
+        image_key: detail.cover_image_key,
+        image_url: imageUrl(this.context.publicBaseUrl, detail.cover_image_key),
         track_count: detail.track_count,
         updated_at: detail.updated_at,
         actions: ["play_playlist", "add_playlist_to_queue", "open_in_portal", "validate", "resolve_pending", "edit"]

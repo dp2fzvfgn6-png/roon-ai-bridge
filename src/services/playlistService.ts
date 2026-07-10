@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { AppConfig } from "../config/env";
 import { createDatabase, SqliteDatabase } from "../db/database";
 import { playByQuery, queueByQuery } from "../roon/roonBrowseService";
@@ -15,6 +17,13 @@ import { ApiError } from "../utils/errors";
 import { Logger } from "../utils/logger";
 
 export const playlistServiceImplemented = true;
+const CUSTOM_COVER_PREFIX = "custom:";
+const MAX_CUSTOM_COVER_BYTES = 5 * 1024 * 1024;
+const COVER_CONTENT_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"]
+]);
 
 export type VirtualPlaylistTrackMetadata = Record<string, unknown>;
 export type AudioMetadata = Record<string, unknown>;
@@ -116,6 +125,12 @@ export type PlaylistPlaybackRuntime = {
   mediaService?: RoonMediaService;
   logger?: Logger;
   sourcePreference?: SourcePreference;
+};
+
+export type StoredPlaylistCover = {
+  cover_image_key: string;
+  content_type: string;
+  bytes: Buffer;
 };
 
 type PlaylistRow = {
@@ -365,6 +380,55 @@ function buildCover(imageKey: string | null): { image_key: string } | null {
   return imageKey ? { image_key: imageKey } : null;
 }
 
+function customCoverFileName(imageKey: string | null): string | null {
+  if (!imageKey?.startsWith(CUSTOM_COVER_PREFIX)) return null;
+  const fileName = imageKey.slice(CUSTOM_COVER_PREFIX.length);
+  return fileName && path.basename(fileName) === fileName ? fileName : null;
+}
+
+function decodeCoverInput(input: {
+  data_url?: unknown;
+  image_base64?: unknown;
+  content_type?: unknown;
+}): { contentType: string; extension: string; bytes: Buffer } {
+  let contentType = optionalString(input.content_type);
+  let encoded = optionalString(input.image_base64);
+  const dataUrl = optionalString(input.data_url);
+  if (dataUrl) {
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!match) {
+      throw new ApiError("INVALID_PLAYLIST_COVER", "data_url must contain a base64 JPEG, PNG or WebP image");
+    }
+    contentType = match[1].toLowerCase();
+    encoded = match[2];
+  }
+  const extension = contentType ? COVER_CONTENT_TYPES.get(contentType) : null;
+  if (!contentType || !extension || !encoded) {
+    throw new ApiError("INVALID_PLAYLIST_COVER", "Image data and a supported content_type are required", {
+      allowed_content_types: Array.from(COVER_CONTENT_TYPES.keys())
+    });
+  }
+  const compact = encoded.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    throw new ApiError("INVALID_PLAYLIST_COVER", "image_base64 is not valid base64 data");
+  }
+  const bytes = Buffer.from(compact, "base64");
+  if (bytes.length === 0 || bytes.length > MAX_CUSTOM_COVER_BYTES) {
+    throw new ApiError("INVALID_PLAYLIST_COVER", "Playlist cover must be between 1 byte and 5 MB", {
+      maximum_bytes: MAX_CUSTOM_COVER_BYTES,
+      received_bytes: bytes.length
+    });
+  }
+  const signatureMatches =
+    (contentType === "image/jpeg" && bytes[0] === 0xff && bytes[1] === 0xd8) ||
+    (contentType === "image/png" && bytes.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))) ||
+    (contentType === "image/webp" && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP");
+  if (!signatureMatches) {
+    throw new ApiError("INVALID_PLAYLIST_COVER", "Image bytes do not match content_type");
+  }
+  return { contentType, extension, bytes };
+}
+
 function canonicalText(value: unknown): string {
   return String(value || "")
     .normalize("NFD")
@@ -603,9 +667,11 @@ function normalizeTrackInput(
 
 export class PlaylistService {
   private readonly database: SqliteDatabase;
+  private readonly coverDirectory: string;
 
   constructor(config: AppConfig, database?: SqliteDatabase) {
     this.database = database || createDatabase(config);
+    this.coverDirectory = path.join(config.dataDir, "playlist-covers");
     this.backfillPersistentTrackIdentity();
   }
 
@@ -778,6 +844,63 @@ export class PlaylistService {
       });
 
     return this.getPlaylistById(playlistId);
+  }
+
+  setCustomCover(
+    playlistId: string,
+    input: { data_url?: unknown; image_base64?: unknown; content_type?: unknown }
+  ): VirtualPlaylist {
+    const current = this.getPlaylistById(playlistId);
+    const decoded = decodeCoverInput(input);
+    fs.mkdirSync(this.coverDirectory, { recursive: true });
+    const fileName = `${crypto.randomUUID()}.${decoded.extension}`;
+    const finalPath = path.join(this.coverDirectory, fileName);
+    const temporaryPath = `${finalPath}.tmp`;
+    fs.writeFileSync(temporaryPath, decoded.bytes, { flag: "wx" });
+    fs.renameSync(temporaryPath, finalPath);
+    try {
+      const updated = this.updatePlaylist(playlistId, {
+        cover_image_key: `${CUSTOM_COVER_PREFIX}${fileName}`
+      });
+      this.removeCustomCoverFile(current.cover_image_key);
+      return updated;
+    } catch (error) {
+      fs.rmSync(finalPath, { force: true });
+      throw error;
+    }
+  }
+
+  clearCustomCover(playlistId: string): VirtualPlaylist {
+    const current = this.getPlaylistById(playlistId);
+    const updated = this.updatePlaylist(playlistId, { cover_image_key: null });
+    this.removeCustomCoverFile(current.cover_image_key);
+    return updated;
+  }
+
+  getCustomCover(coverId: string): StoredPlaylistCover {
+    const fileName = path.basename(coverId);
+    if (!fileName || fileName !== coverId) {
+      throw new ApiError("PLAYLIST_COVER_NOT_FOUND", "Playlist cover was not found");
+    }
+    const extension = path.extname(fileName).slice(1).toLowerCase();
+    const contentType = extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "png"
+        ? "image/png"
+        : extension === "webp"
+          ? "image/webp"
+          : null;
+    const filePath = path.join(this.coverDirectory, fileName);
+    if (!contentType || !fs.existsSync(filePath)) {
+      throw new ApiError("PLAYLIST_COVER_NOT_FOUND", "Playlist cover was not found", {
+        cover_id: coverId
+      });
+    }
+    return {
+      cover_image_key: `${CUSTOM_COVER_PREFIX}${fileName}`,
+      content_type: contentType,
+      bytes: fs.readFileSync(filePath)
+    };
   }
 
   addTrack(playlistId: string, input: unknown): VirtualPlaylist {
@@ -1036,7 +1159,14 @@ export class PlaylistService {
     return this.getPlaylistById(playlistId);
   }
 
+  private removeCustomCoverFile(imageKey: string | null): void {
+    const fileName = customCoverFileName(imageKey);
+    if (!fileName) return;
+    fs.rmSync(path.join(this.coverDirectory, fileName), { force: true });
+  }
+
   deletePlaylist(playlistId: string): { ok: true; playlist_id: string } {
+    const current = this.getPlaylistById(playlistId);
     const result = this.database.db
       .prepare("DELETE FROM virtual_playlists WHERE playlist_id = ?")
       .run(playlistId) as { changes?: number };
@@ -1046,6 +1176,8 @@ export class PlaylistService {
         playlist_id: playlistId
       });
     }
+
+    this.removeCustomCoverFile(current.cover_image_key);
 
     return { ok: true, playlist_id: playlistId };
   }

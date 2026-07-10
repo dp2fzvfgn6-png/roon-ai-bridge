@@ -52,6 +52,7 @@ Implemented tools:
 - `roon_create_virtual_playlist`
 - `roon_get_virtual_playlist`
 - `roon_update_virtual_playlist`
+- `roon_set_virtual_playlist_cover_image`
 - `roon_delete_virtual_playlist`
 - `roon_add_virtual_playlist_track`
 - `roon_update_virtual_playlist_track`
@@ -86,6 +87,11 @@ references from identity metadata and never executes a persisted item key. Use
 `roon_resolve_virtual_playlist` to retry missing, stale or ambiguous identities.
 `roon_search_media` returns `image_key` metadata without base64 artwork unless
 `include_images` is true.
+
+`roon_set_virtual_playlist_cover_image` accepts a JPEG, PNG or WebP data URL,
+or base64 bytes plus `content_type`, and stores a persistent custom cover. When
+no custom cover exists, the portal builds an animated collage from the playlist
+tracks automatically.
 
 Contract notes:
 

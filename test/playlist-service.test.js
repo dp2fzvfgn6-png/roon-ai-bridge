@@ -170,6 +170,29 @@ test("enriches library items with normalized song metadata and cover payload", (
   });
 });
 
+test("stores, serves and clears a validated custom playlist cover", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({ name: "Custom artwork" });
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+  const updated = service.setCustomCover(playlist.playlist_id, {
+    image_base64: png,
+    content_type: "image/png"
+  });
+  assert.match(updated.cover_image_key, /^custom:.+\.png$/);
+  const stored = service.getCustomCover(updated.cover_image_key.slice("custom:".length));
+  assert.equal(stored.content_type, "image/png");
+  assert.ok(stored.bytes.length > 20);
+
+  const cleared = service.clearCustomCover(playlist.playlist_id);
+  assert.equal(cleared.cover_image_key, null);
+  assert.throws(
+    () => service.getCustomCover(stored.cover_image_key.slice("custom:".length)),
+    (error) => error.code === "PLAYLIST_COVER_NOT_FOUND"
+  );
+});
+
 test("lists virtual playlists without tracks by default and paginates tracks explicitly", () => {
   const config = tempConfig();
   const service = new PlaylistService(config);

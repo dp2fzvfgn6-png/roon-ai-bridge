@@ -42,6 +42,7 @@ const playlists = [
   { playlist_id:"essentials",name:"All-time essentials",description:"Records that never leave the rotation.",cover_image_key:"massive",tracks_count:64,tracks:[] },
   { playlist_id:"machines",name:"Machines & humans",description:"Krautrock, electro and modern minimalism.",cover_image_key:"kraft",tracks_count:35,tracks:[] }
 ];
+const customCovers = new Map();
 const keys = [
   { key_id:"chatgpt",name:"ChatGPT · Casa",key_prefix:"rnb_9L2kP…",role:"control",created_at:"2026-07-01T11:00:00Z",last_used_at:"2026-07-10T08:21:00Z",revoked_at:null,tool_permissions:null },
   { key_id:"tablet",name:"Tablet del salón",key_prefix:"rnb_a8N1s…",role:"read",created_at:"2026-06-21T17:00:00Z",last_used_at:"2026-07-09T22:10:00Z",revoked_at:null,tool_permissions:["roon_status","roon_list_zones","roon_get_now_playing_widget"] },
@@ -71,6 +72,11 @@ app.get("/api/roon/media/:id/album-detail",(req,res)=>{const album=media.find(x=
 app.get("/api/roon/media/:id",(req,res)=>res.json(media.find(x=>x.result_id===req.params.id)||media[0]));
 app.post("/api/roon/media/:id/:action",(_req,res)=>res.json({ok:true,state_verified:true}));
 app.get("/api/playlists",(_req,res)=>res.json({playlists,total:playlists.length}));
+app.post("/api/playlists",(req,res)=>{const playlist={playlist_id:`preview-${Date.now()}`,name:req.body.name,description:req.body.description||null,cover_image_key:null,tracks_count:0,tracks:[]};playlists.unshift(playlist);res.status(201).json(playlist);});
+app.patch("/api/playlists/:id",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];Object.assign(p,{name:req.body.name??p.name,description:req.body.description??p.description});res.json(p);});
+app.post("/api/playlists/:id/cover",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];const match=String(req.body.data_url||"").match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);if(match){const id=`preview-${Date.now()}.${match[1].split('/')[1]}`;customCovers.set(id,{type:match[1],bytes:Buffer.from(match[2],"base64")});p.cover_image_key=`custom:${id}`;}res.json(p);});
+app.delete("/api/playlists/:id/cover",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];p.cover_image_key=null;res.json(p);});
+app.get("/api/playlists/covers/:id",(req,res)=>{const image=customCovers.get(req.params.id);if(!image)return res.sendStatus(404);res.type(image.type).send(image.bytes);});
 app.get("/api/playlists/:id",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];res.json({...p,tracks:media.filter(x=>x.media_type==="track").map((x,i)=>({track_id:`t${i}`,title:x.title,artist:x.artist,album:x.album,image_key:x.image_key,query:`${x.title} ${x.artist}`}))});});
 app.get("/api/roon/library",(_req,res)=>res.json({list:{title:"Recently added",count:8},items:Object.entries(albums).map(([key,v])=>({item_key:key,title:v[2],subtitle:v[3],image_key:key,hint:"list"}))}));
 app.get("/api/roon/queue/:id",(_req,res)=>res.json({items:media.filter(x=>x.media_type==="track")}));

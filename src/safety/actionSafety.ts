@@ -76,6 +76,7 @@ export const TOOL_CLASSIFICATION: Record<string, ToolClassification> = {
   roon_play_virtual_playlist: { ...safeMutation, audible: true, queue_mutation: true },
   roon_create_virtual_playlist: safeMutation,
   roon_update_virtual_playlist: safeMutation,
+  roon_set_virtual_playlist_cover_image: safeMutation,
   roon_add_virtual_playlist_track: safeMutation,
   roon_update_virtual_playlist_track: safeMutation,
   roon_reorder_virtual_playlist_tracks: safeMutation,

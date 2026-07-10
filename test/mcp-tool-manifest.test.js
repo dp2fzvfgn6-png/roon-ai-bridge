@@ -80,6 +80,8 @@ test("registers tool-specific descriptions instead of reusing roon_status copy",
   assert.ok(tools.has("roon_validate_virtual_playlist"));
   assert.ok(tools.has("roon_expand_media_search"));
   assert.ok(tools.has("roon_set_virtual_playlist_track_match"));
+  assert.ok(tools.has("roon_set_virtual_playlist_cover_image"));
+  assert.match(tools.get("roon_set_virtual_playlist_cover_image").options.description, /^Use this when/);
   assert.ok(tools.has("roon_get_now_playing_widget"));
   assert.ok(tools.has("roon_get_playlists_widget"));
   assert.ok(tools.has("roon_get_media_search_widget"));
@@ -150,7 +152,8 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
       "roon_import_virtual_playlist",
       "roon_expand_media_search",
       "roon_set_virtual_playlist_track_match",
-      "roon_add_search_result_to_virtual_playlist"
+      "roon_add_search_result_to_virtual_playlist",
+      "roon_set_virtual_playlist_cover_image"
     ]) {
       assert.ok(tools.has(name), `${name} should be exposed`);
       assert.ok(tools.get(name).inputSchema, `${name} should expose a schema`);

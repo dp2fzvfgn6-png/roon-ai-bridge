@@ -1253,6 +1253,61 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
   );
 
   registerTool(
+    "roon_set_virtual_playlist_cover_image",
+    {
+      title: "Set Virtual Playlist Cover Image",
+      description: "Use this when an image created or supplied by the user should become the custom cover of one RoonIA virtual playlist. Send either a JPEG, PNG or WebP data URL, or base64 bytes with content_type; do not use this to select one track artwork because playlists generate an animated collage automatically when no custom cover exists.",
+      ...structuredOutputSchema,
+      annotations: writeAnnotations,
+      _meta: widgetMeta,
+      inputSchema: {
+        playlist_id: z.string().min(1),
+        image_data_url: z.string().min(1).max(8_000_000).optional(),
+        image_base64: z.string().min(1).max(8_000_000).optional(),
+        content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional(),
+        dry_run: dryRunSchema
+      }
+    },
+    async ({ playlist_id, image_data_url, image_base64, content_type, dry_run }) =>
+      runTool(context, "roon_set_virtual_playlist_cover_image", () => {
+        const before = context.playlistService.getPlaylist(playlist_id);
+        const beforeSummary = {
+          playlist_id: before.playlist_id,
+          name: before.name,
+          cover_image_key: before.cover_image_key,
+          tracks_count: before.tracks_count
+        };
+        if (dry_run) {
+          return dryRunResponse("roon_set_virtual_playlist_cover_image", {
+            before: beforeSummary,
+            after: {
+              ...beforeSummary,
+              cover_image_key: "custom:<generated-file>"
+            }
+          }, {
+            before: beforeSummary,
+            warnings: ["Image bytes are validated and persisted only during execution."]
+          });
+        }
+        const result = context.playlistService.setCustomCover(playlist_id, {
+          data_url: image_data_url,
+          image_base64,
+          content_type
+        });
+        const after = {
+          playlist_id: result.playlist_id,
+          name: result.name,
+          cover_image_key: result.cover_image_key,
+          tracks_count: result.tracks_count
+        };
+        return mutationSuccess("roon_set_virtual_playlist_cover_image", after, {
+          before: beforeSummary,
+          after
+        });
+      })
+  );
+
+  registerTool(
     "roon_delete_virtual_playlist",
     {
       title: "Delete Virtual Playlist",

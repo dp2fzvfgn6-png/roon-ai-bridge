@@ -134,6 +134,15 @@ test("destructive playlist MCP tools require confirmation and support dry_run", 
   };
   const tools = registerTools(context);
 
+  const coverUpdated = await invoke(tools.get("roon_set_virtual_playlist_cover_image"), {
+    playlist_id: playlist.playlist_id,
+    image_base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    content_type: "image/png"
+  });
+  assert.equal(coverUpdated.ok, true);
+  assert.equal(coverUpdated.classification.safe_mutation, true);
+  assert.match(playlistService.getPlaylist(playlist.playlist_id).cover_image_key, /^custom:/);
+
   const deleteDryRun = await invoke(tools.get("roon_delete_virtual_playlist"), {
     playlist_id: playlist.playlist_id,
     dry_run: true

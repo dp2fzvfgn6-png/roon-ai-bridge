@@ -374,7 +374,7 @@ test("album detail exposes Roon description and playable track references", asyn
   assert.equal(detail.tracks[0].duration_seconds, 251);
 });
 
-function createArtistSearchClient() {
+function createArtistSearchClient(items = [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]) {
   let stage = "root";
   const browse = {
     browse(opts, callback) {
@@ -384,11 +384,23 @@ function createArtistSearchClient() {
     },
     load(_opts, callback) {
       if (stage === "root") callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] });
-      else callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }] });
+      else callback(false, { list: { title: "Artists", count: items.length }, items });
     }
   };
   return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
 }
+
+test("artist search filters Roon candidates that explicitly have zero albums", async () => {
+  const service = new RoonMediaService(createArtistSearchClient([
+    { title: "Daft Punk", subtitle: "10 Albums", item_key: "artist-real", hint: "action_list" },
+    { title: "Queen vs. Daft Punk", subtitle: "0 Albums", item_key: "artist-empty", hint: "action_list" }
+  ]), "tidal");
+  const search = await service.search({ query: "Daft Punk", types: ["artist"], count: 10 });
+
+  assert.deepEqual(search.results.map((result) => result.title), ["Daft Punk"]);
+  assert.equal(search.results[0].content_count, 10);
+  assert.match(search.warnings.join(" "), /filtered 1 result/);
+});
 
 test("artist detail groups albums and singles and keeps biography optional", async () => {
   const service = new RoonMediaService(createArtistSearchClient(), "tidal");

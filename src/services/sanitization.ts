@@ -1,4 +1,5 @@
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|authorization|cookie|api[_-]?key|private[_-]?key|oauth|bearer)/i;
+const BINARY_IMAGE_KEY_PATTERN = /(image[_-]?base64|image[_-]?data|data[_-]?url)/i;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]{160,}={0,2}$/;
 const MAX_STRING_LENGTH = 1200;
 const MAX_ARRAY_LENGTH = 50;
@@ -6,6 +7,7 @@ const MAX_OBJECT_KEYS = 80;
 
 export function sanitizeValue(value: unknown, keyHint = ""): unknown {
   if (SENSITIVE_KEY_PATTERN.test(keyHint)) return "[REDACTED]";
+  if (BINARY_IMAGE_KEY_PATTERN.test(keyHint)) return "[REDACTED_IMAGE_DATA]";
   if (value === null || value === undefined) return value;
 
   if (typeof value === "string") {

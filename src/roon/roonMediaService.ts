@@ -64,6 +64,7 @@ export type MediaResult = {
   duration_seconds?: number | null;
   track_number?: number | null;
   disc_number?: number | null;
+  content_count?: number | null;
 };
 
 export type ArtistMediaDetail = {
@@ -172,6 +173,15 @@ function normalize(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function artistContentCount(subtitle: string | null | undefined): number | null {
+  const match = normalize(subtitle || "").match(/(?:^|\s)(\d+)\s+(?:albums?|albumes|álbumes)(?:\s|$)/);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function artistHasContent(result: MediaResult): boolean {
+  return result.media_type !== "artist" || result.content_count !== 0;
 }
 
 const ENTITY_SECTION_TITLES = [
@@ -838,8 +848,11 @@ export class RoonMediaService {
       strategy: request.strategy
     }));
     scored.sort((a, b) => b.match_score - a.match_score);
-    const best = scored[0] || null;
-    const second = scored[1] || null;
+    const visibleResults = scored.filter(artistHasContent);
+    const hiddenEmptyArtists = scored.length - visibleResults.length;
+    if (hiddenEmptyArtists > 0) warnings.push(`artist: filtered ${hiddenEmptyArtists} result(s) without content`);
+    const best = visibleResults[0] || null;
+    const second = visibleResults[1] || null;
     const closeCandidates = Boolean(
       best &&
       second &&
@@ -852,7 +865,7 @@ export class RoonMediaService {
         : null;
     const selectionRequired =
       closeCandidates || !recommendedResultId || Boolean(best && best.confidence !== "high");
-    const publicResults = scored.map((result) => ({
+    const publicResults = visibleResults.map((result) => ({
       ...result,
       is_best_match: recommendedResultId === result.result_id,
       selection_required: recommendedResultId === result.result_id
@@ -1310,6 +1323,7 @@ export class RoonMediaService {
       duration_seconds: pickNestedNumber(item, ["duration_seconds", "duration", "length"]),
       track_number: pickNestedNumber(item, ["track_number", "track"]),
       disc_number: pickNestedNumber(item, ["disc_number", "disc"]),
+      content_count: type === "artist" ? artistContentCount(subtitle) : null,
       query,
       ordinal,
       hierarchy
