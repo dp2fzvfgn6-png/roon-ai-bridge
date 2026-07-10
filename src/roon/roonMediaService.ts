@@ -60,6 +60,26 @@ export type MediaResult = {
   version_penalties: string[];
   warnings: string[];
   expires_at: string;
+  release_year?: number | null;
+  duration_seconds?: number | null;
+  track_number?: number | null;
+  disc_number?: number | null;
+};
+
+export type ArtistMediaDetail = {
+  artist: MediaResult;
+  bio: string | null;
+  popular_tracks: MediaResult[];
+  albums: MediaResult[];
+  singles_eps: MediaResult[];
+  warnings: string[];
+};
+
+export type AlbumMediaDetail = {
+  album: MediaResult;
+  description: string | null;
+  tracks: MediaResult[];
+  warnings: string[];
 };
 
 type MediaReference = MediaResult & {
@@ -154,6 +174,84 @@ function normalize(value: string): string {
     .trim();
 }
 
+const ENTITY_SECTION_TITLES = [
+  "albums",
+  "albumes",
+  "discography",
+  "discografia",
+  "main albums",
+  "singles",
+  "singles and eps",
+  "singles & eps",
+  "sencillos",
+  "eps",
+  "tracks",
+  "songs",
+  "canciones",
+  "popular tracks",
+  "top tracks",
+  "popular",
+  "biography",
+  "biografia",
+  "bio"
+];
+
+function isEntitySection(item: BrowseItem): boolean {
+  const title = normalize(String(item.title || ""));
+  return ENTITY_SECTION_TITLES.some(
+    (candidate) => title === normalize(candidate) || title.startsWith(`${normalize(candidate)} `)
+  );
+}
+
+function isMediaContentItem(item: BrowseItem): boolean {
+  if (!item.item_key || item.hint === "header" || item.hint === "action") return false;
+  if (isEntitySection(item)) return false;
+  const title = normalize(String(item.title || ""));
+  const actionTitles = [
+    ...Object.values(ACTION_TITLES).flat(),
+    ...ARTIST_CATALOG_ACTION_TITLES,
+    ...RADIO_ACTION_TITLES
+  ].map(normalize);
+  return !actionTitles.some((candidate) => title === candidate || title.startsWith(`${candidate} `));
+}
+
+function descriptiveText(...sources: unknown[]): string | null {
+  const preferredKeys = ["biography", "bio", "description", "summary", "overview", "text"];
+  const candidates: string[] = [];
+  const visit = (value: unknown, depth = 0): void => {
+    if (!value || depth > 3) return;
+    if (Array.isArray(value)) {
+      value.slice(0, 30).forEach((child) => visit(child, depth + 1));
+      return;
+    }
+    const record = objectValue(value);
+    if (!record) return;
+    for (const key of preferredKeys) {
+      const text = record[key];
+      if (typeof text === "string" && text.trim().length >= 40) candidates.push(text.trim());
+    }
+    const title = normalize(typeof record.title === "string" ? record.title : "");
+    const subtitle = typeof record.subtitle === "string" ? record.subtitle.trim() : "";
+    if (subtitle.length >= 120) candidates.push(subtitle);
+    if (["biography", "biografia", "bio", "about", "acerca de"].includes(title) && subtitle.length >= 40) {
+      candidates.push(subtitle);
+    }
+    for (const key of ["item", "list", "media", "metadata", "items"]) visit(record[key], depth + 1);
+  };
+  sources.forEach((source) => visit(source));
+  return candidates.sort((left, right) => right.length - left.length)[0] || null;
+}
+
+function uniqueMedia(results: MediaResult[]): MediaResult[] {
+  const seen = new Set<string>();
+  return results.filter((result) => {
+    const key = [normalize(result.title), normalize(result.artist || result.subtitle || "")].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function itemText(item: BrowseItem): string {
   return JSON.stringify(item).toLowerCase();
 }
@@ -172,10 +270,28 @@ function pickString(item: Record<string, unknown>, keys: string[]): string | nul
   return null;
 }
 
+function pickNumber(item: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
 function pickNestedString(item: BrowseItem, keys: string[]): string | null {
   const raw = objectValue(item) || {};
   const media = objectValue(raw.media) || {};
   return pickString(media, keys) || pickString(raw, keys);
+}
+
+function pickNestedNumber(item: BrowseItem, keys: string[]): number | null {
+  const raw = objectValue(item) || {};
+  const media = objectValue(raw.media) || {};
+  return pickNumber(media, keys) ?? pickNumber(raw, keys);
 }
 
 export function inferMediaSource(item: BrowseItem): {
@@ -857,6 +973,132 @@ export class RoonMediaService {
     return this.publicReference(reference);
   }
 
+  async getArtistDetail(
+    resultId: string,
+    zoneId?: string,
+    count = 50
+  ): Promise<ArtistMediaDetail> {
+    const artist = this.getReference(resultId);
+    if (artist.media_type !== "artist") {
+      throw new ApiError("INVALID_SEARCH_QUERY", "result_id must reference an artist", {
+        result_id: resultId,
+        media_type: artist.media_type
+      });
+    }
+
+    const warnings: string[] = [];
+    let releases: MediaResult[] = [];
+    try {
+      releases = (await this.listArtistReleases(resultId, zoneId, count)).releases;
+    } catch (error) {
+      warnings.push(`discography: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      const fallback = await this.search({
+        query: artist.title,
+        types: ["album"],
+        zoneId,
+        count: Math.min(25, count),
+        sourcePreference: "library_first"
+      });
+      releases = uniqueMedia([...releases, ...fallback.results]);
+    } catch (error) {
+      warnings.push(`album_search: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    let popularTracks: MediaResult[] = [];
+    try {
+      const trackSearch = await this.search({
+        query: artist.title,
+        types: ["track"],
+        zoneId,
+        count: Math.min(25, count),
+        sourcePreference: "library_first"
+      });
+      const artistName = normalize(artist.title);
+      const matching = trackSearch.results.filter((result) => {
+        const candidate = normalize(result.artist || result.subtitle || "");
+        return Boolean(candidate) && (
+          candidate === artistName || candidate.includes(artistName) || artistName.includes(candidate)
+        );
+      });
+      popularTracks = (matching.length ? matching : trackSearch.results).slice(0, 12);
+    } catch (error) {
+      warnings.push(`popular_tracks: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    let bio: string | null = null;
+    try {
+      bio = await this.readArtistBio(artist, zoneId);
+    } catch (error) {
+      warnings.push(`biography: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const singlesEps = releases.filter((release) =>
+      /\b(single|ep|sencillo)\b/.test(normalize(`${release.title} ${release.subtitle || ""}`))
+    );
+    const albums = releases.filter((release) => !singlesEps.includes(release));
+
+    return {
+      artist: this.publicReference(artist),
+      bio,
+      popular_tracks: popularTracks,
+      albums: albums.slice(0, count),
+      singles_eps: singlesEps.slice(0, count),
+      warnings
+    };
+  }
+
+  async getAlbumDetail(
+    resultId: string,
+    zoneId?: string,
+    count = 100
+  ): Promise<AlbumMediaDetail> {
+    const album = this.getReference(resultId);
+    if (album.media_type !== "album") {
+      throw new ApiError("INVALID_SEARCH_QUERY", "result_id must reference an album", {
+        result_id: resultId,
+        media_type: album.media_type
+      });
+    }
+
+    const warnings: string[] = [];
+    let description: string | null = null;
+    let tracks: MediaResult[] = [];
+    try {
+      const browseDetail = await this.readAlbumContents(album, zoneId, count);
+      description = browseDetail.description;
+      tracks = browseDetail.tracks;
+    } catch (error) {
+      warnings.push(`album_browse: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    if (tracks.length === 0) {
+      try {
+        const fallback = await this.search({
+          query: [album.title, album.artist || album.subtitle].filter(Boolean).join(" "),
+          types: ["track"],
+          zoneId,
+          count: Math.min(25, count),
+          sourcePreference: "library_first"
+        });
+        const albumName = normalize(album.title);
+        const matching = fallback.results.filter((result) => normalize(result.album || "") === albumName);
+        tracks = (matching.length ? matching : fallback.results).slice(0, count);
+      } catch (error) {
+        warnings.push(`track_search: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return {
+      album: this.publicReference(album),
+      description,
+      tracks: uniqueMedia(tracks).slice(0, count),
+      warnings
+    };
+  }
+
   async play(
     resultId: string,
     zoneId: string,
@@ -940,8 +1182,19 @@ export class RoonMediaService {
     }
 
     const releases = selectableItems(current.items)
-      .filter((candidate) => !String(candidate.title || "").toLowerCase().startsWith("play "))
-      .map((candidate, ordinal) => this.registerReference(artist.title, "album", candidate, ordinal))
+      .filter(isMediaContentItem)
+      .map((candidate, ordinal) => {
+        const rawMedia = objectValue(candidate.media) || {};
+        return this.registerReference(artist.title, "album", {
+          ...candidate,
+          media: {
+            ...rawMedia,
+            artist: pickString(rawMedia, ["artist", "artist_name"]) || artist.title,
+            album_artist:
+              pickString(rawMedia, ["album_artist", "albumartist"]) || artist.title
+          }
+        }, ordinal);
+      })
       .sort((a, b) => this.releaseYear(b) - this.releaseYear(a));
 
     return {
@@ -1053,6 +1306,10 @@ export class RoonMediaService {
       version_penalties: version.version_penalties,
       warnings: [],
       expires_at: expiresAt,
+      release_year: pickNestedNumber(item, ["release_year", "year"]),
+      duration_seconds: pickNestedNumber(item, ["duration_seconds", "duration", "length"]),
+      track_number: pickNestedNumber(item, ["track_number", "track"]),
+      disc_number: pickNestedNumber(item, ["disc_number", "disc"]),
       query,
       ordinal,
       hierarchy
@@ -1120,6 +1377,145 @@ export class RoonMediaService {
       query,
       sourcePreference: "highest_quality"
     });
+  }
+
+  private async openReference(
+    reference: MediaReference,
+    zoneId: string | undefined,
+    purpose: string,
+    count: number
+  ): Promise<{
+    browse: any;
+    sessionKey: string;
+    item: BrowseItem;
+    opened: any;
+    current: BrowseResponse;
+  }> {
+    const browse = requireBrowse(this.roonClient);
+    const sessionKey = this.sessionKey(purpose);
+    const item = await this.resolveItem(reference, zoneId, sessionKey);
+    const opened = await browseCall(browse, {
+      hierarchy: reference.hierarchy,
+      multi_session_key: sessionKey,
+      item_key: item.item_key,
+      ...(zoneId ? { zone_or_output_id: zoneId } : {})
+    });
+    if (opened.action !== "list") {
+      throw new ApiError("SEARCH_NO_RESULTS", "Media detail is not available", {
+        result_id: reference.result_id,
+        action: opened.action
+      });
+    }
+    const current = await loadCurrentList(
+      browse,
+      reference.hierarchy,
+      sessionKey,
+      0,
+      Math.max(1, Math.min(count, 200))
+    );
+    return { browse, sessionKey, item, opened, current };
+  }
+
+  private async readArtistBio(
+    artist: MediaReference,
+    zoneId?: string
+  ): Promise<string | null> {
+    const detail = await this.openReference(artist, zoneId, "artist-detail", 100);
+    const direct = descriptiveText(
+      detail.item,
+      detail.opened,
+      detail.current.list,
+      detail.current.items
+    );
+    if (direct) return direct;
+
+    const biography = detail.current.items.find((item) =>
+      ["biography", "biografia", "bio", "about", "acerca de"].includes(
+        normalize(String(item.title || ""))
+      )
+    );
+    if (!biography?.item_key) return null;
+
+    const response = await browseCall(detail.browse, {
+      hierarchy: artist.hierarchy,
+      multi_session_key: detail.sessionKey,
+      item_key: biography.item_key,
+      ...(zoneId ? { zone_or_output_id: zoneId } : {})
+    });
+    if (typeof response.message === "string" && response.message.trim().length >= 40) {
+      return response.message.trim();
+    }
+    if (response.action !== "list") return descriptiveText(biography, response);
+    const loaded = await loadCurrentList(detail.browse, artist.hierarchy, detail.sessionKey, 0, 100);
+    return descriptiveText(biography, response, loaded.list, loaded.items);
+  }
+
+  private async readAlbumContents(
+    album: MediaReference,
+    zoneId: string | undefined,
+    count: number
+  ): Promise<{ description: string | null; tracks: MediaResult[] }> {
+    const detail = await this.openReference(album, zoneId, "album-detail", count);
+    const overviewSources: unknown[] = [
+      detail.item,
+      detail.opened,
+      detail.current.list,
+      detail.current.items
+    ];
+    let items = detail.current.items;
+    const tracksEntry = items.find((item) =>
+      ["tracks", "songs", "canciones", "tracklist", "lista de canciones"].includes(
+        normalize(String(item.title || ""))
+      )
+    );
+    if (tracksEntry?.item_key) {
+      const response = await browseCall(detail.browse, {
+        hierarchy: album.hierarchy,
+        multi_session_key: detail.sessionKey,
+        item_key: tracksEntry.item_key,
+        ...(zoneId ? { zone_or_output_id: zoneId } : {})
+      });
+      overviewSources.push(response);
+      if (response.action === "list") {
+        const loaded = await loadCurrentList(
+          detail.browse,
+          album.hierarchy,
+          detail.sessionKey,
+          0,
+          Math.max(1, Math.min(count, 200))
+        );
+        overviewSources.push(loaded.list, loaded.items);
+        items = loaded.items;
+      }
+    }
+
+    const tracks = items
+      .filter(isMediaContentItem)
+      .slice(0, count)
+      .map((item, ordinal) => {
+        const rawMedia = objectValue(item.media) || {};
+        const enriched: BrowseItem = {
+          ...item,
+          media: {
+            ...rawMedia,
+            album: pickString(rawMedia, ["album", "album_name"]) || album.title,
+            artist:
+              pickString(rawMedia, ["artist", "artist_name"]) ||
+              (typeof item.subtitle === "string" ? item.subtitle : album.artist || album.subtitle)
+          }
+        };
+        return this.registerReference(
+          [item.title, item.subtitle, album.title].filter(Boolean).join(" "),
+          "track",
+          enriched,
+          ordinal
+        );
+      });
+
+    return {
+      description: descriptiveText(...overviewSources),
+      tracks
+    };
   }
 
   private async resolveItem(

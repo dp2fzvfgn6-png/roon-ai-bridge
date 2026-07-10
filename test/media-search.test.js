@@ -317,3 +317,91 @@ test("expand_media_search tries context-stripped searches and returns best candi
   assert.doesNotMatch(expanded.attempts[0].query, /Peaky Blinders/i);
   assert.equal(expanded.best_candidates[0].title, "Red Right Hand");
 });
+
+function createAlbumDetailClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) {
+        stage = "root";
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "albums-category") {
+        stage = "albums";
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "album-key") {
+        stage = "album-detail";
+        callback(false, { action: "list", list: { description: "A landmark electronic album with a detailed Roon editorial overview." } });
+        return;
+      }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") {
+        callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] });
+        return;
+      }
+      if (stage === "albums") {
+        callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Kid A", subtitle: "Radiohead", item_key: "album-key", hint: "action_list", image_key: "kid-a" }] });
+        return;
+      }
+      callback(false, {
+        list: { title: "Kid A", count: 3, description: "A landmark electronic album with a detailed Roon editorial overview." },
+        items: [
+          { title: "Play Album", item_key: "play-album", hint: "action" },
+          { title: "Everything In Its Right Place", subtitle: "Radiohead", item_key: "track-1", hint: "action_list", track_number: 1, duration_seconds: 251 },
+          { title: "Kid A", subtitle: "Radiohead", item_key: "track-2", hint: "action_list", track_number: 2, duration_seconds: 284 }
+        ]
+      });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail exposes Roon description and playable track references", async () => {
+  const service = new RoonMediaService(createAlbumDetailClient(), "tidal");
+  const search = await service.search({ query: "Kid A Radiohead", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.equal(detail.album.title, "Kid A");
+  assert.match(detail.description, /landmark electronic album/i);
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Everything In Its Right Place", "Kid A"]);
+  assert.equal(detail.tracks[0].album, "Kid A");
+  assert.equal(detail.tracks[0].track_number, 1);
+  assert.equal(detail.tracks[0].duration_seconds, 251);
+});
+
+function createArtistSearchClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artists-category") { stage = "artists"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] });
+      else callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("artist detail groups albums and singles and keeps biography optional", async () => {
+  const service = new RoonMediaService(createArtistSearchClient(), "tidal");
+  const search = await service.search({ query: "Radiohead", types: ["artist"], count: 1 });
+  const artist = search.results[0];
+  const media = (title, media_type, subtitle) => ({ ...artist, result_id: `media-${title}`, title, type: media_type, media_type, subtitle, artist: media_type === "track" ? "Radiohead" : null });
+  service.listArtistReleases = async () => ({ artist, list_title: "Radiohead", releases: [media("Kid A", "album", "2000"), media("Burn the Witch", "album", "Single · 2016")] });
+  service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: request.types[0] === "track" ? [media("Paranoid Android", "track", "Radiohead")] : [], ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
+  service.readArtistBio = async () => null;
+
+  const detail = await service.getArtistDetail(artist.result_id);
+  assert.equal(detail.bio, null);
+  assert.deepEqual(detail.popular_tracks.map((track) => track.title), ["Paranoid Android"]);
+  assert.deepEqual(detail.albums.map((album) => album.title), ["Kid A"]);
+  assert.deepEqual(detail.singles_eps.map((album) => album.title), ["Burn the Witch"]);
+});

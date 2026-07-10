@@ -28,6 +28,17 @@ La búsqueda usa `/api/roon/media/search` y separa artistas, álbumes, pistas y
 playlists. Los `result_id` temporales permiten abrir una ficha, reproducir,
 iniciar radio, añadir a la cola o añadir el resultado a una playlist virtual.
 
+La primera vista prioriza seis artistas, seis álbumes, doce canciones y seis
+playlists. Cada sección permite revelar el resto sin mezclar categorías. Las
+fichas enriquecidas usan `/api/roon/media/:result_id/artist-detail` y
+`/api/roon/media/:result_id/album-detail` para mostrar la biografía disponible
+en Roon, canciones destacadas, álbumes, singles/EPs y las pistas del disco.
+
+La acción «Añadir canción» de una playlist abre la misma experiencia visual de
+búsqueda en contexto. Artistas y álbumes siguen siendo navegables, pero las
+pistas sustituyen los controles de reproducción por una única acción de añadir
+a la playlist activa.
+
 Las playlists aceptan `cover_image_key`. Desde su detalle se puede escoger como
 carátula la imagen de cualquiera de sus pistas.
 

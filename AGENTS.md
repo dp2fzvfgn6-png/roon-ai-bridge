@@ -23,7 +23,7 @@ repository.
 
 ## Worktree Safety
 
-- Read `git status --short` before editing and before committing.
+- Read `git status --short` before editing.
 - Do not revert or include unrelated user changes.
 - The untracked `logos/` directory is user work. Do not edit, delete, stage or
   commit it unless the user explicitly requests that.
@@ -41,11 +41,9 @@ repository.
    release behavior changes.
 5. Run the complete test suite and TypeScript build.
 6. Review `git diff --check`, `git diff --stat` and `git status --short`.
-7. Commit only the intended files and push `main`.
-8. Update the LXC from GitHub.
-9. Validate the deployed HTTP/MCP behavior against the real Roon Core.
-10. Record live results in documentation, commit and push them.
-11. Create and push an annotated version tag only after live validation.
+
+Stop after local implementation and validation unless the user explicitly
+requests additional repository or deployment actions.
 
 ## Local Tests
 
@@ -67,34 +65,21 @@ $env:PATH="$runtime\node\bin;$runtime\bin;$env:PATH"
 
 Do not publish when tests or the build fail.
 
-## Commit And Push
+## Repository And Deployment Boundaries
 
-Use explicit paths:
+- Do not stage, commit, push, create tags or open pull requests unless the user
+  explicitly requests the specific action.
+- Do not update, rebuild or restart the LXC unless the user explicitly requests
+  an LXC deployment or update.
+- A request to change code does not imply permission to commit, push or deploy.
+- By default, leave the validated changes in the local working tree for the
+  user to review and publish.
+- If the user explicitly requests a commit, stage only explicit paths; never
+  use `git add -A` or `git add .`.
+- If the user explicitly requests deployment, follow the safe remote and live
+  validation guidance below.
 
-```powershell
-git add -- <INTENDED_PATHS>
-git commit -m "<concise behavior-oriented message>"
-git push origin main
-```
-
-Keep implementation and final live-validation documentation in separate
-commits when deployment is required between them.
-
-## Update The LXC
-
-Run from the workstation:
-
-```powershell
-ssh -i 'C:\Users\IagoPC\.ssh\codex_roonia' `
-  -o BatchMode=yes `
-  codex@10.0.60.38 `
-  "bash -lc 'curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh -o /tmp/lxc-update-app.sh && sudo bash /tmp/lxc-update-app.sh'"
-```
-
-The updater pulls `main`, rebuilds Docker Compose and restarts the service.
-Always wait for Roon discovery to reconnect after the container restarts.
-
-## Safe Remote API Tests
+## Safe Remote API Tests After An Explicit Deployment Request
 
 Read the API token inside the LXC without returning it to the workstation:
 
@@ -153,7 +138,8 @@ Update both:
 - `package.json`
 - `src/config/version.ts`
 
-After automated and live validation:
+Only when the user explicitly requests a release, after automated and live
+validation:
 
 ```powershell
 git tag -a vX.Y.Z -m "Roon AI Bridge vX.Y.Z"

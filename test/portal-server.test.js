@@ -87,6 +87,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /active-zone-select/);
     assert.match(portalScriptText, /data-play-mode="play_next"/);
+    assert.match(portalScriptText, /artist:6, album:6, track:12/);
+    assert.match(portalScriptText, /data-more-results/);
+    assert.match(portalScriptText, /playlist-search-form/);
+    assert.match(portalScriptText, /artist-detail/);
+    assert.match(portalScriptText, /album-detail/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);

@@ -148,6 +148,34 @@ export function createMediaRouter(context: ApiContext): Router {
     }
   });
 
+  router.get("/media/:result_id/artist-detail", async (req, res, next) => {
+    try {
+      res.json(
+        await context.mediaService.getArtistDetail(
+          req.params.result_id,
+          optionalString(req.query.zone_id),
+          parseCount(req.query.count, 50, 100)
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/media/:result_id/album-detail", async (req, res, next) => {
+    try {
+      res.json(
+        await context.mediaService.getAlbumDetail(
+          req.params.result_id,
+          optionalString(req.query.zone_id),
+          parseCount(req.query.count, 100, 200)
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/media/:result_id/play", async (req, res, next) => {
     try {
       const zoneId = optionalString(req.body?.zone_id) || "";

@@ -31,6 +31,11 @@ const media = [
   { result_id:"track-repetition",media_type:"track",title:"Repetition",artist:"Max Cooper",album:"Yearning for the Infinite",image_key:"cooper",source:"qobuz",quality:{label:"24-bit / 96 kHz"} },
   { result_id:"playlist-roon",media_type:"playlist",title:"Late Night Focus",subtitle:"Roon playlist · 42 tracks",image_key:"eno",source:"playlist" }
 ];
+media.push(
+  ...[["artist-cave","Nick Cave & The Bad Seeds","cave"],["artist-cooper","Max Cooper","cooper"],["artist-massive","Massive Attack","massive"],["artist-kraft","Kraftwerk","kraft"],["artist-eno","Brian Eno","eno"],["artist-moderat","Moderat","moderat"]].map(([result_id,title,image_key])=>({result_id,media_type:"artist",title,subtitle:"Artista",artist:title,image_key,source:"qobuz"})),
+  ...[["album-cave","Push the Sky Away","Nick Cave & The Bad Seeds","cave"],["album-cooper","Unspoken Words","Max Cooper","cooper"],["album-massive","Mezzanine","Massive Attack","massive"],["album-kraft","The Man-Machine","Kraftwerk","kraft"],["album-eno","Ambient 1","Brian Eno","eno"],["album-moderat","II","Moderat","moderat"]].map(([result_id,title,artist,image_key])=>({result_id,media_type:"album",title,subtitle:`${artist} · Álbum`,artist,image_key,source:"qobuz"})),
+  ...Array.from({length:12},(_,index)=>({result_id:`track-preview-${index}`,media_type:"track",title:`Pista destacada ${index+1}`,artist:index%2?"Radiohead":"AIR",album:index%2?"In Rainbows":"Moon Safari",image_key:index%2?"radio":"moon",source:"library"}))
+);
 const playlists = [
   { playlist_id:"night",name:"After dark",description:"Electronic, ambient and slow-burning records.",cover_image_key:"cooper",tracks_count:28,tracks:[] },
   { playlist_id:"sunday",name:"Sunday morning",description:"Quiet records for a slow start.",cover_image_key:"eno",tracks_count:19,tracks:[] },
@@ -61,6 +66,8 @@ app.get("/api/roon/zones",(_req,res)=>res.json(zones));
 app.get("/api/roon/outputs",(_req,res)=>res.json(zones.flatMap(z=>z.outputs)));
 app.get("/api/roon/media/search",(req,res)=>res.json({query:req.query.q||"radiohead",results:media,ambiguous:false}));
 app.get("/api/roon/media/:id/releases",(_req,res)=>res.json({releases:media.filter(x=>x.media_type==="album")}));
+app.get("/api/roon/media/:id/artist-detail",(req,res)=>{const artist=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="artist");res.json({artist,bio:"Una breve biografía editorial proporcionada por Roon para contextualizar la trayectoria, el sonido y la discografía esencial del artista.",popular_tracks:media.filter(x=>x.media_type==="track").slice(0,12),albums:media.filter(x=>x.media_type==="album").slice(0,6),singles_eps:media.filter(x=>x.media_type==="album").slice(6,8),warnings:[]});});
+app.get("/api/roon/media/:id/album-detail",(req,res)=>{const album=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="album");res.json({album,description:"Edición disponible en la biblioteca y los servicios conectados a Roon.",tracks:media.filter(x=>x.media_type==="track").slice(0,12),warnings:[]});});
 app.get("/api/roon/media/:id",(req,res)=>res.json(media.find(x=>x.result_id===req.params.id)||media[0]));
 app.post("/api/roon/media/:id/:action",(_req,res)=>res.json({ok:true,state_verified:true}));
 app.get("/api/playlists",(_req,res)=>res.json({playlists,total:playlists.length}));
