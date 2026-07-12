@@ -77,11 +77,6 @@ export function createPortalServer(context: ApiContext): express.Express {
     next();
   });
 
-  app.use("/assets/brand", express.static(path.join(process.cwd(), "logos"), {
-    etag: true,
-    maxAge: "1d"
-  }));
-
   app.get("/api/health", (_req, res) => {
     res.json({
       ok: true,

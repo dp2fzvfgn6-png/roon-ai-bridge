@@ -82,6 +82,17 @@ test("serves portal assets publicly but protects every administration endpoint",
     const portalPageText = await page.text();
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
+    assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
+    assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
+
+    const logo = await fetch(`${baseUrl}/roonia-logo.svg`);
+    assert.equal(logo.status, 200);
+    assert.match(logo.headers.get("content-type"), /image\/svg\+xml/);
+    assert.match(await logo.text(), /aria-label="roonIA logo"/);
+
+    const portalStyles = await fetch(`${baseUrl}/styles.css`);
+    assert.equal(portalStyles.status, 200);
+    assert.match(await portalStyles.text(), /\.collage-tile img \{[^}]*object-fit: cover;/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -96,13 +107,16 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /playlist-collage/);
     assert.match(portalScriptText, /data-collage-key-index/);
-    assert.match(portalScriptText, /500,"fit"/);
+    assert.match(portalScriptText, /500,"fill"/);
     assert.match(portalScriptText, /setInterval\(animatePlaylistCollages,500\)/);
     assert.match(portalScriptText, /playlist-cover-file/);
     assert.match(portalScriptText, /event\.target!==dialog/);
     assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
     assert.match(portalScriptText, /data-mini-seek/);
     assert.match(portalScriptText, /data-mini-volume/);
+    assert.match(portalScriptText, /miniPlayerIsInteracting/);
+    assert.match(portalScriptText, /playerPendingUpdates/);
+    assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
 

@@ -40,8 +40,9 @@ pistas sustituyen los controles de reproducción por una única acción de añad
 a la playlist activa.
 
 Las playlists generan por defecto una carátula animada con hasta 16 imágenes de
-sus canciones. La cuadrícula usa 4, 9 o 16 celdas y cambia una sola celda cada
-500 ms. Desde la edición se puede subir una imagen JPEG, PNG o WebP de hasta
+sus canciones. La cuadrícula usa 4, 9 o 16 celdas cuadradas, recorta cada
+carátula para llenar su celda sin franjas y cambia una sola celda cada 500 ms.
+Desde la edición se puede subir una imagen JPEG, PNG o WebP de hasta
 5 MB; la tool `roon_set_virtual_playlist_cover_image` ofrece la misma operación
 a ChatGPT u otro cliente MCP.
 
@@ -59,6 +60,13 @@ esa key. Las keys sin allowlist conservan acceso a todas las tools habilitadas.
 
 ## Recursos visuales
 
-El portal sirve los SVG de `logos/` en `/assets/brand` sin modificar la carpeta
-original. Los iconos usan Google Material Symbols Rounded. Las carátulas y fotos
-proceden del servicio de imágenes de Roon y mantienen un fallback local.
+El logo que usa el portal está incluido en `portal/roonia-logo.svg`, de modo que
+la interfaz no depende de la carpeta local y no versionada `logos/`. Los iconos
+usan Google Material Symbols Rounded. Las carátulas y fotos proceden del
+servicio de imágenes de Roon y mantienen un fallback local.
+
+El minirreproductor consulta el estado de Roon periódicamente, pero suspende el
+repintado de sus controles mientras el usuario arrastra el progreso o el volumen
+o mantiene abierto el selector de zona. Las respuestas que llegan durante el
+gesto también se descartan y, al terminar una operación, se solicita una lectura
+del estado confirmado por Roon siempre que no haya comenzado otra interacción.
