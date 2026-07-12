@@ -7,7 +7,7 @@ import { ApiError, sendError } from "../utils/errors";
 import { PlaylistService } from "../services/playlistService";
 import { OAuthService } from "../services/oauthService";
 import { RoonMediaService } from "../roon/roonMediaService";
-import { createRoonMcpServer } from "../mcp/server";
+import { createBridgeV2McpServer } from "../bridge-v2/mcp/server";
 import { createHealthRouter } from "./routes/health.routes";
 import { createRoonRouter } from "./routes/roon.routes";
 import { createZonesRouter } from "./routes/zones.routes";
@@ -90,7 +90,7 @@ export function createServer(context: ApiContext): express.Express {
         method: req.method,
         path: req.path
       });
-      const server = createRoonMcpServer({
+      const server = createBridgeV2McpServer({
         ...context,
         activeApiKey: res.locals.apiKey || null
       });

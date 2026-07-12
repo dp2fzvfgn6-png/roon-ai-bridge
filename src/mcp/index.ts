@@ -1,10 +1,9 @@
 import { loadConfig } from "../config/env";
 import { createRoonClient } from "../roon/roonClient";
 import { PlaylistService } from "../services/playlistService";
-import { OAuthService } from "../services/oauthService";
 import { RoonMediaService } from "../roon/roonMediaService";
 import { createStderrLogger } from "../utils/logger";
-import { startMcpServer } from "./server";
+import { startBridgeV2McpServer } from "../bridge-v2/mcp/server";
 import { createDatabase } from "../db/database";
 import { SystemManagementService } from "../services/systemManagementService";
 import { ZonePresetService } from "../services/zonePresetService";
@@ -27,19 +26,17 @@ const systemManagementService = new SystemManagementService(config, logger);
 const roonClient = createRoonClient(config, logger, systemManagementService);
 const database = createDatabase(config);
 const playlistService = new PlaylistService(config, database);
-const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
 const zonePresetService = new ZonePresetService(config, database);
 const volumeLimitService = new VolumeLimitService(config, database);
 
 roonClient.start();
 
-startMcpServer({
+startBridgeV2McpServer({
   config,
   logger,
   roonClient,
   playlistService,
-  oauthService,
   mediaService,
   zonePresetService,
   volumeLimitService

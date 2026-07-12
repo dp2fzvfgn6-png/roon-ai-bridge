@@ -4,6 +4,7 @@ import { APP_VERSION } from "../config/version";
 export type ErrorCode =
   | "ROON_NOT_CONNECTED"
   | "ROON_NOT_AUTHORIZED"
+  | "ROON_REQUEST_TIMEOUT"
   | "AUTH_REQUIRED"
   | "AUTH_INVALID"
   | "AUTH_FORBIDDEN"
@@ -64,6 +65,7 @@ export type ErrorCode =
 const DEFAULT_STATUS: Record<ErrorCode, number> = {
   ROON_NOT_CONNECTED: 503,
   ROON_NOT_AUTHORIZED: 401,
+  ROON_REQUEST_TIMEOUT: 504,
   AUTH_REQUIRED: 401,
   AUTH_INVALID: 401,
   AUTH_FORBIDDEN: 403,

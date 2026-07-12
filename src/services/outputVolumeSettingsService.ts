@@ -3,6 +3,7 @@ import { createDatabase, SqliteDatabase } from "../db/database";
 import { RoonClient } from "../roon/roonClient";
 import { ApiError } from "../utils/errors";
 import { requireTransport } from "../roon/roonTransportService";
+import { roonSdkCall } from "../roon/roonSdk";
 
 type StoredVolumeSettings = {
   output_id: string;
@@ -165,17 +166,17 @@ export class OutputVolumeSettingsService {
       );
     }
     const transport = requireTransport(roonClient);
-    await new Promise<void>((resolve, reject) => {
-      transport.change_volume(
+    const preferredValue = settings.preferred_value;
+    await roonSdkCall<void>(
+      "Roon preferred volume change",
+      (callback) => transport.change_volume(
         output,
         "absolute",
-        settings.preferred_value,
-        (error: string | false) => {
-          if (error) reject(new ApiError("INTERNAL_ERROR", String(error)));
-          else resolve();
-        }
-      );
-    });
+        preferredValue,
+        callback
+      ),
+      { output_id: outputId, value: preferredValue }
+    );
     return {
       ok: true,
       output_id: outputId,

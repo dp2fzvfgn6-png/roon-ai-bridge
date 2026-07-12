@@ -501,58 +501,28 @@ Run from `/opt/roon-ai-bridge`:
 DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
 ```
 
-Implemented MCP tools:
+The active MCP v2 facade exposes 29 data-only, intent-oriented tools. It
+replaces the previous 89-tool catalog without legacy aliases. Named zones and
+outputs are resolved inside each intent, and playback tools can search and act
+in one MCP call when the match is unambiguous.
 
-- `roon_status`
-- `roon_list_zones`
-- `roon_control_playback`
-- `roon_change_volume`
-- `roon_transfer_playback`
-- `roon_group_zones`
-- `roon_ungroup_zone`
-- `roon_search`
-- `roon_play_by_query`
-- `roon_get_queue`
-- `roon_queue_by_query`
-- `roon_play_queue_item_from_here`
-- `roon_list_virtual_playlists`
-- `roon_create_virtual_playlist`
-- `roon_get_virtual_playlist`
-- `roon_update_virtual_playlist`
-- `roon_delete_virtual_playlist`
-- `roon_add_virtual_playlist_track`
-- `roon_update_virtual_playlist_track`
-- `roon_remove_virtual_playlist_track`
-- `roon_replace_virtual_playlist_tracks`
-- `roon_reorder_virtual_playlist_tracks`
-- `roon_play_virtual_playlist`
-- `roon_search_media`
-- `roon_get_media_details`
-- `roon_list_artist_releases`
-- `roon_play_media`
-- `roon_start_radio`
-- `roon_add_media_to_queue`
-- `roon_list_outputs`
-- `roon_seek`
-- `roon_mute_output`
-- `roon_change_output_volume`
-- `roon_mute_all`
-- `roon_pause_all`
-- `roon_output_power`
-- `roon_change_playback_settings`
-- `roon_restart_queue`
-- `roon_run_browse_action`
-- `roon_get_image`
+The catalog covers state, transport, volume, output power, playback options,
+grouping, transfer, media search and deep details, play/enqueue/radio, queue,
+virtual playlists, volume policies, zone presets and diagnostics. See
+[MCP Server](src/mcp/README.md) for the complete list and
+[MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
+
+No MCP v2 tool currently advertises a widget. Widget rebuilding and ChatGPT
+reconnection are intentionally deferred until this data contract is stable.
 
 Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
 
-For requests such as "move what is playing in the office to the kitchen",
-ChatGPT must call `roon_transfer_playback` once. The MCP server instructions
-explicitly prohibit rebuilding the queue for a zone-transfer request.
+For requests such as "move what is playing in the office to the kitchen", an
+MCP client calls `roon_transfer_playback` once with the two zone names. The
+server resolves both names and explicitly avoids rebuilding the queue.
 
-For grouping, ChatGPT first lists zones and calls `roon_group_zones` with the
-queue-owning zone as `primary_zone_id`. Separate playback commands are not
-synchronized grouping.
+For grouping, call `roon_set_grouping` directly with a named primary zone and
+named additional zones. A preliminary state-list call is unnecessary.
 
 Remote MCP endpoint:
 

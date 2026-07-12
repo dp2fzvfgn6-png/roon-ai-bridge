@@ -1,7 +1,8 @@
 # Architecture
 
-The v0.12 code keeps the API, MCP server and administration portal on one
-shared Roon client and service graph.
+The API, MCP server and administration portal share one Roon client and data
+store. The active MCP facade is an independent v2 subsystem with its own
+contracts and intent orchestration.
 
 ```text
 src/
@@ -10,6 +11,8 @@ src/
     env.ts
   roon/
     roonClient.ts
+    roonSdk.ts
+    roonStateCache.ts
     roonTransportService.ts
     roonBrowseService.ts
     roonZoneService.ts
@@ -52,6 +55,14 @@ src/
     mcpContext.ts
     mcpTools.ts
     tools.todo.ts
+  bridge-v2/
+    contracts.ts
+    context.ts
+    targetResolver.ts
+    intentGateway.ts
+    mcp/
+      server.ts
+      tools.ts
   security/
     README.md
   utils/
@@ -69,11 +80,14 @@ playlists and API-key database without registering a second extension.
 
 - `config`: environment parsing and runtime settings.
 - `roon`: Roon Core discovery, transport service, zone mapping, playback and volume.
+- `roonSdk`: typed callback boundary, request timeouts and shared state-verification helpers.
+- `roonStateCache`: public subscription-event reducer for the live zone cache.
 - `roonMediaService`: typed search, temporary media references and deterministic Browse actions.
 - `api`: Express server and route definitions.
 - `services`: OAuth persistence and application services such as virtual playlists.
 - `db`: future persistence adapter and schema.
-- `mcp`: local/remote MCP server, Apps SDK widget resource and Roon tool definitions.
+- `bridge-v2`: active local/remote MCP intent facade; it is data-only and has no widget registration.
+- `mcp`: disconnected legacy facade and widget resources retained pending the later widget redesign.
 - `security`: future auth/security notes.
 - `utils`: common logging, errors and validation.
 
@@ -91,9 +105,9 @@ playlists and API-key database without registering a second extension.
 10. The transport service subscribes to zones.
 11. The browse service is available when Roon exposes `RoonApiBrowse`.
 12. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
-13. `src/mcp/index.ts` can be launched separately with `npm run mcp` to expose the same core capabilities as MCP stdio tools.
+13. `src/mcp/index.ts` launches the `bridge-v2` server with `npm run mcp` and exposes the same 29 intent tools over stdio.
 14. Typed search creates short-lived `result_id` references and re-resolves selected media in a fresh Roon Browse session before acting.
-15. `POST /mcp` and `GET /mcp` expose the same MCP tool set over Streamable HTTP for ChatGPT app development.
+15. `POST /mcp` and `GET /mcp` expose the same data-only MCP v2 tool set over Streamable HTTP.
 
 Virtual playlist identity is owned by RoonIA. `track_id` is permanent and each
 row stores a semantic recording snapshot plus a versioned fingerprint in

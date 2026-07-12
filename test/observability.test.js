@@ -103,8 +103,10 @@ test("observability endpoints expose safe diagnostics, manifest and extension st
 
     const manifest = await (await fetch(`${baseUrl}/tools/manifest`)).json();
     const names = new Set(manifest.tools.map((tool) => tool.name));
-    assert.ok(names.has("roon_diagnostics_bundle"));
-    assert.ok(names.has("roon_extension_manager_status"));
+    assert.ok(names.has("roon_run_diagnostics"));
+    assert.ok(names.has("roon_play_media"));
+    assert.equal(names.has("roon_status"), false);
+    assert.equal(names.has("roon_extension_manager_status"), false);
     assert.ok(manifest.tools.every((tool) => tool.schema_hash));
 
     const extensions = await (await fetch(`${baseUrl}/extensions`)).json();

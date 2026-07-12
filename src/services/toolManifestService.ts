@@ -1,6 +1,6 @@
 import crypto from "crypto";
-import { registerRoonMcpTools } from "../mcp/mcpTools";
-import { McpContext } from "../mcp/mcpContext";
+import { registerBridgeV2Tools } from "../bridge-v2/mcp/tools";
+import { BridgeV2Context } from "../bridge-v2/context";
 
 function classificationFromAnnotations(annotations: any): Record<string, unknown> {
   const readOnly = annotations?.readOnlyHint === true;
@@ -23,7 +23,7 @@ function schemaSummary(inputSchema: any): Record<string, unknown> {
   };
 }
 
-export function buildToolsManifest(context: McpContext): Record<string, unknown> {
+export function buildToolsManifest(context: BridgeV2Context): Record<string, unknown> {
   const tools: Array<Record<string, unknown>> = [];
   const server = {
     registerTool(name: string, options: any): void {
@@ -46,7 +46,7 @@ export function buildToolsManifest(context: McpContext): Record<string, unknown>
       });
     }
   };
-  registerRoonMcpTools(server as any, { ...context, manifestMode: true });
+  registerBridgeV2Tools(server as any, { ...context, manifestMode: true });
   for (const tool of tools) {
     tool.enabled = context.toolAccessService?.isGloballyEnabled(String(tool.name)) !== false;
   }

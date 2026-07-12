@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { getQueueSnapshot } = require("../dist/roon/roonQueueService");
+const {
+  getQueueSnapshot,
+  playQueueItemFromHere
+} = require("../dist/roon/roonQueueService");
 
 function queueClient(itemsByZone) {
   const zones = new Map(
@@ -46,5 +49,19 @@ test("queue snapshots allow empty queues and reject missing zones", async () => 
   await assert.rejects(
     () => getQueueSnapshot(client, "missing", 10),
     (error) => error.code === "ZONE_NOT_FOUND"
+  );
+});
+
+test("play_from_here never reports success when Roon does not answer", async () => {
+  const client = queueClient({ office: [{ queue_item_id: 1 }] });
+  client.getTransport = () => ({
+    play_from_here() {
+      // Simulate a request lost while the Core connection is interrupted.
+    }
+  });
+
+  await assert.rejects(
+    () => playQueueItemFromHere(client, "office", 1, { timeoutMs: 20 }),
+    (error) => error.code === "ROON_REQUEST_TIMEOUT"
   );
 });

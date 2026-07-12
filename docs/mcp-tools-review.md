@@ -60,7 +60,7 @@ Fuente revisada: `src/mcp/mcpTools.ts` en el estado local actual.
 |---|---|---|---|---|
 | `roon_list_outputs` | Lectura | Lista outputs físicos y sus IDs estables, incluidos los no disponibles si se solicita. Es el paso previo para volumen, mute, power o controles de fuente a nivel de output. | `roon_list_zones` trabaja con zonas lógicas; no siempre es intercambiable. | PENDIENTE |
 | `roon_mute_output` | Mutación | Silencia o reactiva un output físico concreto mediante `output_id`. | No usar para todas las salidas; existe `roon_mute_all`. Tampoco acepta directamente un `zone_id`. | PENDIENTE |
-| `roon_change_output_volume` | Mutación | Cambia el volumen de un output concreto; soporta outputs incrementales mediante `relative_step`. | Se diferencia de `roon_change_volume`, que actúa sobre la zona y aplica la política segura de zona. Revisar si debería aplicar también límites seguros. | PENDIENTE |
+| `roon_change_output_volume` | Mutación | Cambia el volumen de un output concreto; los outputs incrementales requieren `relative` con valor `-1` o `1`. | Se diferencia de `roon_change_volume`, que actúa sobre la zona y aplica la política segura de zona. Revisar si debería aplicar también límites seguros. | PENDIENTE |
 | `roon_mute_all` | Mutación masiva/destructiva | Silencia o reactiva todos los outputs mutables. Solo usar cuando el usuario lo pida expresamente para todo Roon. | Operación global; no sustituir una petición sobre una única zona u output. | PENDIENTE |
 | `roon_output_power` | Mutación | Ejecuta standby, toggle standby o convenience switch sobre un output que exponga esos controles. Puede necesitar `control_key`. | No todos los outputs admiten estas acciones. No equivale a detener reproducción. | PENDIENTE |
 

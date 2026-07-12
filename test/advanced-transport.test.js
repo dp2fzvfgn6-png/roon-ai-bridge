@@ -28,7 +28,11 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     change_settings: done("change_settings")
   };
   const zone = { zone_id: "zone-1", outputs: [] };
-  const output = { output_id: "output-1", display_name: "Desk" };
+  const output = {
+    output_id: "output-1",
+    display_name: "Desk",
+    volume: { type: "number", min: 0, max: 100, value: 20, step: 1 }
+  };
   const client = {
     isCoreConnected: () => true,
     isTransportReady: () => true,
@@ -43,9 +47,9 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     currently_available: true,
     last_seen: null,
     last_known_zone_id: null,
-    can_control_volume: false,
-    volume_type: null,
-    last_known_volume_type: null,
+    can_control_volume: true,
+    volume_type: "number",
+    last_known_volume_type: "number",
     can_group_with_output_ids: [],
     source_controls: null,
     source_control_status: null,
@@ -77,4 +81,23 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     auto_radio: false,
     loop: "loop"
   });
+});
+
+test("rejects invalid SDK commands for incremental outputs", async () => {
+  const output = {
+    output_id: "incremental",
+    display_name: "IR volume",
+    volume: { type: "incremental" }
+  };
+  const client = {
+    isCoreConnected: () => true,
+    isTransportReady: () => true,
+    getTransport: () => ({ change_volume() { throw new Error("should not run"); } }),
+    getOutput: () => output
+  };
+
+  await assert.rejects(
+    () => changeOutputVolume(client, output.output_id, "relative_step", 1),
+    (error) => error.code === "INVALID_VOLUME_VALUE"
+  );
 });

@@ -8,6 +8,7 @@ import { evaluateZoneVolumePolicy } from "../safety/volumeSafety";
 import { VolumeLimitService } from "./volumeLimitService";
 import { confirmationRequiredResponse } from "../safety/actionSafety";
 import { ApiError } from "../utils/errors";
+import { roonSdkCall, waitForRoonState } from "../roon/roonSdk";
 
 export type PresetTargetRef = {
   type: "output_id" | "zone_id" | "output_name" | "zone_name";
@@ -99,12 +100,7 @@ function callbackCall(
   invoke: (callback: (error: string | false) => void) => void,
   operation: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    invoke((error) => {
-      if (error) reject(new ApiError("INTERNAL_ERROR", `${operation} failed`, { error }));
-      else resolve();
-    });
-  });
+  return roonSdkCall<void>(operation, invoke);
 }
 
 function outputIds(zone: RoonZone): string[] {
@@ -293,10 +289,36 @@ export class ZonePresetService {
       );
     }
 
+    const pausedOutputIds = preset.playback.action === "pause"
+      ? plan.affected_zones.flatMap((zone) => outputIds(zone))
+      : [];
+    const expectedGroupIds = preset.grouping.enabled
+      ? plan.group_outputs.map((output) => output.output_id)
+      : [];
+    const stateVerified = await waitForRoonState(
+      () => {
+        const volumesMatch = plan.volume_outputs.every((item) => {
+          const actual = roonClient.getOutput(item.output.output_id)?.volume?.value;
+          return typeof actual === "number" && Math.abs(actual - item.volume) < 0.001;
+        });
+        const groupingMatches = expectedGroupIds.length < 2 || roonClient.getZones().some((zone) => {
+          const members = new Set(outputIds(zone));
+          return expectedGroupIds.every((outputId) => members.has(outputId));
+        });
+        const playbackMatches = pausedOutputIds.every((outputId) =>
+          roonClient.getZones().some((zone) =>
+            outputIds(zone).includes(outputId) && zone.state !== "playing"
+          )
+        );
+        return volumesMatch && groupingMatches && playbackMatches ? true : null;
+      },
+      (verified) => verified
+    );
+
     return {
       ...responseBase,
       dry_run: false,
-      state_verified: true,
+      state_verified: stateVerified === true,
       after: this.snapshot(roonClient)
     };
   }

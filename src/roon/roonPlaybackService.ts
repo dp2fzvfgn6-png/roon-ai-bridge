@@ -4,6 +4,7 @@ import { RoonClient } from "./roonClient";
 import { RoonZone } from "./roonTypes";
 import { getZoneOrThrow } from "./roonZoneService";
 import { requireTransport } from "./roonTransportService";
+import { roonSdkCall, waitForRoonState } from "./roonSdk";
 
 export type PlaybackControlResult = {
   ok: true;
@@ -77,15 +78,11 @@ export async function controlPlayback(
     });
   }
 
-  await new Promise<void>((resolve, reject) => {
-    transport.control(zone, command, (error: unknown) => {
-      if (error) {
-        reject(new ApiError("INTERNAL_ERROR", String(error), { command }));
-        return;
-      }
-      resolve();
-    });
-  });
+  await roonSdkCall<void>(
+    "Roon playback control",
+    (callback) => transport.control(zone, command, callback),
+    { zone_id: zoneId, command }
+  );
 
   const expectedState =
     command === "play"
@@ -101,22 +98,21 @@ export async function controlPlayback(
             : null;
 
   if (expectedState) {
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      const current = roonClient.getZone(zoneId);
-      if (current?.state === expectedState) {
-        return {
-          ok: true,
-          zone_id: zone.zone_id,
-          zone_name: zone.display_name,
-          command,
-          status: current.state === previousState ? "accepted" : "changed",
-          previous_state: previousState,
-          state: current.state,
-          state_verified: true
-        };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    const current = await waitForRoonState(
+      () => roonClient.getZone(zoneId),
+      (candidate) => candidate.state === expectedState
+    );
+    if (current) {
+      return {
+        ok: true,
+        zone_id: zone.zone_id,
+        zone_name: zone.display_name,
+        command,
+        status: current.state === previousState ? "accepted" : "changed",
+        previous_state: previousState,
+        state: current.state,
+        state_verified: true
+      };
     }
 
     const actualState = roonClient.getZone(zoneId)?.state || "unknown";

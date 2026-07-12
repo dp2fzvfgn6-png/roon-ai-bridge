@@ -13,6 +13,8 @@ import { Logger } from "../utils/logger";
 import { RoonZone } from "./roonTypes";
 import { RoonOutput } from "./roonTypes";
 import { SystemManagementService } from "../services/systemManagementService";
+import { RoonBrowseApi, RoonImageApi, RoonTransportApi } from "./roonSdk";
+import { applyZoneEvent } from "./roonStateCache";
 
 export type RoonClient = {
   start(): void;
@@ -21,9 +23,9 @@ export type RoonClient = {
   isTransportReady(): boolean;
   isBrowseReady(): boolean;
   isImageReady(): boolean;
-  getTransport(): any | null;
-  getBrowse(): any | null;
-  getImage(): any | null;
+  getTransport(): RoonTransportApi | null;
+  getBrowse(): RoonBrowseApi | null;
+  getImage(): RoonImageApi | null;
   getZones(): RoonZone[];
   getOutputs(): RoonOutput[];
   getKnownOutputs?(): RoonOutput[];
@@ -38,9 +40,9 @@ export function createRoonClient(
 ): RoonClient {
   const stateFile = path.join(config.dataDir, "roonstate.json");
   let currentCore: any | null = null;
-  let transport: any | null = null;
-  let browse: any | null = null;
-  let image: any | null = null;
+  let transport: RoonTransportApi | null = null;
+  let browse: RoonBrowseApi | null = null;
+  let image: RoonImageApi | null = null;
   let transportReady = false;
   let browseReady = false;
   let imageReady = false;
@@ -73,15 +75,8 @@ export function createRoonClient(
     fs.writeFileSync(stateFile, JSON.stringify(state || {}, null, 2));
   }
 
-  function refreshZonesFromTransport(): void {
-    if (!transport || !transport._zones) {
-      zonesById = new Map();
-      return;
-    }
-
-    zonesById = new Map(
-      Object.values(transport._zones).map((zone: any) => [zone.zone_id, zone])
-    );
+  function mergeZoneChanges(event: string | false, data: any): void {
+    zonesById = applyZoneEvent(zonesById, event, data);
   }
 
   function mergeOutputChanges(event: string, data: any): void {
@@ -163,9 +158,15 @@ export function createRoonClient(
         return;
       }
 
-      transport.subscribe_zones((event: string, data: any) => {
-        refreshZonesFromTransport();
-        logger.info("Zones changed", {
+      transport.subscribe_zones((event: string | false, data: any) => {
+        mergeZoneChanges(event, data);
+        const seekOnly = event === "Changed" &&
+          Array.isArray(data?.zones_seek_changed) &&
+          !data?.zones_added?.length &&
+          !data?.zones_changed?.length &&
+          !data?.zones_removed?.length;
+        const log = seekOnly ? logger.debug : logger.info;
+        log("Zones changed", {
           event,
           zonesCount: zonesById.size,
           added: data?.zones_added?.length,
@@ -174,8 +175,8 @@ export function createRoonClient(
         });
       });
 
-      transport.subscribe_outputs((event: string, data: any) => {
-        mergeOutputChanges(event, data);
+      transport.subscribe_outputs((event: string | false, data: any) => {
+        mergeOutputChanges(String(event), data);
         logger.info("Outputs changed", {
           event,
           outputsCount: outputsById.size,
@@ -213,6 +214,12 @@ export function createRoonClient(
       imageReady = false;
       zonesById = new Map();
       outputsById = new Map();
+      knownOutputsById = new Map(
+        Array.from(knownOutputsById.entries()).map(([outputId, output]) => [
+          outputId,
+          { ...output, currently_available: false }
+        ])
+      );
       statusService.set_status("Roon Core disconnected", true);
     }
   });

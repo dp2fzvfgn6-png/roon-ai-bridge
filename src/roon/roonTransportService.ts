@@ -1,14 +1,16 @@
 import { ApiError } from "../utils/errors";
 import { RoonClient } from "./roonClient";
+import { RoonTransportApi } from "./roonSdk";
 
-export function requireTransport(roonClient: RoonClient): any {
+export function requireTransport(roonClient: RoonClient): RoonTransportApi {
   if (!roonClient.isCoreConnected()) {
     throw new ApiError("ROON_NOT_CONNECTED", "Roon Core is not connected");
   }
 
-  if (!roonClient.isTransportReady() || !roonClient.getTransport()) {
+  const transport = roonClient.getTransport();
+  if (!roonClient.isTransportReady() || !transport) {
     throw new ApiError("TRANSPORT_NOT_READY", "Roon transport is not ready");
   }
 
-  return roonClient.getTransport();
+  return transport;
 }

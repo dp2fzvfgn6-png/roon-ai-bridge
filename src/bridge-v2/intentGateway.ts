@@ -1,0 +1,538 @@
+import { formatZone } from "../roon/roonZoneService";
+import { controlPlayback } from "../roon/roonPlaybackService";
+import { changeZoneVolume } from "../roon/roonVolumeService";
+import { groupZones, ungroupZone } from "../roon/roonGroupingService";
+import { transferZonePlayback } from "../roon/roonTransferService";
+import { getQueueSnapshot, playQueueItemFromHere } from "../roon/roonQueueService";
+import {
+  changeZoneSettings,
+  changeOutputVolume,
+  muteAll,
+  muteOutput,
+  outputPowerAction,
+  pauseAll,
+  seekZone
+} from "../roon/roonAdvancedTransportService";
+import { ApiError } from "../utils/errors";
+import { BridgeV2Context } from "./context";
+import {
+  ambiguous,
+  completed,
+  MediaSelector,
+  normalizeServiceResult,
+  OperationResult,
+  TargetReference
+} from "./contracts";
+import { TargetResolver } from "./targetResolver";
+import type { MediaType, SourcePreference } from "../roon/roonMediaService";
+import { APP_VERSION } from "../config/version";
+
+export class IntentGateway {
+  readonly targets: TargetResolver;
+
+  constructor(readonly context: BridgeV2Context) {
+    this.targets = new TargetResolver(context.roonClient);
+  }
+
+  getState(input: {
+    scope?: "system" | "zones" | "zone" | "outputs";
+    zone?: TargetReference;
+    include_unavailable_outputs?: boolean;
+  }): OperationResult {
+    const scope = input.scope || "system";
+    const status = {
+      core_connected: this.context.roonClient.isCoreConnected(),
+      core_name: this.context.roonClient.getCoreName(),
+      transport_ready: this.context.roonClient.isTransportReady(),
+      browse_ready: this.context.roonClient.isBrowseReady(),
+      image_ready: this.context.roonClient.isImageReady()
+    };
+    let data: unknown;
+    const zones = this.context.roonClient.getZones().map(formatZone);
+    if (scope === "zones") data = { ...status, zones };
+    else if (scope === "zone") {
+      if (!input.zone) throw new ApiError("VALIDATION_ERROR", "zone is required for zone scope");
+      const zone = this.targets.zone(input.zone);
+      data = { ...status, zone: zones.find((item) => item.zone_id === zone.zone_id) };
+    } else if (scope === "outputs") {
+      const currentIds = new Set(this.context.roonClient.getOutputs().map((output) => output.output_id));
+      const known = this.context.roonClient.getKnownOutputs?.() || this.context.roonClient.getOutputs();
+      data = {
+        ...status,
+        outputs: known
+          .map((output) => ({
+            ...output,
+            currently_available: output.currently_available ?? currentIds.has(output.output_id)
+          }))
+          .filter((output) => input.include_unavailable_outputs !== false || output.currently_available)
+      };
+    } else {
+      data = {
+        ...status,
+        zones_count: this.context.roonClient.getZones().length,
+        outputs_count: this.context.roonClient.getOutputs().length
+      };
+    }
+    return completed("roon_get_state", `Roon ${scope} state returned.`, data, { verified: true });
+  }
+
+  async controlPlayback(input: {
+    target?: "zone" | "all";
+    zone?: TargetReference;
+    action: "play" | "pause" | "toggle" | "stop" | "next" | "previous" | "seek";
+    seek?: { mode: "absolute" | "relative"; seconds: number };
+  }): Promise<OperationResult> {
+    if (input.target === "all") {
+      if (input.action !== "pause") {
+        throw new ApiError("UNSUPPORTED_COMMAND", "Only pause is supported for all zones");
+      }
+      return normalizeServiceResult("roon_control_playback", "All zones paused.", await pauseAll(this.context.roonClient), true);
+    }
+    if (!input.zone) throw new ApiError("VALIDATION_ERROR", "zone is required");
+    const zone = this.targets.zone(input.zone);
+    if (input.action === "seek") {
+      if (!input.seek) throw new ApiError("INVALID_SEEK", "seek parameters are required");
+      return normalizeServiceResult(
+        "roon_control_playback",
+        `Seek applied to ${zone.display_name}.`,
+        await seekZone(this.context.roonClient, zone.zone_id, input.seek.mode, input.seek.seconds)
+      );
+    }
+    const command = input.action === "toggle" ? "playpause" : input.action;
+    const result = await controlPlayback(this.context.roonClient, zone.zone_id, command);
+    return normalizeServiceResult(
+      "roon_control_playback",
+      `${input.action} applied to ${zone.display_name}.`,
+      result,
+      result.state_verified
+    );
+  }
+
+  async setVolume(input: {
+    target?: "zone" | "output" | "all";
+    zone?: TargetReference;
+    output?: TargetReference;
+    mode: "absolute" | "relative" | "relative_step" | "mute" | "unmute";
+    value?: number;
+    confirm?: boolean;
+  }): Promise<OperationResult> {
+    if (input.target === "all") {
+      if (input.mode !== "mute" && input.mode !== "unmute") {
+        throw new ApiError("UNSUPPORTED_COMMAND", "All-zone volume only supports mute or unmute");
+      }
+      return normalizeServiceResult("roon_set_volume", `All outputs ${input.mode}d.`, await muteAll(this.context.roonClient, input.mode), true);
+    }
+    if (input.target === "output") {
+      if (!input.output) throw new ApiError("VALIDATION_ERROR", "output is required");
+      const output = this.targets.output(input.output);
+      const result = input.mode === "mute" || input.mode === "unmute"
+        ? await muteOutput(this.context.roonClient, output.output_id, input.mode)
+        : await changeOutputVolume(
+            this.context.roonClient,
+            output.output_id,
+            input.mode,
+            typeof input.value === "number" ? input.value : Number.NaN
+          );
+      return normalizeServiceResult("roon_set_volume", `Volume action applied to ${output.display_name}.`, result, true);
+    }
+    if (!input.zone) throw new ApiError("VALIDATION_ERROR", "zone is required");
+    const zone = this.targets.zone(input.zone);
+    if (input.mode === "mute" || input.mode === "unmute") {
+      const outputs = (zone.outputs || []).filter((output) => output.volume);
+      if (!outputs.length) throw new ApiError("VOLUME_NOT_SUPPORTED", "The zone has no volume-capable output");
+      const results: Record<string, unknown>[] = [];
+      for (const output of outputs) {
+        results.push(await muteOutput(this.context.roonClient, output.output_id, input.mode));
+      }
+      return completed(
+        "roon_set_volume",
+        `${zone.display_name} ${input.mode}d.`,
+        { zone_id: zone.zone_id, outputs: results },
+        { verified: results.every((result) => result.state_verified === true) }
+      );
+    }
+    if (typeof input.value !== "number") throw new ApiError("INVALID_VOLUME_VALUE", "value is required");
+    const result = await changeZoneVolume(this.context.roonClient, zone.zone_id, input.mode, input.value, {
+      confirm: Boolean(input.confirm),
+      volumeLimits: this.context.volumeLimitService.activeSafetyLimits()
+    });
+    return normalizeServiceResult("roon_set_volume", `Volume updated for ${zone.display_name}.`, result, true);
+  }
+
+  async controlOutput(input: {
+    output: TargetReference;
+    action: "standby" | "toggle_standby" | "convenience_switch";
+    control_key?: string;
+  }): Promise<OperationResult> {
+    const output = this.targets.output(input.output);
+    const result = await outputPowerAction(this.context.roonClient, output.output_id, input.action, input.control_key);
+    return normalizeServiceResult("roon_control_output", `${input.action} accepted for ${output.display_name}.`, result, false);
+  }
+
+  async setPlaybackOptions(input: {
+    zone: TargetReference;
+    shuffle?: boolean;
+    auto_radio?: boolean;
+    loop?: "loop" | "loop_one" | "disabled" | "next";
+  }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const result = await changeZoneSettings(this.context.roonClient, zone.zone_id, {
+      shuffle: input.shuffle,
+      auto_radio: input.auto_radio,
+      loop: input.loop
+    });
+    return normalizeServiceResult("roon_set_playback_options", `Playback options accepted for ${zone.display_name}.`, result, false);
+  }
+
+  async setGrouping(input: {
+    action: "group" | "ungroup";
+    primary_zone: TargetReference;
+    additional_zones?: TargetReference[];
+  }): Promise<OperationResult> {
+    const primary = this.targets.zone(input.primary_zone);
+    const result = input.action === "ungroup"
+      ? await ungroupZone(this.context.roonClient, primary.zone_id)
+      : await groupZones(
+          this.context.roonClient,
+          primary.zone_id,
+          (input.additional_zones || []).map((ref) => this.targets.zone(ref).zone_id)
+        );
+    return normalizeServiceResult("roon_set_grouping", `Zone grouping ${input.action} completed.`, result, true);
+  }
+
+  async transfer(input: { source_zone: TargetReference; target_zone: TargetReference }): Promise<OperationResult> {
+    const source = this.targets.zone(input.source_zone);
+    const target = this.targets.zone(input.target_zone);
+    const result = await transferZonePlayback(this.context.roonClient, source.zone_id, target.zone_id);
+    return normalizeServiceResult(
+      "roon_transfer_playback",
+      `Playback transferred from ${source.display_name} to ${target.display_name}.`,
+      result
+    );
+  }
+
+  async searchMedia(input: {
+    query: string;
+    types?: MediaType[];
+    count?: number;
+    source_preference?: SourcePreference;
+  }): Promise<OperationResult> {
+    const result = await this.context.mediaService.search({
+      query: input.query,
+      types: input.types,
+      count: input.count || 10,
+      sourcePreference: input.source_preference || "highest_quality"
+    });
+    return completed("roon_search_media", `Found ${result.results.length} media results.`, result, {
+      references: { recommended_result_id: result.recommended_result_id }
+    });
+  }
+
+  async getMediaEntity(input: { result_id: string; zone?: TargetReference; count?: number }): Promise<OperationResult> {
+    const media = this.context.mediaService.get(input.result_id);
+    const zoneId = input.zone ? this.targets.zone(input.zone).zone_id : undefined;
+    const data = media.media_type === "artist"
+      ? await this.context.mediaService.getArtistDetail(input.result_id, zoneId, input.count || 50)
+      : media.media_type === "album"
+        ? await this.context.mediaService.getAlbumDetail(input.result_id, zoneId, input.count || 100)
+        : media;
+    return completed("roon_get_media_entity", `${media.media_type} details returned.`, data, {
+      references: { result_id: input.result_id }
+    });
+  }
+
+  private async resolveMedia(operation: string, selector: MediaSelector): Promise<string | OperationResult> {
+    if (selector.result_id) return selector.result_id;
+    if (!selector.query) throw new ApiError("INVALID_SEARCH_QUERY", "media requires result_id or query");
+    const search = await this.context.mediaService.search({
+      query: selector.query,
+      types: selector.type ? [selector.type] : undefined,
+      count: 10,
+      sourcePreference: selector.source_preference || "highest_quality"
+    });
+    if (!search.recommended_result_id || search.selection_required) {
+      return ambiguous(operation, "Several media results require selection.", {
+        query: selector.query,
+        candidates: search.results
+      }, { recommended_result_id: search.recommended_result_id });
+    }
+    return search.recommended_result_id;
+  }
+
+  async playMedia(input: { zone: TargetReference; media: MediaSelector }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const resolved = await this.resolveMedia("roon_play_media", input.media);
+    if (typeof resolved !== "string") return resolved;
+    const result = await this.context.mediaService.play(resolved, zone.zone_id, "replace_queue");
+    return normalizeServiceResult("roon_play_media", `Media start accepted in ${zone.display_name}.`, {
+      ...result,
+      final_zone_state: this.context.roonClient.getZone(zone.zone_id)?.state || null
+    }, false);
+  }
+
+  async enqueueMedia(input: {
+    zone: TargetReference;
+    media: MediaSelector;
+    position?: "next" | "end";
+  }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const resolved = await this.resolveMedia("roon_enqueue_media", input.media);
+    if (typeof resolved !== "string") return resolved;
+    const result = await this.context.mediaService.play(
+      resolved,
+      zone.zone_id,
+      input.position === "next" ? "play_next" : "append"
+    );
+    return normalizeServiceResult("roon_enqueue_media", `Media queue action accepted in ${zone.display_name}.`, result, false);
+  }
+
+  async startRadio(input: { zone: TargetReference; artist: MediaSelector }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const selector = { ...input.artist, type: "artist" as const };
+    const resolved = await this.resolveMedia("roon_start_radio", selector);
+    if (typeof resolved !== "string") return resolved;
+    const result = await this.context.mediaService.startRadio(resolved, zone.zone_id);
+    return normalizeServiceResult("roon_start_radio", `Artist radio start accepted in ${zone.display_name}.`, result, false);
+  }
+
+  async getQueue(input: { zone: TargetReference; count?: number }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const result = await getQueueSnapshot(this.context.roonClient, zone.zone_id, input.count || 100);
+    return completed("roon_get_queue", `Queue returned for ${zone.display_name}.`, result, { verified: true });
+  }
+
+  async playQueueItem(input: { zone: TargetReference; queue_item_id: number }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const result = await playQueueItemFromHere(this.context.roonClient, zone.zone_id, input.queue_item_id);
+    return normalizeServiceResult("roon_play_queue_item", `Queue item start accepted in ${zone.display_name}.`, result, false);
+  }
+
+  listPlaylists(input: { limit?: number; offset?: number }): OperationResult {
+    const data = this.context.playlistService.listPlaylists({
+      includeTracks: false,
+      limit: input.limit || 25,
+      offset: input.offset || 0
+    });
+    return completed("roon_list_playlists", "Virtual playlists returned.", data, { verified: true });
+  }
+
+  getPlaylist(input: { playlist_id: string; limit?: number; offset?: number }): OperationResult {
+    const data = this.context.playlistService.getPlaylistDetail(input.playlist_id, {
+      includeTracks: true,
+      limit: input.limit || 50,
+      offset: input.offset || 0
+    });
+    return completed("roon_get_playlist", "Virtual playlist returned.", data, { verified: true });
+  }
+
+  async savePlaylist(input: {
+    playlist_id?: string;
+    name?: string;
+    description?: string;
+    tracks?: unknown[];
+  }): Promise<OperationResult> {
+    const data = input.playlist_id
+      ? this.context.playlistService.updatePlaylist(input.playlist_id, input)
+      : await this.context.playlistService.createPlaylistResolved(input, {
+          mediaService: this.context.mediaService,
+          logger: this.context.logger
+        });
+    return completed("roon_save_playlist", input.playlist_id ? "Playlist updated." : "Playlist created.", data, { verified: true });
+  }
+
+  editPlaylistTracks(input: {
+    playlist_id: string;
+    operations: Array<Record<string, any>>;
+    confirm?: boolean;
+  }): OperationResult {
+    const destructiveOperations = input.operations.filter((operation) =>
+      operation.type === "remove" || operation.type === "replace"
+    );
+    if (destructiveOperations.length > 0 && !input.confirm) {
+      return {
+        status: "confirmation_required",
+        operation: "roon_edit_playlist_tracks",
+        summary: "Removing or replacing playlist tracks requires confirm=true.",
+        verified: false,
+        data: {
+          playlist_id: input.playlist_id,
+          destructive_operations: destructiveOperations.map((operation) => operation.type)
+        },
+        references: {},
+        warnings: []
+      };
+    }
+    for (const operation of input.operations) {
+      if (operation.type === "add") this.context.playlistService.addTrack(input.playlist_id, operation.track || operation.media);
+      else if (operation.type === "update") this.context.playlistService.updateTrack(input.playlist_id, operation.track_id, operation.changes || {});
+      else if (operation.type === "remove") this.context.playlistService.removeTrack(input.playlist_id, operation.track_id);
+      else if (operation.type === "reorder") this.context.playlistService.reorderTracks(input.playlist_id, operation.track_ids);
+      else if (operation.type === "replace") this.context.playlistService.replaceTracks(input.playlist_id, operation.tracks);
+      else throw new ApiError("INVALID_PLAYLIST_TRACK", "Unsupported playlist track operation", { type: operation.type });
+    }
+    return completed("roon_edit_playlist_tracks", "Playlist track operations completed.", this.context.playlistService.getPlaylist(input.playlist_id), { verified: true });
+  }
+
+  deletePlaylist(input: { playlist_id: string; confirm?: boolean }): OperationResult {
+    if (!input.confirm) {
+      return {
+        status: "confirmation_required",
+        operation: "roon_delete_playlist",
+        summary: "Deleting a playlist requires confirm=true.",
+        verified: false,
+        data: { playlist_id: input.playlist_id },
+        references: {},
+        warnings: []
+      };
+    }
+    return completed("roon_delete_playlist", "Playlist deleted.", this.context.playlistService.deletePlaylist(input.playlist_id), { verified: true });
+  }
+
+  async playPlaylist(input: {
+    playlist_id: string;
+    zone: TargetReference;
+    mode?: "play_now" | "add_next" | "add_to_queue";
+    limit?: number;
+  }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const result = await this.context.playlistService.playPlaylist(
+      this.context.roonClient,
+      input.playlist_id,
+      { zone_id: zone.zone_id, mode: input.mode || "play_now", limit: input.limit },
+      { mediaService: this.context.mediaService, logger: this.context.logger }
+    );
+    return normalizeServiceResult("roon_play_playlist", `Playlist sent to ${zone.display_name}.`, result, true);
+  }
+
+  analyzePlaylist(input: { playlist_id: string; include_duplicates?: boolean }): OperationResult {
+    const validation = this.context.playlistService.validatePlaylist(input.playlist_id);
+    const duplicates = input.include_duplicates
+      ? this.context.playlistService.deduplicatePlaylist(input.playlist_id, { dry_run: true })
+      : null;
+    return completed("roon_analyze_playlist", "Playlist analysis completed.", { validation, duplicates }, { verified: true });
+  }
+
+  async resolvePlaylist(input: { playlist_id: string }): Promise<OperationResult> {
+    const data = await this.context.playlistService.resolveVirtualPlaylistItems(input.playlist_id, {
+      mediaService: this.context.mediaService,
+      logger: this.context.logger
+    });
+    return completed("roon_resolve_playlist", "Playlist identities resolved.", data, { verified: true });
+  }
+
+  exportPlaylist(input: { playlist_id: string; format?: "json" | "csv" | "m3u" }): OperationResult {
+    return completed("roon_export_playlist", "Playlist exported.", this.context.playlistService.exportPlaylist(input.playlist_id, input.format || "json"), { verified: true });
+  }
+
+  importPlaylist(input: { payload: Record<string, unknown>; confirm?: boolean }): OperationResult {
+    const preview = this.context.playlistService.importPlaylist({ ...input.payload, dry_run: true });
+    if ((preview as any).would_update && !input.confirm) {
+      return {
+        status: "confirmation_required",
+        operation: "roon_import_playlist",
+        summary: "Importing this payload would replace an existing playlist and requires confirm=true.",
+        verified: false,
+        data: preview,
+        references: {},
+        warnings: []
+      };
+    }
+    const data = this.context.playlistService.importPlaylist({
+      ...input.payload,
+      dry_run: false,
+      confirm: Boolean(input.confirm)
+    });
+    return completed("roon_import_playlist", "Playlist imported.", data, { verified: true });
+  }
+
+  getConfiguration(input: { resource: "volume_limits" | "zone_presets"; id?: string }): OperationResult {
+    const service = input.resource === "volume_limits" ? this.context.volumeLimitService : this.context.zonePresetService;
+    const data = input.id ? service.get(input.id) : service.list();
+    return completed("roon_get_configuration", `${input.resource} returned.`, data, { verified: true });
+  }
+
+  saveConfiguration(input: {
+    resource: "volume_limit" | "zone_preset";
+    id?: string;
+    value: Record<string, unknown>;
+  }): OperationResult {
+    const data = input.resource === "volume_limit"
+      ? input.id
+        ? this.context.volumeLimitService.update(input.id, input.value)
+        : this.context.volumeLimitService.create(input.value)
+      : input.id
+        ? this.context.zonePresetService.update(input.id, input.value)
+        : this.context.zonePresetService.create(this.context.roonClient, input.value);
+    return completed("roon_save_configuration", `${input.resource} saved.`, data, { verified: true });
+  }
+
+  deleteConfiguration(input: {
+    resource: "volume_limit" | "zone_preset";
+    id: string;
+    confirm?: boolean;
+  }): OperationResult {
+    if (!input.confirm) {
+      return {
+        status: "confirmation_required",
+        operation: "roon_delete_configuration",
+        summary: "Deleting configuration requires confirm=true.",
+        verified: false,
+        data: input,
+        references: {},
+        warnings: []
+      };
+    }
+    if (input.resource === "volume_limit") this.context.volumeLimitService.delete(input.id);
+    else this.context.zonePresetService.delete(input.id);
+    return completed("roon_delete_configuration", `${input.resource} deleted.`, { id: input.id }, { verified: true });
+  }
+
+  async applyZonePreset(input: { preset_id: string; confirm?: boolean }): Promise<OperationResult> {
+    const result = await this.context.zonePresetService.apply(this.context.roonClient, input.preset_id, {
+      confirm: Boolean(input.confirm),
+      volumeLimitService: this.context.volumeLimitService
+    });
+    return normalizeServiceResult("roon_apply_zone_preset", "Zone preset applied.", result, true);
+  }
+
+  runDiagnostics(input: { include_logs?: boolean; include_actions?: boolean }): OperationResult {
+    const state = {
+      core_connected: this.context.roonClient.isCoreConnected(),
+      core_name: this.context.roonClient.getCoreName(),
+      transport_ready: this.context.roonClient.isTransportReady(),
+      browse_ready: this.context.roonClient.isBrowseReady(),
+      image_ready: this.context.roonClient.isImageReady(),
+      zones_count: this.context.roonClient.getZones().length,
+      outputs_count: this.context.roonClient.getOutputs().length
+    };
+    const data = {
+      generated_at: new Date().toISOString(),
+      app: { name: "RoonIA", version: APP_VERSION, mcp_generation: 2 },
+      roon: state,
+      capabilities: {
+        intent_tools: 29,
+        widgets_attached: false,
+        semantic_zone_resolution: true,
+        query_to_action: true,
+        virtual_playlists: true,
+        volume_limits: true,
+        zone_presets: true
+      },
+      recent_errors: input.include_logs !== false
+        ? ((this.context.technicalLogService?.errors(25) as any)?.errors || [])
+        : [],
+      recent_actions: input.include_actions !== false
+        ? ((this.context.actionLogService?.list({ limit: 25 }) as any)?.actions || [])
+        : []
+    };
+    const warnings = [
+      !state.core_connected ? "Roon Core is not connected." : null,
+      !state.transport_ready ? "Roon Transport is not ready." : null,
+      !state.browse_ready ? "Roon Browse is not ready." : null
+    ].filter(Boolean) as string[];
+    return completed("roon_run_diagnostics", "Diagnostics bundle created.", data, {
+      verified: true,
+      warnings
+    });
+  }
+}

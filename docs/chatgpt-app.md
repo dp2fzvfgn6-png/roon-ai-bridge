@@ -1,5 +1,9 @@
 # ChatGPT App
 
+> Current status: ChatGPT is intentionally disconnected while the new MCP v2
+> facade and later widget redesign are developed. The setup and legacy tool
+> examples below are historical and must not be used to validate MCP v2.
+
 v0.12.4 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth, verified playback results and an interactive widget resource.
 
 ## Public URLs

@@ -3,9 +3,7 @@ import { RoonClient } from "./roonClient";
 import { RoonOutput, RoonZone } from "./roonTypes";
 import { getZoneOrThrow } from "./roonZoneService";
 import { requireTransport } from "./roonTransportService";
-
-const VERIFY_TIMEOUT_MS = 8000;
-const VERIFY_INTERVAL_MS = 200;
+import { roonSdkCall, waitForRoonState } from "./roonSdk";
 
 type GroupingMember = {
   output_id: string;
@@ -83,25 +81,21 @@ async function waitForZoneContaining(
   roonClient: RoonClient,
   outputIds: string[]
 ): Promise<RoonZone | null> {
-  const deadline = Date.now() + VERIFY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const groupedZone = roonClient.getZones().find((zone) => {
+  return waitForRoonState(
+    () => roonClient.getZones().find((zone) => {
       const members = new Set((zone.outputs || []).map((output) => output.output_id));
       return outputIds.every((outputId) => members.has(outputId));
-    });
-    if (groupedZone) return groupedZone;
-    await new Promise((resolve) => setTimeout(resolve, VERIFY_INTERVAL_MS));
-  }
-  return null;
+    }) || null,
+    () => true
+  );
 }
 
 async function waitForSeparatedOutputs(
   roonClient: RoonClient,
   outputIds: string[]
 ): Promise<boolean> {
-  const deadline = Date.now() + VERIFY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const allSeparated = outputIds.every((outputId) =>
+  const result = await waitForRoonState(
+    () => outputIds.every((outputId) =>
       roonClient
         .getZones()
         .some(
@@ -109,11 +103,10 @@ async function waitForSeparatedOutputs(
             (zone.outputs || []).length === 1 &&
             zone.outputs?.[0]?.output_id === outputId
         )
-    );
-    if (allSeparated) return true;
-    await new Promise((resolve) => setTimeout(resolve, VERIFY_INTERVAL_MS));
-  }
-  return false;
+    ) ? true : null,
+    (separated) => separated
+  );
+  return result === true;
 }
 
 export async function groupZones(
@@ -148,20 +141,12 @@ export async function groupZones(
   }
   validateGroupCompatibility(outputs);
 
-  await new Promise<void>((resolve, reject) => {
-    transport.group_outputs(outputs, (error: unknown) => {
-      if (error) {
-        reject(
-          new ApiError("OUTPUTS_NOT_GROUPABLE", `Roon grouping failed: ${String(error)}`, {
-            primary_zone_id: primaryZoneId,
-            additional_zone_ids: additionalIds
-          })
-        );
-        return;
-      }
-      resolve();
-    });
-  });
+  await roonSdkCall<void>(
+    "Roon output grouping",
+    (callback) => transport.group_outputs(outputs, callback),
+    { primary_zone_id: primaryZoneId, additional_zone_ids: additionalIds },
+    { errorCode: "OUTPUTS_NOT_GROUPABLE" }
+  );
 
   const outputIds = outputs.map((output) => output.output_id);
   const groupedZone = await waitForZoneContaining(roonClient, outputIds);
@@ -202,19 +187,11 @@ export async function ungroupZone(
     });
   }
 
-  await new Promise<void>((resolve, reject) => {
-    transport.ungroup_outputs(outputs, (error: unknown) => {
-      if (error) {
-        reject(
-          new ApiError("INTERNAL_ERROR", `Roon ungrouping failed: ${String(error)}`, {
-            zone_id: zoneId
-          })
-        );
-        return;
-      }
-      resolve();
-    });
-  });
+  await roonSdkCall<void>(
+    "Roon output ungrouping",
+    (callback) => transport.ungroup_outputs(outputs, callback),
+    { zone_id: zoneId }
+  );
 
   const outputIds = outputs.map((output) => output.output_id);
   if (!(await waitForSeparatedOutputs(roonClient, outputIds))) {

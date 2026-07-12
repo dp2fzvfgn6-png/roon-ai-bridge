@@ -249,8 +249,12 @@ select { color-scheme: dark; }
 .playlist-cover { width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--surface); }
 .playlist-cover img { width: 100%; height: 100%; object-fit: cover; transition: filter .15s, opacity .2s; }
 .playlist-card:hover .playlist-cover img { filter: brightness(.72); }
-.playlist-collage { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(var(--collage-columns),minmax(0,1fr)); grid-template-rows: repeat(var(--collage-columns),minmax(0,1fr)); gap: 0; padding: 0; box-sizing: border-box; overflow: hidden; background: #000; }
-.playlist-collage > img { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; object-fit: cover; object-position: center; overflow: hidden; }
+.playlist-collage { width: 100%; height: 100%; display: grid; gap: 0; padding: 0; box-sizing: border-box; overflow: hidden; background: #000; }
+.playlist-collage.collage-2x2 { grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: repeat(2,minmax(0,1fr)); }
+.playlist-collage.collage-3x3 { grid-template-columns: repeat(3,minmax(0,1fr)); grid-template-rows: repeat(3,minmax(0,1fr)); }
+.playlist-collage.collage-4x4 { grid-template-columns: repeat(4,minmax(0,1fr)); grid-template-rows: repeat(4,minmax(0,1fr)); }
+.playlist-collage > img { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; object-fit: cover; object-position: center; overflow: hidden; transition: opacity .18s ease, transform .18s ease, filter .15s; }
+.playlist-collage > img.collage-changing { opacity: .18; transform: scale(.94); }
 .playlist-custom-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .playlist-custom-cover { width: 100%; height: 100%; overflow: hidden; }
 .playlist-hero-artwork { width: 210px; aspect-ratio: 1; overflow: hidden; background: var(--surface); }

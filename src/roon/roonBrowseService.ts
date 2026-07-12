@@ -2,6 +2,7 @@ import { ApiError } from "../utils/errors";
 import { cleanRoonDisplayText, hasRoonDisplayLink } from "./roonText";
 import { RoonClient } from "./roonClient";
 import { getZoneOrThrow } from "./roonZoneService";
+import { RoonBrowseApi, roonSdkCall } from "./roonSdk";
 
 export type BrowseHierarchy =
   | "browse"
@@ -118,40 +119,33 @@ type ItemKeyActionRequest = {
 
 export const browseImplemented = true;
 
-export function requireBrowse(roonClient: RoonClient): any {
+export function requireBrowse(roonClient: RoonClient): RoonBrowseApi {
   if (!roonClient.isCoreConnected()) {
     throw new ApiError("ROON_NOT_CONNECTED", "Roon Core is not connected");
   }
 
-  if (!roonClient.isBrowseReady() || !roonClient.getBrowse()) {
+  const browse = roonClient.getBrowse();
+  if (!roonClient.isBrowseReady() || !browse) {
     throw new ApiError("BROWSE_NOT_READY", "Roon browse is not ready");
   }
 
-  return roonClient.getBrowse();
+  return browse;
 }
 
-export function browseCall(browse: any, opts: Record<string, unknown>): Promise<any> {
-  return new Promise((resolve, reject) => {
-    browse.browse(opts, (error: string | false, body: any) => {
-      if (error) {
-        reject(new ApiError("INTERNAL_ERROR", String(error), { opts }));
-        return;
-      }
-      resolve(body);
-    });
-  });
+export function browseCall(browse: RoonBrowseApi, opts: Record<string, unknown>): Promise<any> {
+  return roonSdkCall<any>(
+    "Roon browse",
+    (callback) => browse.browse(opts, callback),
+    { opts }
+  );
 }
 
-export function loadCall(browse: any, opts: Record<string, unknown>): Promise<any> {
-  return new Promise((resolve, reject) => {
-    browse.load(opts, (error: string | false, body: any) => {
-      if (error) {
-        reject(new ApiError("INTERNAL_ERROR", String(error), { opts }));
-        return;
-      }
-      resolve(body);
-    });
-  });
+export function loadCall(browse: RoonBrowseApi, opts: Record<string, unknown>): Promise<any> {
+  return roonSdkCall<any>(
+    "Roon browse load",
+    (callback) => browse.load(opts, callback),
+    { opts }
+  );
 }
 
 function asItems(value: unknown): BrowseItem[] {
@@ -380,7 +374,7 @@ function actionItems(items: BrowseItem[]): BrowseItem[] {
 }
 
 export async function loadCurrentList(
-  browse: any,
+  browse: RoonBrowseApi,
   hierarchy: BrowseHierarchy | "search",
   sessionKey: string | undefined,
   offset: number,

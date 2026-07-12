@@ -23,13 +23,24 @@ function createClient(onTransfer) {
       }
     ]
   ]);
+  const queues = new Map([
+    ["office", [{ queue_item_id: 1, title: "Track one", subtitle: "Artist" }]],
+    ["kitchen", []]
+  ]);
 
   return {
     isCoreConnected: () => true,
     isTransportReady: () => true,
     getTransport: () => ({
+      subscribe_queue(zone, count, callback) {
+        callback("Subscribed", { items: (queues.get(zone.zone_id) || []).slice(0, count) });
+        return { unsubscribe(done) { if (done) done(); } };
+      },
       transfer_zone(source, target, callback) {
         onTransfer(source, target);
+        target.state = source.state;
+        target.now_playing = source.now_playing;
+        queues.set(target.zone_id, [...(queues.get(source.zone_id) || [])]);
         callback(false);
       }
     }),
@@ -52,7 +63,9 @@ test("transfers the native Roon queue and playback between zones", async () => {
     source_zone_name: "Despacho",
     target_zone_id: "kitchen",
     target_zone_name: "Cocina",
-    transferred: "queue_and_playback"
+    transferred: "queue_and_playback",
+    state_verified: true,
+    final_target_state: calls[0].target
   });
 });
 

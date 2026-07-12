@@ -2085,7 +2085,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     {
       title: "Change Roon Output Volume",
       description:
-        "Use this for one output, especially incremental outputs that require relative_step instead of zone-wide absolute volume.",
+        "Use this for one output. Incremental outputs require relative mode with value -1 or 1; relative_step is only for outputs that expose stepped numeric volume.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,

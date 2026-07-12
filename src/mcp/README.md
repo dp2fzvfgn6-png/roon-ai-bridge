@@ -1,158 +1,95 @@
 # MCP Server
 
-v0.10 adds SQLite-backed virtual playlist management, alongside the typed media tools, structured results and interactive widget from v0.9.
+The active MCP endpoint is implemented by `src/bridge-v2`. The previous
+`src/mcp/mcpTools.ts` catalog is retained temporarily as disconnected legacy
+code and is not registered by either Streamable HTTP or stdio.
 
-A local MCP client can launch stdio as a command from the LXC or another trusted shell that has access to the project.
+The v2 facade is intentionally data-only. No tool advertises a widget resource
+or `openai/outputTemplate`; interactive components will be built in a later
+phase after the contracts are stable.
 
-Build first:
+## Design rules
 
-```bash
-npm run build
+- One model-visible tool represents one user intent.
+- Zones and outputs accept `{ id }` or `{ name }`; clients must not list state
+  merely to translate a name into an ID.
+- Playback and enqueue tools accept either a temporary `result_id` or a query.
+  Search and target resolution happen inside the intent call.
+- Ambiguous media never causes playback. The result has `status: "ambiguous"`
+  and returns candidates for an explicit follow-up choice.
+- Every result uses the same discriminated envelope.
+- `content` contains only a concise summary. Reusable data is returned once in
+  `structuredContent`.
+- Destructive operations require `confirm: true`.
+- No unavailable extension-management operations are advertised.
+
+## Result envelope
+
+```json
+{
+  "status": "completed",
+  "operation": "roon_play_media",
+  "summary": "Media start accepted in Despacho.",
+  "verified": false,
+  "data": {},
+  "references": {},
+  "warnings": []
+}
 ```
 
-Run from the project directory:
+Possible statuses are `completed`, `ambiguous`, `confirmation_required`,
+`not_available` and `failed`.
 
-```bash
-DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
-```
+## Active tools
 
-Remote MCP endpoint:
+System and transport:
 
-```text
-https://roonia.ipchome.com/mcp
-```
-
-The current ChatGPT App widget resource is:
-
-```text
-ui://roon-ai-bridge/control-v6/default.html
-```
-
-After changes to tool schemas, descriptions or widget resources, refresh the
-ChatGPT app configuration and use a new conversation so cached metadata is not
-reused.
-
-The remote endpoint accepts OAuth access tokens issued to ChatGPT. The administrative `API_TOKEN` remains valid for direct testing.
-
-Implemented tools:
-
-- `roon_status`
-- `roon_list_zones`
+- `roon_get_state`
 - `roon_control_playback`
-- `roon_change_volume`
+- `roon_set_volume`
+- `roon_control_output`
+- `roon_set_playback_options`
+- `roon_set_grouping`
 - `roon_transfer_playback`
-- `roon_group_zones`
-- `roon_ungroup_zone`
-- `roon_search`
-- `roon_play_by_query`
-- `roon_get_queue`
-- `roon_queue_by_query`
-- `roon_play_queue_item_from_here`
-- `roon_list_virtual_playlists`
-- `roon_create_virtual_playlist`
-- `roon_get_virtual_playlist`
-- `roon_update_virtual_playlist`
-- `roon_set_virtual_playlist_cover_image`
-- `roon_delete_virtual_playlist`
-- `roon_add_virtual_playlist_track`
-- `roon_update_virtual_playlist_track`
-- `roon_remove_virtual_playlist_track`
-- `roon_replace_virtual_playlist_tracks`
-- `roon_reorder_virtual_playlist_tracks`
-- `roon_resolve_virtual_playlist`
-- `roon_play_virtual_playlist`
+
+Media and queue:
+
 - `roon_search_media`
-- `roon_get_media_details`
-- `roon_list_artist_releases`
+- `roon_get_media_entity`
 - `roon_play_media`
+- `roon_enqueue_media`
 - `roon_start_radio`
-- `roon_add_media_to_queue`
-- `roon_list_outputs`
-- `roon_seek`
-- `roon_mute_output`
-- `roon_change_output_volume`
-- `roon_mute_all`
-- `roon_pause_all`
-- `roon_output_power`
-- `roon_change_playback_settings`
-- `roon_restart_queue`
-- `roon_run_browse_action`
-- `roon_get_image`
+- `roon_get_queue`
+- `roon_play_queue_item`
 
-`roon_create_virtual_playlist`, `roon_add_virtual_playlist_track` and
-`roon_replace_virtual_playlist_tracks` store permanent RoonIA track identities
-and try to match them against Roon search automatically. `roon_item_key` and
-`result_id` are temporary Browse references only. Playback reconstructs fresh
-references from identity metadata and never executes a persisted item key. Use
-`roon_resolve_virtual_playlist` to retry missing, stale or ambiguous identities.
-`roon_search_media` returns `image_key` metadata without base64 artwork unless
-`include_images` is true.
+Virtual playlists:
 
-`roon_set_virtual_playlist_cover_image` accepts a JPEG, PNG or WebP data URL,
-or base64 bytes plus `content_type`, and stores a persistent custom cover. When
-no custom cover exists, the portal builds an animated collage from the playlist
-tracks automatically.
+- `roon_list_playlists`
+- `roon_get_playlist`
+- `roon_save_playlist`
+- `roon_edit_playlist_tracks`
+- `roon_delete_playlist`
+- `roon_play_playlist`
+- `roon_analyze_playlist`
+- `roon_resolve_playlist`
+- `roon_export_playlist`
+- `roon_import_playlist`
 
-Contract notes:
+Configuration and operations:
 
-- Tool errors return `{ ok: false, error: { code, message, details } }`.
-- `roon_list_zones` omits `image_data_url` unless `include_image_data` is true.
-- `roon_list_virtual_playlists` defaults to summaries only and supports
-  `limit`, `offset`, `track_limit` and `track_offset`.
-- `roon_get_virtual_playlist` supports `include_tracks`, `limit`, and `offset`
-  so a single long playlist can be read in bounded pages.
-- `roon_update_virtual_playlist_track` reorders the playlist when a 1-based
-  `position` is supplied; omit `position` for metadata-only updates.
-- `roon_search_media` returns typed media results with `result_id`, `type`,
-  `title`, `artist`, `album`, `album_artist`, `source`, `quality`,
-  `is_library`, `roon_item_key` and `image_key`. Missing source/quality stays
-  `unknown`/`null`; `is_library` is `null` when Roon does not expose enough
-  metadata.
-- `roon_get_media_details` reads a non-expired `result_id` from the current
-  search session.
-- `roon_control_playback` is idempotent for already-paused pause requests and
-  already-playing play requests.
-- Priority mutating tools accept `dry_run:true` and return a structured plan
-  instead of executing. This includes playback, queue, volume, grouping,
-  transfer and virtual playlist mutations.
-- `roon_delete_virtual_playlist`, `roon_remove_virtual_playlist_track` and
-  `roon_replace_virtual_playlist_tracks` require `confirm:true` unless
-  `dry_run:true` is supplied.
-- `roon_change_volume` accepts `confirm:true` only for the case where an
-  increase exceeds the configured RoonIA safe limit. Decreases and changes
-  within the safe limit execute directly. Device/Roon hard limits are always
-  enforced.
-- `roon_change_volume` validates supported volume ranges and returns refreshed
-  output state plus `volume_policy`.
+- `roon_get_configuration`
+- `roon_save_configuration`
+- `roon_delete_configuration`
+- `roon_apply_zone_preset`
+- `roon_run_diagnostics`
 
-Safety metadata for portal and app clients is available from:
+## Running locally
 
-```text
-GET /safety/policy
+```powershell
+pnpm run build
+pnpm run mcp
 ```
 
-The policy includes per-tool classification, confirmation rules and initial
-safe volume limits for Salon/Salón (`35`), Despacho (`35`) and Cocina (`19`).
-
-Future phases still need resource-bound tokens, enforced scopes, revocation/refresh support and per-user authorization before broader app distribution.
-## ChatGPT widget tools
-
-v0.15.0 adds renderable, reusable widget contracts for ChatGPT Apps and the
-RoonIA portal. The widget resource URI is cache-busted as
-`ui://roon-ai-bridge/control-v8/{tool}.html`.
-
-Tools:
-
-- `roon_get_now_playing_widget`
-- `roon_now_playing_widget_action`
-- `roon_get_playlists_widget`
-- `roon_get_playlist_detail_widget`
-- `roon_playlist_widget_action`
-- `roon_get_media_search_widget`
-- `roon_media_search_widget_action`
-- `roon_open_media_entity_widget`
-- `roon_get_image_url`
-
-Widget payloads include `widget_type`, `view` where relevant, explicit
-`actions`, and `navigation`. Artwork is exposed through `image_key` and
-`image_url`; large base64 images are not included in widget state.
+`POST /mcp` exposes the same catalog over Streamable HTTP. ChatGPT is currently
+disconnected intentionally; reconnect and live evaluation belong to a later
+phase after the widget work.

@@ -4,6 +4,10 @@ const express = require("express");
 const app = express();
 const root = path.resolve(__dirname, "..");
 app.use(express.json());
+app.use((_req,res,next)=>{
+  res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  next();
+});
 
 const albums = {
   moon: ["#dba766", "#37261e", "Moon Safari", "AIR"],

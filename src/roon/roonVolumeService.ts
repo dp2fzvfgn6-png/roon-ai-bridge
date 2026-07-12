@@ -13,6 +13,7 @@ import {
   dryRunResponse,
   getToolClassification
 } from "../safety/actionSafety";
+import { roonSdkCall, waitForRoonState } from "./roonSdk";
 
 export type VolumeOutputState = {
   output_id: string;
@@ -32,6 +33,7 @@ export type VolumeChangeResult = {
   value: number;
   outputs: VolumeOutputState[];
   volume_policy: ZoneVolumePolicy;
+  state_verified: boolean;
 };
 
 function volumeCapableOutputs(zone: RoonZone): RoonOutput[] {
@@ -78,12 +80,17 @@ function validateVolume(
   const incrementalOutputs = outputs.filter(
     (output) => output.volume?.type === "incremental"
   );
-  if (mode === "absolute" && incrementalOutputs.length > 0) {
+  if (
+    incrementalOutputs.length > 0 &&
+    (mode !== "relative" || Math.abs(value) !== 1)
+  ) {
     throw new ApiError(
-      "VOLUME_NOT_SUPPORTED",
-      "Absolute volume is not supported for incremental-only outputs",
+      "INVALID_VOLUME_VALUE",
+      "Incremental outputs require relative volume with a value of -1 or 1",
       {
-        outputs: incrementalOutputs.map((output) => output.display_name)
+        outputs: incrementalOutputs.map((output) => output.display_name),
+        mode,
+        value
       }
     );
   }
@@ -203,28 +210,42 @@ export async function changeZoneVolume(
   }
 
   const transport = requireTransport(roonClient);
-  await Promise.all(
-    outputs.map(
-      (output) =>
-        new Promise<void>((resolve, reject) => {
-          transport.change_volume(output, mode, value, (error: unknown) => {
-            if (error) {
-              reject(
-                new ApiError("INTERNAL_ERROR", String(error), {
-                  output_id: output.output_id,
-                  mode,
-                  value
-                })
-              );
-              return;
-            }
-            resolve();
-          });
-        })
-    )
+  const expectedValues = new Map(
+    outputs
+      .map((output) => [output.output_id, projectedVolume(output, mode, value)] as const)
+      .filter((entry): entry is readonly [string, number] => entry[1] !== null)
   );
+  const appliedOutputIds: string[] = [];
+  for (const output of outputs) {
+    try {
+      await roonSdkCall<void>(
+        "Roon volume change",
+        (callback) => transport.change_volume(output, mode, value, callback),
+        { output_id: output.output_id, mode, value }
+      );
+      appliedOutputIds.push(output.output_id);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new ApiError(error.code, error.message, {
+          ...error.details,
+          applied_output_ids: appliedOutputIds,
+          partially_applied: appliedOutputIds.length > 0
+        }, error.status);
+      }
+      throw error;
+    }
+  }
 
-  const refreshedZone = roonClient.getZone(zoneId) || zone;
+  const verifiedZone = expectedValues.size > 0
+    ? await waitForRoonState(
+        () => roonClient.getZone(zoneId),
+        (candidate) => Array.from(expectedValues.entries()).every(([outputId, expected]) => {
+          const actual = candidate.outputs?.find((output) => output.output_id === outputId)?.volume?.value;
+          return typeof actual === "number" && Math.abs(actual - expected) < 0.001;
+        })
+      )
+    : null;
+  const refreshedZone = verifiedZone || roonClient.getZone(zoneId) || zone;
   return {
     ok: true,
     action: "roon_change_volume",
@@ -235,6 +256,7 @@ export async function changeZoneVolume(
     mode,
     value,
     outputs: volumeCapableOutputs(refreshedZone).map(outputState),
-    volume_policy: volumePolicy
+    volume_policy: volumePolicy,
+    state_verified: Boolean(verifiedZone)
   };
 }

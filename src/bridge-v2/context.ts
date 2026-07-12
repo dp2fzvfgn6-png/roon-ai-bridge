@@ -1,0 +1,28 @@
+import { AppConfig } from "../config/env";
+import { RoonClient } from "../roon/roonClient";
+import { RoonMediaService } from "../roon/roonMediaService";
+import { PlaylistService } from "../services/playlistService";
+import { ZonePresetService } from "../services/zonePresetService";
+import { VolumeLimitService } from "../services/volumeLimitService";
+import { DiagnosticsService } from "../services/diagnosticsService";
+import { ActionLogService } from "../services/actionLogService";
+import { TechnicalLogService } from "../services/technicalLogService";
+import { ToolAccessService } from "../services/toolAccessService";
+import { ApiKeyRecord } from "../services/apiKeyService";
+import { Logger } from "../utils/logger";
+
+export type BridgeV2Context = {
+  config: AppConfig;
+  logger: Logger;
+  roonClient: RoonClient;
+  mediaService: RoonMediaService;
+  playlistService: PlaylistService;
+  zonePresetService: ZonePresetService;
+  volumeLimitService: VolumeLimitService;
+  diagnosticsService?: DiagnosticsService;
+  actionLogService?: ActionLogService;
+  technicalLogService?: TechnicalLogService;
+  toolAccessService?: ToolAccessService;
+  activeApiKey?: ApiKeyRecord | null;
+  manifestMode?: boolean;
+};

@@ -4,6 +4,7 @@ import { RoonClient } from "./roonClient";
 import { RoonOutput, RoonZone } from "./roonTypes";
 import { requireTransport } from "./roonTransportService";
 import { getZoneOrThrow } from "./roonZoneService";
+import { roonSdkCall } from "./roonSdk";
 
 type TransportSettings = {
   shuffle?: boolean;
@@ -15,15 +16,26 @@ function transportCall(
   invoke: (callback: (error: string | false) => void) => void,
   operation: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    invoke((error) => {
-      if (error) {
-        reject(new ApiError("INTERNAL_ERROR", `${operation} failed`, { error }));
-        return;
-      }
-      resolve();
+  return roonSdkCall<void>(operation, invoke);
+}
+
+function validateOutputVolumeCommand(
+  output: RoonOutput,
+  mode: "absolute" | "relative" | "relative_step",
+  value: number
+): void {
+  if (!output.volume) {
+    throw new ApiError("VOLUME_NOT_SUPPORTED", "Volume is not supported by this output", {
+      output_id: output.output_id
     });
-  });
+  }
+  if (output.volume.type === "incremental" && (mode !== "relative" || Math.abs(value) !== 1)) {
+    throw new ApiError(
+      "INVALID_VOLUME_VALUE",
+      "Incremental outputs require relative volume with a value of -1 or 1",
+      { output_id: output.output_id, mode, value }
+    );
+  }
 }
 
 function getOutputOrThrow(roonClient: RoonClient, outputId: string): RoonOutput {
@@ -85,7 +97,7 @@ export async function seekZone(
     (callback) => transport.seek(zone, mode, seconds, callback),
     "seek"
   );
-  return { ok: true, zone_id: zoneId, mode, seconds };
+  return { ok: true, zone_id: zoneId, mode, seconds, state_verified: false };
 }
 
 export async function muteOutput(
@@ -102,7 +114,7 @@ export async function muteOutput(
     (callback) => transport.mute(output, how, callback),
     "mute"
   );
-  return { ok: true, output_id: outputId, action: how };
+  return { ok: true, output_id: outputId, action: how, state_verified: false };
 }
 
 export async function changeOutputVolume(
@@ -119,11 +131,12 @@ export async function changeOutputVolume(
   if (!Number.isFinite(value)) {
     throw new ApiError("INVALID_VOLUME_VALUE", "Volume value must be numeric");
   }
+  validateOutputVolumeCommand(output, mode, value);
   await transportCall(
     (callback) => transport.change_volume(output, mode, value, callback),
     "change output volume"
   );
-  return { ok: true, output_id: outputId, mode, value };
+  return { ok: true, output_id: outputId, mode, value, state_verified: false };
 }
 
 export async function muteAll(
@@ -135,7 +148,7 @@ export async function muteAll(
     throw new ApiError("INVALID_MUTE_ACTION", "Mute action must be mute or unmute");
   }
   await transportCall((callback) => transport.mute_all(how, callback), "mute_all");
-  return { ok: true, action: how };
+  return { ok: true, action: how, state_verified: false };
 }
 
 export async function pauseAll(
@@ -143,7 +156,7 @@ export async function pauseAll(
 ): Promise<Record<string, unknown>> {
   const transport = requireTransport(roonClient);
   await transportCall((callback) => transport.pause_all(callback), "pause_all");
-  return { ok: true, action: "pause_all" };
+  return { ok: true, action: "pause_all", state_verified: false };
 }
 
 export async function outputPowerAction(
@@ -159,10 +172,20 @@ export async function outputPowerAction(
     throw new ApiError("UNSUPPORTED_COMMAND", "Unsupported output power action");
   }
   await transportCall(
-    (callback) => transport[action](output, options, callback),
+    (callback) => {
+      if (action === "standby") transport.standby(output, options, callback);
+      else if (action === "toggle_standby") transport.toggle_standby(output, options, callback);
+      else transport.convenience_switch(output, options, callback);
+    },
     action
   );
-  return { ok: true, output_id: outputId, action, control_key: controlKey || null };
+  return {
+    ok: true,
+    output_id: outputId,
+    action,
+    control_key: controlKey || null,
+    state_verified: false
+  };
 }
 
 export async function changeZoneSettings(
@@ -195,7 +218,7 @@ export async function changeZoneSettings(
     (callback) => transport.change_settings(zone, accepted, callback),
     "change_settings"
   );
-  return { ok: true, zone_id: zoneId, settings: accepted };
+  return { ok: true, zone_id: zoneId, settings: accepted, state_verified: false };
 }
 
 export async function restartQueuePlayback(

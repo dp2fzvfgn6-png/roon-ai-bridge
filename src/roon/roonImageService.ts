@@ -1,5 +1,6 @@
 import { ApiError } from "../utils/errors";
 import { RoonClient } from "./roonClient";
+import { roonSdkCall } from "./roonSdk";
 
 export type RoonImageOptions = {
   scale?: "fit" | "fill" | "stretch";
@@ -43,8 +44,9 @@ export async function getRoonImage(
     throw new ApiError("INVALID_IMAGE_REQUEST", "Unsupported image scale");
   }
 
-  return new Promise((resolve, reject) => {
-    image.get_image(
+  return roonSdkCall(
+    "Roon image load",
+    (callback) => image.get_image(
       imageKey,
       {
         scale,
@@ -52,15 +54,10 @@ export async function getRoonImage(
         height: Math.floor(height),
         ...(options.format ? { format: options.format } : {})
       },
-      (error: string | false, contentType: string, bytes: Buffer) => {
-        if (error) {
-          reject(new ApiError("IMAGE_NOT_READY", "Roon image could not be loaded", {
-            error
-          }));
-          return;
-        }
-        resolve({ contentType, bytes });
-      }
-    );
-  });
+      (error: string | false, contentType: string, bytes: Buffer) =>
+        callback(error, { contentType, bytes })
+    ),
+    { image_key: imageKey },
+    { errorCode: "IMAGE_NOT_READY" }
+  );
 }

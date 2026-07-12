@@ -2,6 +2,7 @@ import { ApiError } from "../utils/errors";
 import { RoonClient } from "./roonClient";
 import { getZoneOrThrow } from "./roonZoneService";
 import { requireTransport } from "./roonTransportService";
+import { roonSdkCall } from "./roonSdk";
 
 export const queueImplemented = true;
 
@@ -54,11 +55,9 @@ export async function getQueueSnapshot(
       settled = true;
       if (subscription) {
         try {
-          subscription.unsubscribe(() => callback());
-          return;
+          subscription.unsubscribe();
         } catch {
-          callback();
-          return;
+          // The snapshot result is still valid even if cleanup fails.
         }
       }
       callback();
@@ -100,14 +99,27 @@ export async function getQueueSnapshot(
         })
       );
     });
+    if (settled && subscription) {
+      try {
+        subscription.unsubscribe();
+      } catch {
+        // Synchronous subscription callbacks may settle before assignment.
+      }
+    }
   });
 }
 
 export async function playQueueItemFromHere(
   roonClient: RoonClient,
   zoneId: string,
-  queueItemId: string | number
-): Promise<{ ok: true; zone_id: string; queue_item_id: string | number }> {
+  queueItemId: string | number,
+  options: { timeoutMs?: number } = {}
+): Promise<{
+  ok: true;
+  zone_id: string;
+  queue_item_id: string | number;
+  state_verified: false;
+}> {
   const transport = requireTransport(roonClient);
   const zone = getZoneOrThrow(roonClient, zoneId);
 
@@ -121,39 +133,20 @@ export async function playQueueItemFromHere(
     throw new ApiError("INVALID_QUEUE_ITEM_ID", "queue_item_id is required");
   }
 
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const finish = (callback: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      callback();
-    };
-
-    const timer = setTimeout(() => {
-      finish(resolve);
-    }, 1500);
-
-    transport.play_from_here(zone, queueItemId, (msg: unknown, body: unknown) => {
-      const name =
-        msg && typeof msg === "object" && "name" in msg
-          ? String((msg as { name?: unknown }).name)
-          : null;
-
-      if (name && name !== "Success") {
-        finish(() =>
-          reject(new ApiError("INTERNAL_ERROR", name, { zone_id: zoneId, body }))
-        );
-        return;
-      }
-
-      finish(resolve);
-    });
-  });
+  await roonSdkCall<void>(
+    "Roon play queue item",
+    (callback) => transport.play_from_here(zone, queueItemId, (message) => {
+      const name = message?.name || "NetworkError";
+      callback(name === "Success" ? false : name, undefined);
+    }),
+    { zone_id: zoneId, queue_item_id: queueItemId },
+    { timeoutMs: options.timeoutMs }
+  );
 
   return {
     ok: true,
     zone_id: zoneId,
-    queue_item_id: queueItemId
+    queue_item_id: queueItemId,
+    state_verified: false
   };
 }

@@ -48,12 +48,70 @@ test("applies relative volume to every grouped output and returns refreshed stat
     ["two", "relative", -1]
   ]);
   assert.equal(result.ok, true);
+  assert.equal(result.state_verified, true);
   assert.deepEqual(
     result.outputs.map((output) => [output.output_id, output.volume.value]),
     [
       ["one", 19],
       ["two", 9]
     ]
+  );
+});
+
+test("incremental outputs only accept relative -1 or 1 commands", async () => {
+  const zone = {
+    zone_id: "incremental",
+    display_name: "Incremental",
+    state: "paused",
+    outputs: [{
+      output_id: "inc",
+      display_name: "IR volume",
+      volume: { type: "incremental" }
+    }]
+  };
+  const client = createClient(zone, () => {
+    throw new Error("invalid incremental command reached Roon");
+  });
+
+  await assert.rejects(
+    () => changeZoneVolume(client, "incremental", "relative_step", 1),
+    (error) => error.code === "INVALID_VOLUME_VALUE"
+  );
+  await assert.rejects(
+    () => changeZoneVolume(client, "incremental", "relative", 2),
+    (error) => error.code === "INVALID_VOLUME_VALUE"
+  );
+});
+
+test("reports outputs already changed when a grouped volume mutation partially fails", async () => {
+  const zone = {
+    zone_id: "grouped",
+    display_name: "Grouped",
+    state: "paused",
+    outputs: [
+      { output_id: "one", display_name: "One", volume: { type: "number", min: 0, max: 50, value: 10 } },
+      { output_id: "two", display_name: "Two", volume: { type: "number", min: 0, max: 50, value: 10 } }
+    ]
+  };
+  const client = createClient(zone, (output) => {
+    if (output.output_id === "two") return;
+    output.volume.value += 1;
+  });
+  client.getTransport = () => ({
+    change_volume(output, mode, value, callback) {
+      if (output.output_id === "two") callback("Failure");
+      else {
+        output.volume.value += value;
+        callback(false);
+      }
+    }
+  });
+
+  await assert.rejects(
+    () => changeZoneVolume(client, "grouped", "relative", 1),
+    (error) =>
+      error.details.partially_applied === true &&
+      error.details.applied_output_ids[0] === "one"
   );
 });
 

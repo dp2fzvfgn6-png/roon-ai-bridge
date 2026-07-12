@@ -94,6 +94,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.equal(portalStyles.status, 200);
     const portalStylesText = await portalStyles.text();
     assert.match(portalStylesText, /\.playlist-collage \{[^}]*gap: 0;[^}]*padding: 0;[^}]*background: #000;/);
+    assert.match(portalStylesText, /\.playlist-collage\.collage-2x2 \{[^}]*repeat\(2,/);
+    assert.match(portalStylesText, /\.playlist-collage\.collage-3x3 \{[^}]*repeat\(3,/);
+    assert.match(portalStylesText, /\.playlist-collage\.collage-4x4 \{[^}]*repeat\(4,/);
     assert.match(portalStylesText, /\.playlist-collage > img \{[^}]*min-width: 0;[^}]*object-fit: cover;[^}]*object-position: center;/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
@@ -111,9 +114,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /keys\.length<=4\?2:keys\.length<=9\?3:4/);
     assert.match(portalScriptText, /capacity=columns\*columns/);
     assert.match(portalScriptText, /collage-\$\{columns\}x\$\{columns\}/);
+    assert.doesNotMatch(portalScriptText, /style="--collage-columns/);
     assert.doesNotMatch(portalScriptText, /collage-tile/);
     assert.match(portalScriptText, /500,"fill"/);
-    assert.doesNotMatch(portalScriptText, /animatePlaylistCollages/);
+    assert.match(portalScriptText, /setInterval\(animatePlaylistCollages,2600\)/);
+    assert.match(portalScriptText, /prefers-reduced-motion: reduce/);
     assert.match(portalScriptText, /playlist-cover-file/);
     assert.match(portalScriptText, /event\.target!==dialog/);
     assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
@@ -184,8 +189,9 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     const tools = await toolsResponse.json();
-    assert.ok(tools.tools.some((tool) => tool.name === "roon_status"));
-    const disabledToolResponse = await fetch(`${baseUrl}/api/admin/tools/roon_status`, {
+    assert.ok(tools.tools.some((tool) => tool.name === "roon_get_state"));
+    assert.equal(tools.tools.some((tool) => tool.name === "roon_status"), false);
+    const disabledToolResponse = await fetch(`${baseUrl}/api/admin/tools/roon_get_state`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${setupBody.token}`,

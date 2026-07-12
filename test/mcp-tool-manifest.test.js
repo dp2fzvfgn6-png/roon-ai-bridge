@@ -5,11 +5,11 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { createServer } = require("../dist/api/server");
-const { registerRoonMcpTools } = require("../dist/mcp/mcpTools");
+const { registerBridgeV2Tools } = require("../dist/bridge-v2/mcp/tools");
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
 const { VolumeLimitService } = require("../dist/services/volumeLimitService");
-const { roonControlWidgetUriForTool } = require("../dist/mcp/appResources");
+const { ZonePresetService } = require("../dist/services/zonePresetService");
 
 function createConfig(dataDir) {
   return {
@@ -33,88 +33,89 @@ function createConfig(dataDir) {
   };
 }
 
+function createContext(config, database) {
+  const noop = () => {};
+  return {
+    config,
+    logger: { info: noop, warn: noop, error: noop, debug: noop },
+    roonClient: {
+      getZones: () => [],
+      getOutputs: () => [],
+      getKnownOutputs: () => [],
+      getZone: () => null,
+      getOutput: () => null,
+      isCoreConnected: () => false,
+      getCoreName: () => null,
+      isTransportReady: () => false,
+      isBrowseReady: () => false,
+      isImageReady: () => false
+    },
+    playlistService: new PlaylistService(config, database),
+    mediaService: {},
+    zonePresetService: new ZonePresetService(config, database),
+    volumeLimitService: new VolumeLimitService(config, database),
+    oauthService: {},
+    apiKeyService: {},
+    portalAuthService: {},
+    systemManagementService: {},
+    outputVolumeSettingsService: {}
+  };
+}
+
 async function readMcpJson(response) {
   const text = await response.text();
   if ((response.headers.get("content-type") || "").includes("text/event-stream")) {
-    const dataLine = text
-      .split(/\r?\n/)
-      .find((line) => line.startsWith("data: "));
+    const dataLine = text.split(/\r?\n/).find((line) => line.startsWith("data: "));
     assert.ok(dataLine, `Expected SSE data line, got: ${text}`);
     return JSON.parse(dataLine.slice("data: ".length));
   }
   return JSON.parse(text);
 }
 
-test("registers tool-specific descriptions instead of reusing roon_status copy", () => {
+test("registers the compact data-only MCP v2 intent catalog", () => {
   const tools = new Map();
   const server = {
     registerTool(name, options, handler) {
       tools.set(name, { options, handler });
     }
   };
-  const noop = () => {};
   const context = {
-    logger: { info: noop, warn: noop, error: noop, debug: noop }
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    roonClient: {},
+    volumeLimitService: {}
   };
 
-  registerRoonMcpTools(server, context);
+  registerBridgeV2Tools(server, context);
 
-  const statusDescription = tools.get("roon_status").options.description;
-  assert.equal(statusDescription, "Return Roon Core connection status and service readiness.");
-
-  for (const [name, registration] of tools.entries()) {
-    assert.ok(registration.options.description, `${name} should have a description`);
-    if (name !== "roon_status") {
-      assert.notEqual(
-        registration.options.description,
-        statusDescription,
-        `${name} must not reuse roon_status description`
-      );
-    }
+  assert.equal(tools.size, 29);
+  for (const [name, registration] of tools) {
+    assert.match(registration.options.description, /^Use this when/);
+    assert.ok(registration.options.outputSchema.status, `${name} should declare status output`);
+    assert.equal(registration.options._meta, undefined, `${name} must not attach a widget`);
   }
+  for (const name of [
+    "roon_get_state",
+    "roon_control_playback",
+    "roon_search_media",
+    "roon_get_media_entity",
+    "roon_play_media",
+    "roon_enqueue_media",
+    "roon_edit_playlist_tracks",
+    "roon_get_configuration",
+    "roon_run_diagnostics"
+  ]) assert.ok(tools.has(name), `${name} should be exposed`);
+  assert.equal(tools.get("roon_edit_playlist_tracks").options.annotations.destructiveHint, true);
+  assert.equal(tools.get("roon_import_playlist").options.annotations.destructiveHint, true);
 
-  assert.match(tools.get("roon_search_media").options.description, /result_id/);
-  assert.match(tools.get("roon_get_queue").options.description, /queue/i);
-  assert.match(tools.get("roon_change_volume").options.description, /volume/i);
-  assert.match(tools.get("roon_get_virtual_playlist").options.description, /paginated tracks/i);
-  assert.ok(tools.has("roon_validate_virtual_playlist"));
-  assert.ok(tools.has("roon_expand_media_search"));
-  assert.ok(tools.has("roon_set_virtual_playlist_track_match"));
-  assert.ok(tools.has("roon_set_virtual_playlist_cover_image"));
-  assert.match(tools.get("roon_set_virtual_playlist_cover_image").options.description, /^Use this when/);
-  assert.ok(tools.has("roon_get_now_playing_widget"));
-  assert.ok(tools.has("roon_get_playlists_widget"));
-  assert.ok(tools.has("roon_get_media_search_widget"));
+  for (const legacy of ["roon_status", "roon_list_zones", "roon_play_by_query", "roon_get_now_playing_widget"])
+    assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
 });
 
-test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-manifest-"));
+test("HTTP MCP tools/list exposes only v2 schemas and no widget templates", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-v2-"));
   const config = createConfig(dataDir);
   const database = createDatabase(config);
-  const volumeLimitService = new VolumeLimitService(config, database);
-  const noop = () => {};
-  const context = {
-    config,
-    logger: { info: noop, warn: noop, error: noop, debug: noop },
-    roonClient: {
-      getZones: () => [],
-      isCoreConnected: () => false,
-      getCoreName: () => null,
-      isTransportReady: () => false,
-      isBrowseReady: () => false,
-      isImageReady: () => false,
-      getOutputs: () => []
-    },
-    playlistService: new PlaylistService(config, database),
-    oauthService: {},
-    mediaService: {},
-    apiKeyService: {},
-    portalAuthService: {},
-    systemManagementService: {},
-    zonePresetService: {},
-    outputVolumeSettingsService: {},
-    volumeLimitService
-  };
+  const context = createContext(config, database);
   const server = createServer(context).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -127,70 +128,23 @@ test("HTTP MCP tools/list exposes final schemas, descriptions, and widget URI", 
         "content-type": "application/json",
         accept: "application/json, text/event-stream"
       },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/list",
-        params: {}
-      })
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
     });
     assert.equal(response.status, 200);
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
-    const statusDescription = tools.get("roon_status").description;
-    const getPlaylist = tools.get("roon_get_virtual_playlist");
 
-    assert.ok(getPlaylist.inputSchema.properties.include_tracks);
-    assert.ok(getPlaylist.inputSchema.properties.limit);
-    assert.ok(getPlaylist.inputSchema.properties.offset);
-    for (const name of [
-      "roon_validate_virtual_playlist",
-      "roon_resolve_virtual_playlist",
-      "roon_deduplicate_virtual_playlist",
-      "roon_sort_virtual_playlist",
-      "roon_export_virtual_playlist",
-      "roon_import_virtual_playlist",
-      "roon_expand_media_search",
-      "roon_set_virtual_playlist_track_match",
-      "roon_add_search_result_to_virtual_playlist",
-      "roon_set_virtual_playlist_cover_image"
-    ]) {
-      assert.ok(tools.has(name), `${name} should be exposed`);
-      assert.ok(tools.get(name).inputSchema, `${name} should expose a schema`);
+    assert.equal(tools.size, 29);
+    assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
+    assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
+    assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
+    assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
+    for (const tool of tools.values()) {
+      assert.equal(tool._meta?.["openai/outputTemplate"], undefined);
+      assert.match(tool.description, /^Use this when/);
     }
-    assert.equal(
-      getPlaylist._meta["openai/outputTemplate"],
-      roonControlWidgetUriForTool("roon_get_virtual_playlist")
-    );
-    assert.equal(
-      getPlaylist._meta["openai/outputTemplate"],
-      "ui://roon-ai-bridge/control-v8/roon_get_virtual_playlist.html"
-    );
-    assert.notEqual(
-      tools.get("roon_status")._meta["openai/outputTemplate"],
-      getPlaylist._meta["openai/outputTemplate"]
-    );
-
-    for (const [name, tool] of tools.entries()) {
-      assert.ok(tool.description, `${name} should have a description`);
-      if (name !== "roon_status") {
-        assert.notEqual(tool.description, statusDescription);
-      }
-    }
-    for (const name of [
-      "roon_get_now_playing_widget",
-      "roon_now_playing_widget_action",
-      "roon_get_playlists_widget",
-      "roon_get_playlist_detail_widget",
-      "roon_playlist_widget_action",
-      "roon_get_media_search_widget",
-      "roon_media_search_widget_action",
-      "roon_open_media_entity_widget",
-      "roon_get_image_url"
-    ]) {
-      assert.ok(tools.has(name), `${name} should be exposed`);
-      assert.ok(tools.get(name).inputSchema, `${name} should expose a schema`);
-    }
+    assert.equal(tools.has("roon_status"), false);
+    assert.equal(tools.has("roon_get_media_search_widget"), false);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     database.close();
