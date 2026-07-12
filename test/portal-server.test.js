@@ -134,6 +134,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /miniPlayerIsInteracting/);
     assert.match(portalScriptText, /playerPendingUpdates/);
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
+    assert.match(portalScriptText, /miniRenderSignature===signature/);
+    assert.match(portalScriptText, /homePlaybackSignature===signature/);
+    assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
     assert.match(portalPageText, /data-tab="users">Usuarios/);
