@@ -11,6 +11,7 @@ This documentation covers the current v0.12 repository:
 - [Roon SDK Reliability Boundary](roon-sdk-reliability.md)
 - [MCP v2 Architecture](mcp-v2-architecture.md)
 - [MCP v2 Local Validation](mcp-v2-validation.md)
+- [Widget v2 Local Validation](widget-v2-validation.md)
 - [v0.1 Validation](v0.1-validation.md)
 - [v0.2 Validation](v0.2-validation.md)
 - [v0.3 Validation](v0.3-validation.md)

@@ -191,6 +191,13 @@ export class ApiKeyService {
     }
     return this.list().find((item) => item.key_id === keyId)!;
   }
+
+  delete(keyId: string): ApiKeyRecord {
+    const key = this.list().find((item) => item.key_id === keyId);
+    if (!key) throw new ApiError("API_KEY_NOT_FOUND", "API key not found", { key_id: keyId });
+    this.database.db.prepare("DELETE FROM api_keys WHERE key_id = ?").run(keyId);
+    return key;
+  }
 }
 
 export function roleCanControl(role: ApiKeyRole): boolean {

@@ -21,7 +21,10 @@ The updater:
 - Enters `/opt/roon-ai-bridge`.
 - Fetches latest GitHub changes.
 - Runs `git pull --ff-only`.
-- Rebuilds and restarts the app with Docker Compose.
+- Publishes download, build, restart and verification stages for the portal.
+- Rebuilds and restarts the app with Docker Compose, embedding the Git commit
+  as the visible build identifier.
+- Verifies that the updated container is running before reporting success.
 
 Equivalent manual commands:
 

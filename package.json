@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test \"test/*.test.js\"",
+    "widget:preview": "pnpm run build && node scripts/widget-v2-preview.js",
     "start": "node dist/index.js",
     "mcp": "node dist/mcp/index.js",
     "dev": "ts-node src/index.ts"

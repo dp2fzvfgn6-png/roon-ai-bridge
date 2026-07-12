@@ -17,7 +17,7 @@ El portal reduce la navegación principal a cuatro espacios:
 2. **Música**: búsqueda tipada, navegación de biblioteca y playlists virtuales.
 3. **Reproducción**: zonas, colas, transporte, agrupación, transferencia, presets
    y límites de volumen.
-4. **Administración**: API keys, tools MCP, operación y sistema.
+4. **Administración**: sistema, APIs, usuarios, tools MCP y registros.
 
 Las vistas antiguas de Widgets se eliminan de la navegación. Sus contratos HTTP
 siguen activos y el nuevo portal reutiliza los mismos datos enriquecidos.
@@ -55,14 +55,35 @@ a ChatGPT u otro cliente MCP.
 ## Control de acceso MCP
 
 - `PATCH /api/admin/api-keys/:key_id` actualiza nombre, rol y allowlist de tools.
-- `DELETE /api/admin/api-keys/:key_id` revoca la key sin borrar su hash.
+- `POST /api/admin/api-keys/:key_id/revoke` revoca temporalmente la key.
 - `POST /api/admin/api-keys/:key_id/reactivate` reactiva el secreto original.
+- `DELETE /api/admin/api-keys/:key_id` elimina definitivamente la key.
+- `GET /api/admin/users` lista las cuentas del portal.
+- `POST /api/admin/users` crea una cuenta.
+- `PATCH /api/admin/users/:user_id/password` restablece la contraseña y cierra
+  sus sesiones.
+- `DELETE /api/admin/users/:user_id` elimina una cuenta, salvo la cuenta de la
+  sesión actual o la última cuenta existente.
 - `GET /api/admin/tools` devuelve el catálogo completo y su estado.
 - `PATCH /api/admin/tools/:tool_name` habilita o deshabilita una tool globalmente.
 
 Una tool se registra en MCP únicamente cuando está habilitada globalmente y,
 para una API key administrada con allowlist, cuando también está permitida para
 esa key. Las keys sin allowlist conservan acceso a todas las tools habilitadas.
+
+## Sistema, red y actualizaciones
+
+La pestaña Sistema separa actualización, red y estado real. La comprobación de
+actualizaciones compara el commit instalado con el commit de la rama `main` o
+`beta`, incluso cuando `package.json` conserva la misma versión. La interfaz
+muestra versión y build instaladas y disponibles, conserva el último resultado
+bajo los controles y sigue las etapas publicadas por el watcher del LXC.
+
+Actualizar y reiniciar usan diálogos propios del portal. Tras solicitar una
+actualización, el cliente tolera la desconexión temporal, consulta el estado al
+volver el servicio y presenta un resultado final de éxito o error. La red se
+guarda en un único formulario con puertos y direcciones públicas del bridge y
+del portal; los cambios se aplican tras reiniciar.
 
 ## Recursos visuales
 

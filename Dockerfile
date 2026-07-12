@@ -1,5 +1,7 @@
 FROM node:24-bookworm-slim
 
+ARG GIT_COMMIT=unknown
+
 WORKDIR /app
 
 RUN apt-get update \
@@ -18,6 +20,7 @@ RUN npm run build
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/app/data
+ENV GIT_COMMIT=${GIT_COMMIT}
 
 EXPOSE 3000
 EXPOSE 3001

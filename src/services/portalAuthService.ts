@@ -90,6 +90,53 @@ export class PortalAuthService {
     return this.createUserAndSession(input);
   }
 
+  listUsers(): PortalUser[] {
+    return this.database.db
+      .prepare(
+        `SELECT user_id, username, password_hash, password_salt, created_at, updated_at
+         FROM portal_users ORDER BY username COLLATE NOCASE`
+      )
+      .all()
+      .map((row: PortalUserRow) => publicUser(row));
+  }
+
+  createUser(input: { username?: unknown; password?: unknown }): PortalUser {
+    const row = this.buildUser(input);
+    try {
+      this.insertUser(row);
+    } catch (error) {
+      if (String(error).includes("UNIQUE constraint failed")) {
+        throw new ApiError("AUTH_USER_EXISTS", "A user with that name already exists");
+      }
+      throw error;
+    }
+    return publicUser(row);
+  }
+
+  resetPassword(userId: string, input: { password?: unknown }): void {
+    const password = validatePassword(input.password);
+    const salt = crypto.randomBytes(24).toString("base64url");
+    const result = this.database.db
+      .prepare(
+        `UPDATE portal_users SET password_hash = ?, password_salt = ?, updated_at = ?
+         WHERE user_id = ?`
+      )
+      .run(passwordHash(password, salt), salt, new Date().toISOString(), userId) as { changes?: number };
+    if (!result?.changes) throw new ApiError("AUTH_USER_NOT_FOUND", "Portal user not found");
+    this.database.db.prepare("DELETE FROM portal_sessions WHERE user_id = ?").run(userId);
+  }
+
+  deleteUser(userId: string): PortalUser {
+    const users = this.listUsers();
+    const user = users.find((item) => item.user_id === userId);
+    if (!user) throw new ApiError("AUTH_USER_NOT_FOUND", "Portal user not found");
+    if (users.length === 1) {
+      throw new ApiError("AUTH_FORBIDDEN", "The last portal user cannot be deleted");
+    }
+    this.database.db.prepare("DELETE FROM portal_users WHERE user_id = ?").run(userId);
+    return user;
+  }
+
   login(input: { username?: unknown; password?: unknown }): PortalSession {
     const username = normalizeUsername(input?.username);
     const password = validatePassword(input?.password);
@@ -184,6 +231,15 @@ export class PortalAuthService {
     username?: unknown;
     password?: unknown;
   }): PortalSession {
+    const row = this.buildUser(input);
+    this.insertUser(row);
+    return this.createSession(row);
+  }
+
+  private buildUser(input: {
+    username?: unknown;
+    password?: unknown;
+  }): PortalUserRow {
     const username = normalizeUsername(input?.username);
     const password = validatePassword(input?.password);
     const salt = crypto.randomBytes(24).toString("base64url");
@@ -197,6 +253,10 @@ export class PortalAuthService {
       updated_at: now
     };
 
+    return row;
+  }
+
+  private insertUser(row: PortalUserRow): void {
     this.database.db
       .prepare(
         `INSERT INTO portal_users (
@@ -211,7 +271,6 @@ export class PortalAuthService {
         row.created_at,
         row.updated_at
       );
-    return this.createSession(row);
   }
 
   private createSession(row: PortalUserRow): PortalSession {

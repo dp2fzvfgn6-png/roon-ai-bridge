@@ -82,6 +82,7 @@ export function createPortalServer(context: ApiContext): express.Express {
       ok: true,
       service: "roon-ai-bridge-portal",
       version: APP_VERSION,
+      build: process.env.GIT_COMMIT?.slice(0, 12) || null,
       authentication_configured: Boolean(context.config.portalAdminToken),
       setup_required: context.portalAuthService.setupRequired()
     });
@@ -135,6 +136,7 @@ export function createPortalServer(context: ApiContext): express.Express {
     res.json({
       ok: true,
       version: APP_VERSION,
+      build: process.env.GIT_COMMIT?.slice(0, 12) || null,
       portal_port: context.config.portalPort,
       user: res.locals.portalUser || null
     });
@@ -216,6 +218,7 @@ export function createPortalServer(context: ApiContext): express.Express {
   app.get("/api/admin/settings", (_req, res) => {
     res.json({
       version: APP_VERSION,
+      build: process.env.GIT_COMMIT?.slice(0, 12) || null,
       api_port: context.config.port,
       portal_port: context.config.portalPort,
       node_environment: context.config.nodeEnv,
@@ -225,6 +228,7 @@ export function createPortalServer(context: ApiContext): express.Express {
       api_token_configured: Boolean(context.config.apiToken),
       portal_admin_token_configured: Boolean(context.config.portalAdminToken),
       public_base_url: context.config.publicBaseUrl,
+      portal_base_url: context.config.portalPublicUrl,
       streaming_source: context.config.roonStreamingSource,
       update_channel: context.config.updateChannel,
       allow_beta_updates: context.config.updateChannel === "beta"
@@ -243,9 +247,9 @@ export function createPortalServer(context: ApiContext): express.Express {
     }
   });
 
-  app.post("/api/admin/system/check-update", async (_req, res, next) => {
+  app.post("/api/admin/system/check-update", async (req, res, next) => {
     try {
-      res.json(await context.systemManagementService.checkForUpdates());
+      res.json(await context.systemManagementService.checkForUpdates(req.body || {}));
     } catch (error) {
       next(error);
     }
@@ -269,6 +273,43 @@ export function createPortalServer(context: ApiContext): express.Express {
 
   app.get("/api/admin/api-keys", (_req, res) => {
     res.json(context.apiKeyService.list());
+  });
+
+  app.get("/api/admin/users", (_req, res) => {
+    res.json(context.portalAuthService.listUsers());
+  });
+
+  app.post("/api/admin/users", (req, res, next) => {
+    try {
+      const created = context.portalAuthService.createUser(req.body || {});
+      context.logger.info("Portal user created", { userId: created.user_id, username: created.username });
+      res.status(201).json(created);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/users/:user_id/password", (req, res, next) => {
+    try {
+      context.portalAuthService.resetPassword(req.params.user_id, req.body || {});
+      context.logger.info("Portal user password reset", { userId: req.params.user_id });
+      res.json({ ok: true, sessions_revoked: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/users/:user_id", (req, res, next) => {
+    try {
+      if (res.locals.portalUser?.user_id === req.params.user_id) {
+        throw new ApiError("AUTH_FORBIDDEN", "You cannot delete the account used by this session");
+      }
+      const deleted = context.portalAuthService.deleteUser(req.params.user_id);
+      context.logger.warn("Portal user deleted", { userId: deleted.user_id, username: deleted.username });
+      res.json(deleted);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.patch("/api/admin/api-keys/:key_id", (req, res, next) => {
@@ -299,7 +340,7 @@ export function createPortalServer(context: ApiContext): express.Express {
     }
   });
 
-  app.delete("/api/admin/api-keys/:key_id", (req, res, next) => {
+  app.post("/api/admin/api-keys/:key_id/revoke", (req, res, next) => {
     try {
       const revoked = context.apiKeyService.revoke(req.params.key_id);
       context.logger.info("Managed API key revoked", {
@@ -307,6 +348,16 @@ export function createPortalServer(context: ApiContext): express.Express {
         name: revoked.name
       });
       res.json(revoked);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/api-keys/:key_id", (req, res, next) => {
+    try {
+      const deleted = context.apiKeyService.delete(req.params.key_id);
+      context.logger.warn("Managed API key deleted", { keyId: deleted.key_id, name: deleted.name });
+      res.json(deleted);
     } catch (error) {
       next(error);
     }

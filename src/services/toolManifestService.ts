@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { registerBridgeV2Tools } from "../bridge-v2/mcp/tools";
+import { registerWidgetV2Tools } from "../bridge-v2/widgets/tools";
 import { BridgeV2Context } from "../bridge-v2/context";
 
 function classificationFromAnnotations(annotations: any): Record<string, unknown> {
@@ -47,6 +48,7 @@ export function buildToolsManifest(context: BridgeV2Context): Record<string, unk
     }
   };
   registerBridgeV2Tools(server as any, { ...context, manifestMode: true });
+  registerWidgetV2Tools(server as any, { ...context, manifestMode: true });
   for (const tool of tools) {
     tool.enabled = context.toolAccessService?.isGloballyEnabled(String(tool.name)) !== false;
   }

@@ -1,6 +1,9 @@
 services:
   roon-ai-bridge:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: roon-ai-bridge
     network_mode: host
     restart: unless-stopped

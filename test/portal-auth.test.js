@@ -61,6 +61,13 @@ test("bootstraps one portal administrator and manages hashed sessions", () => {
     assert.equal(service.authenticate(login.token).username, "owner");
     service.logout(login.token);
     assert.equal(service.authenticate(login.token), null);
+
+    const second = service.createUser({ username: "operator", password: "operator-password" });
+    assert.equal(service.listUsers().length, 2);
+    service.resetPassword(second.user_id, { password: "replacement-password" });
+    assert.equal(service.login({ username: "operator", password: "replacement-password" }).user.user_id, second.user_id);
+    assert.equal(service.deleteUser(second.user_id).username, "operator");
+    assert.throws(() => service.deleteUser(first.user.user_id), /last portal user/);
   } finally {
     database.close();
     fs.rmSync(dataDir, { recursive: true, force: true });

@@ -2,15 +2,16 @@
 
 ## Purpose
 
-MCP v2 replaces the previous 89-tool facade with 29 intent-oriented, data-only
-tools. It is a breaking contract with no legacy aliases. The HTTP API, portal
-and persisted user data remain outside this replacement.
+MCP v2 replaces the previous 89-tool facade with 30 canonical intent tools,
+three focused widget entry points and one app-only navigation tool. It is a
+breaking contract with no legacy aliases. The HTTP API, portal and persisted
+user data remain outside this replacement.
 
 ## Layers
 
 ```text
 MCP protocol
-  -> tool registry and uniform result mapper
+  -> tool registry, widget resources and uniform result mapper
 Application intentions
   -> semantic target and media resolution
 Roon and persistence adapters
@@ -22,10 +23,16 @@ The implementation lives in `src/bridge-v2`:
 - `contracts.ts` defines target/media references and the result envelope.
 - `targetResolver.ts` resolves exact accent-insensitive zone/output names or IDs.
 - `intentGateway.ts` implements complete user intentions.
-- `mcp/tools.ts` owns schemas, annotations and the 29-tool catalog.
+- `mcp/tools.ts` owns schemas, annotations and the 30-tool intent catalog.
 - `mcp/server.ts` owns server instructions and HTTP/stdio construction.
+- `widgets/viewService.ts` creates bounded, presentation-ready view models.
+- `widgets/tools.ts` owns three model entry points and app-only navigation.
+- `widgets/resources.ts` owns the cache-busted MCP Apps HTML resources.
 
-The MCP layer contains no widget resource registration.
+The widget layer does not duplicate domain mutations. Buttons call canonical
+intent tools, while `roon_ui_navigate` handles read-only in-widget drilldown.
+Full view payloads live in result `_meta`; model-visible `structuredContent`
+stays concise.
 
 ## Efficient flows
 
@@ -53,6 +60,14 @@ album track list through Roon Browse.
 reorder or replace operations. This avoids one MCP round trip per track while
 keeping playlist deletion in a separate destructive tool.
 
+### Interactive exploration
+
+`roon_open_media_explorer` mounts search results. Selecting an artist, album or
+track calls app-only `roon_ui_navigate`, so exploration does not require a new
+model/tool round trip. Playback and queue buttons use the same canonical tools
+that the model uses directly. Player and queue state refresh only while the
+document is visible.
+
 ## Result semantics
 
 `status` describes protocol outcome; `verified` separately describes whether
@@ -66,7 +81,6 @@ summary and never repeats the full JSON payload.
 ## Compatibility boundary
 
 The old `src/mcp/server.ts`, `mcpTools.ts` and widget resource remain in the
-tree only because older tests, documentation and the future widget redesign
-may still reference implementation details. Neither `/mcp` nor `pnpm run mcp`
-instantiates the old server. They can be deleted after the widget and portal
-dependency audit.
+tree only for legacy HTTP/portal dependencies and historical tests. Neither
+`/mcp` nor `pnpm run mcp` instantiates the old server. They can be deleted after
+a dedicated dependency audit.

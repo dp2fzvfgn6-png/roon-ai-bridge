@@ -301,6 +301,18 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
     }
   }, (input) => gateway.playPlaylist(input));
 
+  register("roon_play_playlist_track", {
+    title: "Play RoonIA Playlist Track",
+    description: "Use this when one stored track from a virtual playlist should play now, play next or be appended in a named zone.",
+    annotations: write,
+    inputSchema: {
+      playlist_id: z.string().min(1),
+      track_id: z.string().min(1),
+      zone: targetSchema,
+      mode: z.enum(["play_now", "add_next", "add_to_queue"]).default("play_now")
+    }
+  }, (input) => gateway.playPlaylistTrack(input));
+
   register("roon_analyze_playlist", {
     title: "Analyze RoonIA Playlist",
     description: "Use this when playlist identity readiness, missing metadata, ambiguity or probable duplicates should be checked without modifying it.",

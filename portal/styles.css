@@ -80,7 +80,12 @@ h3 { letter-spacing: -.025em; }
 .nav-link:hover { color: var(--text); background: rgba(255,255,255,.025); }
 .nav-link.active { color: var(--text); border-left-color: var(--brand-orange); background: rgba(255,255,255,.04); }
 .nav-link.active .material-symbols-rounded { color: var(--brand-orange-light); font-variation-settings: "FILL" 1, "wght" 400, "GRAD" -25, "opsz" 24; }
-.rail-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 20px 6px 0; border-top: 1px solid var(--line); }
+.rail-foot { min-height: var(--player-height); margin: auto -20px -24px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 20px; border-top: 1px solid var(--line-strong); background: rgba(15,18,17,.97); }
+.rail-user { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.rail-user > span:last-child { min-width: 0; }
+.rail-user strong, .rail-user small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-user strong { font-size: 11px; }
+.rail-user small { margin-top: 3px; color: var(--text-dim); font-size: 9px; }
 .core-chip { display: flex; align-items: center; gap: 9px; max-width: 150px; overflow: hidden; color: var(--text-dim); font-size: 11px; white-space: nowrap; }
 .core-chip i, .health-badge i, .now-zone i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--text-dim); }
 .core-chip i.online, .health-badge.online i, .now-zone i.online { background: var(--good); box-shadow: 0 0 10px rgba(93,199,137,.45); }
@@ -94,6 +99,9 @@ h3 { letter-spacing: -.025em; }
 .search-box kbd { color: var(--text-dim); font-size: 10px; }
 .top-actions, .inline-actions { display: flex; align-items: center; gap: 9px; }
 .top-actions { margin-left: auto; }
+.top-connection { min-width: 150px; display: grid; justify-items: end; gap: 4px; }
+.top-connection small { color: var(--text-dim); font: 9px ui-monospace, monospace; }
+.command-status { max-width: min(380px,30vw); overflow: hidden; color: var(--text-soft); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .profile-btn { display: flex; align-items: center; gap: 10px; padding: 5px 0 5px 9px; border: 0; color: var(--text); background: transparent; text-align: left; }
 .profile-btn strong, .profile-btn small { display: block; font-size: 11px; }
 .profile-btn small { margin-top: 2px; color: var(--text-dim); }
@@ -307,6 +315,7 @@ select { color-scheme: dark; }
 .key-copy small { margin-top: 4px; color: var(--text-dim); font: 10px ui-monospace, monospace; }
 .key-detail { color: var(--text-dim); font-size: 10px; }
 .key-actions { display: flex; gap: 2px; }
+.key-actions .danger-action { color: var(--danger); }
 .role-badge { width: max-content; padding: 4px 7px; color: var(--text-soft); background: var(--surface); font-size: 9px; text-transform: uppercase; }
 .tool-filter { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
 .tool-filter > .material-symbols-rounded { color: var(--text-dim); }
@@ -337,6 +346,19 @@ select { color-scheme: dark; }
 .form-grid label { margin: 0; }
 .form-grid label input:not(.switch) { width: 100%; margin-top: 8px; }
 .toggle-row { grid-column: 1/-1; display: flex !important; align-items: center; justify-content: space-between; padding: 12px 0; }
+.toggle-row strong, .toggle-row small { display: block; }
+.toggle-row small { max-width: 580px; margin-top: 4px; color: var(--text-dim); font-size: 10px; font-weight: 400; }
+.system-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 42px 48px; }
+.system-layout .update-panel { grid-column: 1/-1; }
+.version-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); margin-bottom: 10px; border-top: 1px solid var(--line); }
+.version-card { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.version-card span, .version-card strong { display: block; }
+.version-card span { color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.version-card strong { margin-top: 5px; font: 600 13px ui-monospace, monospace; }
+.system-message { min-height: 46px; margin: 6px 0 18px; padding: 12px 14px; border-left: 3px solid var(--line-strong); color: var(--text-soft); background: rgba(255,255,255,.025); font-size: 11px; line-height: 1.5; }
+.system-message.good { border-left-color: var(--good); }
+.system-message.warn { border-left-color: var(--warn); }
+.system-message.bad { border-left-color: var(--danger); }
 
 /* Dialogs and feedback */
 dialog { width: min(800px, calc(100vw - 30px)); max-height: calc(100vh - 30px); overflow: auto; padding: 0; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--text); background: #111412; box-shadow: 0 35px 100px rgba(0,0,0,.65); }
@@ -353,6 +375,11 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .modal-section { margin: 26px 0; }
 .modal-section h3 { margin-bottom: 12px; font-size: 15px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 26px; }
+.confirm-copy { color: var(--text-soft); line-height: 1.6; }
+.progress-steps { display: grid; gap: 8px; margin: 22px 0; }
+.progress-step { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--text-dim); }
+.progress-step.active { color: var(--text); }
+.progress-step.done { color: var(--good); }
 .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .modal-grid label { display: grid; gap: 7px; color: var(--text-soft); font-size: 11px; }
 .modal-grid .full { grid-column: 1/-1; }
@@ -522,6 +549,9 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   .tool-filter select { display: none; }
   .metrics-strip { grid-template-columns: 1fr 1fr; }
   .form-grid, .modal-grid, .permission-list { grid-template-columns: 1fr; }
+  .system-layout { grid-template-columns: 1fr; gap: 32px; }
+  .system-layout .update-panel { grid-column: auto; }
+  .command-status { display: none; }
   .entity-hero { grid-template-columns: 105px 1fr; align-items: center; gap: 17px; }
   .entity-copy h2 { font-size: 25px; }
   .entity-copy p { max-height: 7.8em; overflow: auto; }

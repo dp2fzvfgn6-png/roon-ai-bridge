@@ -52,6 +52,7 @@ const keys = [
   { key_id:"tablet",name:"Tablet del salón",key_prefix:"rnb_a8N1s…",role:"read",created_at:"2026-06-21T17:00:00Z",last_used_at:"2026-07-09T22:10:00Z",revoked_at:null,tool_permissions:["roon_status","roon_list_zones","roon_get_now_playing_widget"] },
   { key_id:"old",name:"Integración antigua",key_prefix:"rnb_v2Old…",role:"control",created_at:"2026-04-02T09:00:00Z",last_used_at:"2026-05-11T15:00:00Z",revoked_at:"2026-06-01T10:00:00Z",tool_permissions:null }
 ];
+const users = [{user_id:"iago",username:"iago",created_at:"2026-06-01T10:00:00Z"},{user_id:"guest",username:"invitado",created_at:"2026-07-05T12:00:00Z"}];
 const toolNames = ["roon_status","roon_list_zones","roon_get_now_playing_widget","roon_search_media","roon_play_media","roon_add_media_to_queue","roon_control_playback","roon_change_volume","roon_group_zones","roon_transfer_playback","roon_list_virtual_playlists","roon_create_virtual_playlist","roon_add_virtual_playlist_track","roon_apply_zone_preset"];
 const tools = toolNames.map((name,index)=>({ name,title:name.replace("roon_","").replaceAll("_"," "),description:index<4?"Consulta el estado y la biblioteca de Roon sin modificar la reproducción.":"Ejecuta una acción verificada sobre reproducción, zonas o colecciones.",enabled:index!==13,classification:{read_only:index<4,mutation:index>=4,destructive:false} }));
 
@@ -65,7 +66,7 @@ app.get("/api/auth/status", (_req,res)=>res.json({setup_required:false}));
 app.post("/api/auth/login", (_req,res)=>res.json({token:"preview"}));
 app.post("/api/auth/logout", (_req,res)=>res.json({ok:true}));
 app.use("/api", (req,res,next)=>{res.setHeader("Cache-Control","no-store");next();});
-app.get("/api/session", (_req,res)=>res.json({ok:true,version:"0.16.1",user:{username:"iago"}}));
+app.get("/api/session", (_req,res)=>res.json({ok:true,version:"0.16.1",build:"a18f4c7d920b",user:{user_id:"iago",username:"iago"}}));
 app.get("/api/dashboard", (_req,res)=>res.json({version:"0.16.1",status:{core_connected:true,core_name:"Roon Server · Nucleus",transport_ready:true,browse_ready:true},counts:{zones:3,playing_zones:1,playlists:4,playlist_tracks:146,active_api_keys:2,mcp_tools:14,recent_errors:0},recent_actions:[{tool_or_endpoint:"roon_play_media",source:"mcp",timestamp:"2026-07-10T08:19:00Z"},{tool_or_endpoint:"/zones/salon/volume",source:"portal",timestamp:"2026-07-10T08:16:00Z"}],now_playing:[]}));
 app.get("/api/roon/zones",(_req,res)=>res.json(zones));
 app.get("/api/roon/outputs",(_req,res)=>res.json(zones.flatMap(z=>z.outputs)));
@@ -88,12 +89,13 @@ app.get("/api/zone-presets",(_req,res)=>res.json([{preset_id:"whole-house",name:
 app.get("/api/volume-limits",(_req,res)=>res.json([{limit_id:"night",name:"Noche",target_ref:{type:"global",value:"global"},safe_max:42,schedule:{}}]));
 app.get("/api/admin/output-volumes",(_req,res)=>res.json(zones.flatMap(z=>z.outputs).map(o=>({output_id:o.output_id,display_name:o.display_name,current_volume:o.volume,settings:{preferred_value:o.volume.value,minimum_value:0,maximum_value:70}}))));
 app.get("/api/admin/api-keys",(_req,res)=>res.json(keys));
+app.get("/api/admin/users",(_req,res)=>res.json(users));
 app.get("/api/admin/tools",(_req,res)=>res.json({tools,tools_count:tools.length,enabled_tools_count:tools.filter(x=>x.enabled).length}));
 app.get("/api/observability/actions",(_req,res)=>res.json({actions:[{tool_or_endpoint:"roon_play_media",source:"mcp",timestamp:"2026-07-10T08:19:00Z"},{tool_or_endpoint:"roon_change_volume",source:"portal",timestamp:"2026-07-10T08:16:00Z"},{tool_or_endpoint:"roon_search_media",source:"mcp",timestamp:"2026-07-10T08:14:00Z"}]}));
 app.get("/api/logs/recent",(_req,res)=>res.json({events:[{message:"Roon Core discovery ready",component:"roon",level:"info",timestamp:"2026-07-10T08:00:00Z"}]}));
 app.get("/api/diagnostics/bundle",(_req,res)=>res.json({http:{ready:true},roon:{core_connected:true,zones_count:3},mcp:{tools_count:14},recent_errors:[]}));
-app.get("/api/admin/settings",(_req,res)=>res.json({version:"0.16.1",api_port:3000,portal_port:3001,public_base_url:"https://roonia.ipchome.com",browse_enabled:true,mcp_enabled:true,api_auth_enabled:true,streaming_source:"qobuz",allow_beta_updates:false}));
-app.get("/api/admin/system",(_req,res)=>res.json({addresses:[{interface:"Portal",portal_url:"http://10.0.60.38:3001"}],runtime_config:{api_port:3000,portal_port:3001}}));
+app.get("/api/admin/settings",(_req,res)=>res.json({version:"0.16.1",build:"a18f4c7d920b",api_port:3000,portal_port:3001,public_base_url:"https://bridge.example.test",portal_base_url:"https://portal.example.test",update_channel:"stable",allow_beta_updates:false}));
+app.get("/api/admin/system",(_req,res)=>res.json({version:"0.16.1",build:"a18f4c7d920b",update_channel:"stable",addresses:[{address:"10.0.60.38",portal_url:"http://10.0.60.38:3001"}],version_status:{current_version:"0.16.1",current_build:"a18f4c7d920b",channel:"stable",latest_version:"0.16.1",latest_build:"a18f4c7d920b",update_available:false,checked_at:"2026-07-13T10:00:00Z",error:null},update_status:null}));
 app.all("/api/*",(_req,res)=>res.json({ok:true}));
 app.use(express.static(path.join(root,"portal")));
 app.get("*",(_req,res)=>res.sendFile(path.join(root,"portal","index.html")));

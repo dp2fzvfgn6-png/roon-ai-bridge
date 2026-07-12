@@ -70,7 +70,7 @@ v0.12 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Check GitHub versions and request a host-supervised update.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register an interactive Apps SDK widget resource at `ui://roon-ai-bridge/control-v4.html`.
+- Register focused interactive Apps SDK widget resources under `ui://roon-ai-bridge/v10/`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -501,10 +501,11 @@ Run from `/opt/roon-ai-bridge`:
 DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
 ```
 
-The active MCP v2 facade exposes 29 data-only, intent-oriented tools. It
-replaces the previous 89-tool catalog without legacy aliases. Named zones and
-outputs are resolved inside each intent, and playback tools can search and act
-in one MCP call when the match is unambiguous.
+The active MCP v2 facade exposes 30 canonical intent tools, three focused
+model-visible widget entry points and one app-only navigation tool. It replaces
+the previous 89-tool catalog without legacy aliases. Named zones and outputs
+are resolved inside each intent, and playback tools can search and act in one
+MCP call when the match is unambiguous.
 
 The catalog covers state, transport, volume, output power, playback options,
 grouping, transfer, media search and deep details, play/enqueue/radio, queue,
@@ -512,8 +513,10 @@ virtual playlists, volume policies, zone presets and diagnostics. See
 [MCP Server](src/mcp/README.md) for the complete list and
 [MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
 
-No MCP v2 tool currently advertises a widget. Widget rebuilding and ChatGPT
-reconnection are intentionally deferred until this data contract is stable.
+Player, media explorer and library widgets are published under the cache-busted
+`ui://roon-ai-bridge/v10/` namespace. They use canonical tools for actions and
+app-only navigation for drilldown. ChatGPT reconnection remains intentionally
+deferred until the new facade is deployed and validated live.
 
 Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
 

@@ -34,7 +34,9 @@ test("persists safe runtime ports and emits a fixed update request", () => {
     assert.deepEqual(loadRuntimePortOverrides(dataDir), {
       port: 4100,
       portalPort: 4101,
-      updateChannel: "stable"
+      updateChannel: "stable",
+      publicBaseUrl: "http://localhost:4100",
+      portalPublicUrl: "http://localhost:4101"
     });
     assert.throws(
       () => service.savePorts({ api_port: 4100, portal_port: 4100 }),
@@ -66,7 +68,37 @@ test("persists safe runtime ports and emits a fixed update request", () => {
     assert.equal(betaRequested.channel, "beta");
     assert.equal(betaRequested.target, "beta");
     assert.equal(betaFile.target, "beta");
+    assert.equal(betaService.requestUpdate({ allow_beta_updates: false }).target, "main");
   } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("compares update builds even when the semantic version is unchanged", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-build-check-"));
+  const previousFetch = global.fetch;
+  const previousCommit = process.env.GIT_COMMIT;
+  process.env.GIT_COMMIT = "111111111111aaaaaaaa";
+  global.fetch = async (url) => String(url).includes("package.json")
+    ? new Response(JSON.stringify({ version: "0.16.1" }), { status: 200 })
+    : new Response(JSON.stringify({ sha: "222222222222bbbbbbbb" }), { status: 200 });
+  const noop = () => {};
+  const service = new SystemManagementService({
+    port: 3000,
+    portalPort: 3001,
+    dataDir,
+    updateChannel: "stable"
+  }, { info: noop, warn: noop, error: noop, debug: noop });
+  try {
+    const status = await service.checkForUpdates({ allow_beta_updates: false });
+    assert.equal(status.current_version, "0.16.1");
+    assert.equal(status.current_build, "111111111111");
+    assert.equal(status.latest_build, "222222222222");
+    assert.equal(status.update_available, true);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousCommit === undefined) delete process.env.GIT_COMMIT;
+    else process.env.GIT_COMMIT = previousCommit;
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });

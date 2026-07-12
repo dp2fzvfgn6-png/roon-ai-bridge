@@ -404,6 +404,23 @@ export class IntentGateway {
     return normalizeServiceResult("roon_play_playlist", `Playlist sent to ${zone.display_name}.`, result, true);
   }
 
+  async playPlaylistTrack(input: {
+    playlist_id: string;
+    track_id: string;
+    zone: TargetReference;
+    mode?: "play_now" | "add_next" | "add_to_queue";
+  }): Promise<OperationResult> {
+    const zone = this.targets.zone(input.zone);
+    const result = await this.context.playlistService.playPlaylistTrack(
+      this.context.roonClient,
+      input.playlist_id,
+      input.track_id,
+      { zone_id: zone.zone_id, mode: input.mode || "play_now" },
+      { mediaService: this.context.mediaService, logger: this.context.logger }
+    );
+    return normalizeServiceResult("roon_play_playlist_track", `Playlist track sent to ${zone.display_name}.`, result, false);
+  }
+
   analyzePlaylist(input: { playlist_id: string; include_duplicates?: boolean }): OperationResult {
     const validation = this.context.playlistService.validatePlaylist(input.playlist_id);
     const duplicates = input.include_duplicates
@@ -510,8 +527,9 @@ export class IntentGateway {
       app: { name: "RoonIA", version: APP_VERSION, mcp_generation: 2 },
       roon: state,
       capabilities: {
-        intent_tools: 29,
-        widgets_attached: false,
+        intent_tools: 33,
+        app_only_tools: 1,
+        widgets_attached: true,
         semantic_zone_resolution: true,
         query_to_action: true,
         virtual_playlists: true,

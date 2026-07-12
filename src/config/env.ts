@@ -16,6 +16,7 @@ export type AppConfig = {
   apiToken: string | null;
   portalAdminToken: string | null;
   publicBaseUrl: string;
+  portalPublicUrl: string;
   oauthIssuer: string;
   oauthApprovalPin: string | null;
   roonStreamingSource: "tidal" | "qobuz" | null;
@@ -42,6 +43,8 @@ export function loadRuntimePortOverrides(dataDir: string): {
   port?: number;
   portalPort?: number;
   updateChannel?: "stable" | "beta";
+  publicBaseUrl?: string;
+  portalPublicUrl?: string;
 } {
   try {
     const parsed = JSON.parse(
@@ -53,10 +56,14 @@ export function loadRuntimePortOverrides(dataDir: string): {
       parsed.update_channel === "beta" ? "beta" :
         parsed.update_channel === "stable" ? "stable" :
           undefined;
+    const publicBaseUrl = typeof parsed.public_base_url === "string" ? parsed.public_base_url : undefined;
+    const portalPublicUrl = typeof parsed.portal_base_url === "string" ? parsed.portal_base_url : undefined;
     return {
       ...(port ? { port } : {}),
       ...(portalPort ? { portalPort } : {}),
-      ...(updateChannel ? { updateChannel } : {})
+      ...(updateChannel ? { updateChannel } : {}),
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
+      ...(portalPublicUrl ? { portalPublicUrl } : {})
     };
   } catch {
     return {};
@@ -74,7 +81,12 @@ export function loadConfig(): AppConfig {
     throw new Error("ENABLE_AUTH=true requires API_TOKEN to be set");
   }
 
-  const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://roonia.ipchome.com").replace(/\/+$/, "");
+  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
+  const runtimePorts = loadRuntimePortOverrides(dataDir);
+  const port = runtimePorts.port ?? intFromEnv(process.env.PORT, 3000);
+  const portalPort = runtimePorts.portalPort ?? intFromEnv(process.env.PORTAL_PORT, 3001);
+  const publicBaseUrl = (runtimePorts.publicBaseUrl || process.env.PUBLIC_BASE_URL || "https://roonia.ipchome.com").replace(/\/+$/, "");
+  const portalPublicUrl = (runtimePorts.portalPublicUrl || process.env.PUBLIC_PORTAL_URL || `http://localhost:${portalPort}`).replace(/\/+$/, "");
   const oauthIssuer = (process.env.OAUTH_ISSUER || publicBaseUrl).replace(/\/+$/, "");
   const oauthApprovalPin =
     typeof process.env.OAUTH_APPROVAL_PIN === "string" && process.env.OAUTH_APPROVAL_PIN.trim() !== ""
@@ -87,15 +99,12 @@ export function loadConfig(): AppConfig {
     streamingSourceValue === "tidal" || streamingSourceValue === "qobuz"
       ? streamingSourceValue
       : null;
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const runtimePorts = loadRuntimePortOverrides(dataDir);
   const envUpdateChannel =
     process.env.UPDATE_CHANNEL === "beta" ? "beta" : "stable";
 
   return {
-    port: runtimePorts.port ?? intFromEnv(process.env.PORT, 3000),
-    portalPort:
-      runtimePorts.portalPort ?? intFromEnv(process.env.PORTAL_PORT, 3001),
+    port,
+    portalPort,
     enablePortal: boolFromEnv(process.env.ENABLE_PORTAL, true),
     nodeEnv: process.env.NODE_ENV || "production",
     logLevel: process.env.LOG_LEVEL || "info",
@@ -113,6 +122,7 @@ export function loadConfig(): AppConfig {
         ? process.env.PORTAL_ADMIN_TOKEN.trim()
         : apiToken,
     publicBaseUrl,
+    portalPublicUrl,
     oauthIssuer,
     oauthApprovalPin,
     roonStreamingSource,

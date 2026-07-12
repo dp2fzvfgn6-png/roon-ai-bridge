@@ -131,6 +131,8 @@ test("reactivates revoked keys and persists per-tool permissions", () => {
     assert.deepEqual(service.authenticate(created.token).tool_permissions, ["roon_list_zones", "roon_status"]);
     const updated = service.update(created.key_id, { tool_permissions: ["roon_status"] });
     assert.deepEqual(updated.tool_permissions, ["roon_status"]);
+    assert.equal(service.delete(created.key_id).key_id, created.key_id);
+    assert.equal(service.list().length, 0);
   } finally {
     database.close();
     fs.rmSync(dataDir, { recursive: true, force: true });

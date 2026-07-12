@@ -129,6 +129,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
+    assert.match(portalPageText, /data-tab="users">Usuarios/);
+    assert.match(portalPageText, /id="system-bridge-url"/);
+    assert.match(portalScriptText, /delete_forever/);
+    assert.match(portalScriptText, /function confirmPortal/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);
@@ -174,8 +178,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     });
     assert.deepEqual((await restricted.json()).tool_permissions, ["roon_status"]);
 
-    const revokedResponse = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}`, {
-      method: "DELETE",
+    const revokedResponse = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}/revoke`, {
+      method: "POST",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     assert.ok((await revokedResponse.json()).revoked_at);
@@ -184,6 +188,32 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     assert.equal((await reactivatedResponse.json()).revoked_at, null);
+
+    const usersResponse = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await usersResponse.json()).length, 1);
+    const createdUserResponse = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username: "operator", password: "operator-password" })
+    });
+    assert.equal(createdUserResponse.status, 201);
+    const createdUser = await createdUserResponse.json();
+    const deletedUserResponse = await fetch(`${baseUrl}/api/admin/users/${createdUser.user_id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal(deletedUserResponse.status, 200);
+
+    const deletedKeyResponse = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal(deletedKeyResponse.status, 200);
 
     const toolsResponse = await fetch(`${baseUrl}/api/admin/tools`, {
       headers: { Authorization: `Bearer ${setupBody.token}` }

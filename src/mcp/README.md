@@ -4,9 +4,9 @@ The active MCP endpoint is implemented by `src/bridge-v2`. The previous
 `src/mcp/mcpTools.ts` catalog is retained temporarily as disconnected legacy
 code and is not registered by either Streamable HTTP or stdio.
 
-The v2 facade is intentionally data-only. No tool advertises a widget resource
-or `openai/outputTemplate`; interactive components will be built in a later
-phase after the contracts are stable.
+The v2 facade combines a compact intent catalog with three focused interactive
+surfaces. Core actions remain reusable data tools; widgets call those same
+actions instead of exposing a second model-visible action catalog.
 
 ## Design rules
 
@@ -70,6 +70,7 @@ Virtual playlists:
 - `roon_edit_playlist_tracks`
 - `roon_delete_playlist`
 - `roon_play_playlist`
+- `roon_play_playlist_track`
 - `roon_analyze_playlist`
 - `roon_resolve_playlist`
 - `roon_export_playlist`
@@ -83,6 +84,17 @@ Configuration and operations:
 - `roon_apply_zone_preset`
 - `roon_run_diagnostics`
 
+Widget entry points visible to the model:
+
+- `roon_open_player`
+- `roon_open_media_explorer`
+- `roon_open_library`
+
+`roon_ui_navigate` is app-only. It lets a mounted widget drill from search to
+artist, album, playlist or queue without another model turn. The three focused
+resources are cache-busted under `ui://roon-ai-bridge/v10/` and support both
+the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
+
 ## Running locally
 
 ```powershell
@@ -90,6 +102,6 @@ pnpm run build
 pnpm run mcp
 ```
 
-`POST /mcp` exposes the same catalog over Streamable HTTP. ChatGPT is currently
-disconnected intentionally; reconnect and live evaluation belong to a later
-phase after the widget work.
+`POST /mcp` exposes the same catalog over Streamable HTTP. ChatGPT remains
+disconnected intentionally; reconnection and live evaluation are the next
+separate phase after local widget validation.

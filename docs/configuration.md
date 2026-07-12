@@ -74,25 +74,29 @@ session, the bootstrap token or a non-revoked managed key with role `admin`.
 Passwords use salted `scrypt`; session and managed-key tokens are stored as
 SHA-256 hashes.
 
-## Runtime Ports And Native Roon Settings
+## Runtime Network And Portal Settings
 
-RoonIA provides Settings and Status services to Roon. From
-`Settings > Extensions > Roon AI Bridge > Settings`, an administrator can:
+From the portal's `Ajustes > Sistema` screen, an administrator can:
 
-- inspect the detected service address;
-- change the bridge and portal ports;
-- check for a new version;
-- request restart or update.
+- configure the public bridge/MCP URL and the public portal URL;
+- inspect detected local addresses and change bridge and portal ports;
+- select the stable or beta update channel;
+- compare the installed Git build with the latest build in that channel;
+- follow update progress and request a controlled restart.
 
-Saved ports are written to `data/runtime-config.json` and override environment
-ports on the next process start. The API and portal ports must be different.
+Saved values are written to `data/runtime-config.json` and override the
+corresponding environment values on the next process start. The API and portal
+ports must be different. Public URLs must use HTTP or HTTPS and cannot contain
+embedded credentials.
 
 ## Safe Update Channel
 
 The app container never receives Docker socket or sudo access. An update
 request creates `data/update-request.json`. The official LXC updater installs a
 systemd path unit that watches only that file and executes the fixed repository
-updater as root. State is reported in `data/update-status.json`.
+updater as root. State is reported in `data/update-status.json` using staged
+progress. Docker images receive the deployed Git commit as `GIT_COMMIT`, which
+is the build identifier shown and compared by the portal.
 
 ## ChatGPT App OAuth
 

@@ -72,7 +72,7 @@ async function readMcpJson(response) {
   return JSON.parse(text);
 }
 
-test("registers the compact data-only MCP v2 intent catalog", () => {
+test("registers the compact MCP v2 intent catalog", () => {
   const tools = new Map();
   const server = {
     registerTool(name, options, handler) {
@@ -87,7 +87,7 @@ test("registers the compact data-only MCP v2 intent catalog", () => {
 
   registerBridgeV2Tools(server, context);
 
-  assert.equal(tools.size, 29);
+  assert.equal(tools.size, 30);
   for (const [name, registration] of tools) {
     assert.match(registration.options.description, /^Use this when/);
     assert.ok(registration.options.outputSchema.status, `${name} should declare status output`);
@@ -101,6 +101,7 @@ test("registers the compact data-only MCP v2 intent catalog", () => {
     "roon_play_media",
     "roon_enqueue_media",
     "roon_edit_playlist_tracks",
+    "roon_play_playlist_track",
     "roon_get_configuration",
     "roon_run_diagnostics"
   ]) assert.ok(tools.has(name), `${name} should be exposed`);
@@ -111,7 +112,7 @@ test("registers the compact data-only MCP v2 intent catalog", () => {
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
 });
 
-test("HTTP MCP tools/list exposes only v2 schemas and no widget templates", async () => {
+test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only tools", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-v2-"));
   const config = createConfig(dataDir);
   const database = createDatabase(config);
@@ -134,13 +135,22 @@ test("HTTP MCP tools/list exposes only v2 schemas and no widget templates", asyn
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 29);
+    assert.equal(tools.size, 34);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
-    for (const tool of tools.values()) {
-      assert.equal(tool._meta?.["openai/outputTemplate"], undefined);
+    const renderTools = ["roon_open_player", "roon_open_media_explorer", "roon_open_library"];
+    for (const [name, tool] of tools) {
+      if (renderTools.includes(name)) {
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v10\//);
+        assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
+      } else if (name === "roon_ui_navigate") {
+        assert.equal(tool._meta["openai/outputTemplate"], undefined);
+        assert.deepEqual(tool._meta.ui.visibility, ["app"]);
+      } else {
+        assert.equal(tool._meta?.["openai/outputTemplate"], undefined);
+      }
       assert.match(tool.description, /^Use this when/);
     }
     assert.equal(tools.has("roon_status"), false);

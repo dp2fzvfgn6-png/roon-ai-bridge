@@ -1,7 +1,7 @@
 # Overview
 
 Roon AI Bridge is a local Roon extension with an HTTP API, administration
-portal and a data-only MCP v2 intent facade.
+portal and an intent-oriented MCP v2 facade with focused interactive widgets.
 
 The current v0.9 goal is intentionally narrow:
 
@@ -18,7 +18,8 @@ The current v0.9 goal is intentionally narrow:
 - Start playback from a simple query.
 - Read queue snapshots and perform basic queue actions.
 - Store and play local virtual playlists.
-- Expose 29 intent-oriented MCP tools over stdio and Streamable HTTP.
+- Expose 30 canonical intent tools over stdio and Streamable HTTP.
+- Offer three model-visible widget entry points and app-only internal navigation.
 - Resolve zone/output names and query-to-action flows inside one MCP call.
 - Optionally protect the HTTP API with a Bearer API token.
 - Authorize a private ChatGPT app with OAuth authorization code and PKCE.
@@ -26,10 +27,12 @@ The current v0.9 goal is intentionally narrow:
 - Search media by track, album, artist or playlist.
 - Use temporary references for deterministic playback and queue actions.
 - Keep artist-catalog playback distinct from similar-music radio.
-- Return one uniform structured MCP result envelope without attached widgets.
+- Return one uniform structured MCP result envelope and keep large widget view
+  data out of model-visible content.
 
-ChatGPT is intentionally disconnected during the MCP v2 and widget redesign.
-The widget and ChatGPT reconnection are later validation phases.
+The MCP v2 and widget redesign are implemented and locally validated. ChatGPT
+is intentionally still disconnected; reconnection and app-level evaluation are
+a later phase.
 
 v0.9 deliberately does not implement:
 

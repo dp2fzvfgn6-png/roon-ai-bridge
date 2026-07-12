@@ -8,6 +8,14 @@ log() {
   printf '\n[%s] %s\n' "$(date -Is)" "$*"
 }
 
+update_status() {
+  local state="$1"
+  local message="$2"
+  [[ -n "${STATUS_PATH:-}" ]] || return 0
+  printf '{"state":"%s","message":"%s","target":"%s","updated_at":"%s"}\n' \
+    "${state}" "${message}" "${GIT_REF}" "$(date -Is)" >"${STATUS_PATH}"
+}
+
 die() {
   printf '\nERROR: %s\n' "$*" >&2
   exit 1
@@ -76,9 +84,11 @@ if [[ "\${TARGET}" != "main" && "\${TARGET}" != "beta" ]]; then
   exit 2
 fi
 rm -f "\${REQUEST_PATH}"
-printf '{"state":"running","target":"%s","started_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
-if GIT_REF="\${TARGET}" bash '${APP_DIR}/scripts/lxc-update-app.sh'; then
-  printf '{"state":"completed","target":"%s","completed_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
+printf '{"state":"queued","message":"Preparando la actualización","target":"%s","started_at":"%s"}\\n' "\${TARGET}" "\$(date -Is)" >"\${STATUS_PATH}"
+if GIT_REF="\${TARGET}" STATUS_PATH="\${STATUS_PATH}" bash '${APP_DIR}/scripts/lxc-update-app.sh'; then
+  VERSION="\$(node -p \"require('${APP_DIR}/package.json').version\" 2>/dev/null || printf unknown)"
+  BUILD="\$(git -C '${APP_DIR}' rev-parse --short=12 HEAD 2>/dev/null || printf unknown)"
+  printf '{"state":"completed","message":"Actualización completada y portal operativo","target":"%s","version":"%s","build":"%s","completed_at":"%s"}\\n' "\${TARGET}" "\${VERSION}" "\${BUILD}" "\$(date -Is)" >"\${STATUS_PATH}"
 else
   rc=\$?
   printf '{"state":"failed","target":"%s","completed_at":"%s","exit_code":%s}\\n' "\${TARGET}" "\$(date -Is)" "\${rc}" >"\${STATUS_PATH}"
@@ -124,6 +134,7 @@ main() {
   log "Updating ${APP_DIR} from GitHub"
   cd "${APP_DIR}"
 
+  update_status downloading "Descargando la build más reciente"
   git fetch origin "${GIT_REF}"
   git checkout "${GIT_REF}"
   git pull --ff-only origin "${GIT_REF}"
@@ -138,7 +149,19 @@ main() {
   install_update_watcher
 
   log "Rebuilding and restarting Docker Compose service"
-  docker compose up -d --build
+  update_status updating "Instalando y compilando la actualización"
+  BUILD_COMMIT="$(git rev-parse HEAD)"
+  update_status restarting "Reiniciando el bridge y el portal"
+  GIT_COMMIT="${BUILD_COMMIT}" docker compose up -d --build
+
+  update_status verifying "Verificando que el servicio está operativo"
+  for _ in $(seq 1 30); do
+    if [[ "$(docker inspect -f '{{.State.Running}}' roon-ai-bridge 2>/dev/null || true)" == "true" ]]; then
+      break
+    fi
+    sleep 1
+  done
+  [[ "$(docker inspect -f '{{.State.Running}}' roon-ai-bridge 2>/dev/null || true)" == "true" ]] || die "Updated container did not become operational"
 
   log "Update finished"
   docker compose ps
