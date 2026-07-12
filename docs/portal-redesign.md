@@ -39,10 +39,10 @@ búsqueda en contexto. Artistas y álbumes siguen siendo navegables, pero las
 pistas sustituyen los controles de reproducción por una única acción de añadir
 a la playlist activa.
 
-Las playlists generan por defecto una carátula animada con hasta 16 imágenes de
-sus canciones. La cuadrícula usa 4, 9 o 16 celdas cuadradas, recorta cada
-carátula para llenar su celda sin franjas y cambia una sola celda cada 500 ms.
-Desde la edición se puede subir una imagen JPEG, PNG o WebP de hasta
+Las playlists generan por defecto un mosaico estático con hasta 16 imágenes de
+sus canciones. La cuadrícula usa 4, 9 o 16 celdas cuadradas pegadas de borde a
+borde. Cada carátula se centra y recorta para llenar su celda sin franjas. Desde
+la edición se puede subir una imagen JPEG, PNG o WebP de hasta
 5 MB; la tool `roon_set_virtual_playlist_cover_image` ofrece la misma operación
 a ChatGPT u otro cliente MCP.
 

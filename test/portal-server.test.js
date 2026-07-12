@@ -92,7 +92,10 @@ test("serves portal assets publicly but protects every administration endpoint",
 
     const portalStyles = await fetch(`${baseUrl}/styles.css`);
     assert.equal(portalStyles.status, 200);
-    assert.match(await portalStyles.text(), /\.collage-tile img \{[^}]*object-fit: cover;/);
+    const portalStylesText = await portalStyles.text();
+    assert.match(portalStylesText, /\.playlist-collage \{[^}]*gap: 0;[^}]*padding: 0;[^}]*background: #000;/);
+    assert.match(portalStylesText, /\.collage-tile \{[^}]*aspect-ratio: 1;/);
+    assert.match(portalStylesText, /\.collage-tile img \{[^}]*object-fit: cover;[^}]*object-position: center;/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -106,9 +109,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /artist-detail/);
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /playlist-collage/);
-    assert.match(portalScriptText, /data-collage-key-index/);
+    assert.match(portalScriptText, /keys\.length<=4\?2:keys\.length<=9\?3:4/);
+    assert.match(portalScriptText, /capacity=columns\*columns/);
+    assert.match(portalScriptText, /collage-\$\{columns\}x\$\{columns\}/);
     assert.match(portalScriptText, /500,"fill"/);
-    assert.match(portalScriptText, /setInterval\(animatePlaylistCollages,500\)/);
+    assert.doesNotMatch(portalScriptText, /animatePlaylistCollages/);
     assert.match(portalScriptText, /playlist-cover-file/);
     assert.match(portalScriptText, /event\.target!==dialog/);
     assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
