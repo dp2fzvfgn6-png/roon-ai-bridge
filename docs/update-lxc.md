@@ -26,6 +26,12 @@ The updater:
   as the visible build identifier.
 - Verifies that the updated container is running before reporting success.
 
+The systemd watcher installs the versioned `scripts/lxc-apply-update.sh` file
+directly. It does not generate shell source or require Node.js on the LXC host.
+Every accepted request ends by writing either `completed` or `failed` to
+`data/update-status.json`, so the portal cannot remain indefinitely in a
+preparation state after an updater error.
+
 Equivalent manual commands:
 
 ```bash

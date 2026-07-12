@@ -102,3 +102,19 @@ test("compares update builds even when the semantic version is unchanged", async
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test("host update watcher is standalone and always publishes terminal failures", () => {
+  const watcher = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "lxc-apply-update.sh"),
+    "utf8"
+  );
+  const installer = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "lxc-update-app.sh"),
+    "utf8"
+  );
+  assert.doesNotMatch(watcher, /node\s+-p/);
+  assert.match(watcher, /"state":"failed"/);
+  assert.match(watcher, /La actualización no se pudo completar/);
+  assert.match(installer, /install -m 0755 "\$\{APP_DIR\}\/scripts\/lxc-apply-update\.sh"/);
+  assert.doesNotMatch(installer, /cat >\/usr\/local\/sbin\/roon-ai-bridge-apply-update/);
+});
