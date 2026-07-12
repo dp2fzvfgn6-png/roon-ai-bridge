@@ -10,6 +10,7 @@ import {
   searchRoon
 } from "./roonBrowseService";
 import { RoonClient } from "./roonClient";
+import { cleanRoonDisplayText } from "./roonText";
 import { getZoneOrThrow } from "./roonZoneService";
 
 export type MediaType = "track" | "album" | "artist" | "playlist";
@@ -166,8 +167,7 @@ const REFERENCE_TTL_MS = 20 * 60 * 1000;
 const MAX_REFERENCES = 2000;
 
 function normalize(value: string): string {
-  return value
-    .replace(/\[\[\d+\|([^\]]+)\]\]/g, "$1")
+  return (cleanRoonDisplayText(value) || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -357,7 +357,7 @@ export function inferConfiguredStreamingSource(
   if (explicit.source !== "unknown" || !configuredSource) return explicit;
 
   const subtitle = typeof item.subtitle === "string" ? item.subtitle : "";
-  if (/\[\[\d+\|.+?\]\]/.test(subtitle)) {
+  if (item.roon_linked_metadata === true || /\[\[\d+\|.+?\]\]/.test(subtitle)) {
     return {
       source: configuredSource,
       confidence: "medium"
@@ -1287,17 +1287,22 @@ export class RoonMediaService {
     const expiresAt = new Date(Date.now() + REFERENCE_TTL_MS).toISOString();
     const source = inferConfiguredStreamingSource(item, this.configuredStreamingSource);
     const quality = inferMediaQuality(item);
-    const artist = pickNestedString(item, ["artist", "artist_name"]) ||
-      (typeof item.subtitle === "string" ? item.subtitle : null);
-    const album = pickNestedString(item, ["album", "album_name"]);
-    const albumArtist = pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"]);
-    const subtitle = typeof item.subtitle === "string" ? item.subtitle : null;
-    const version = inferVersionDetails(String(item.title || ""), subtitle);
+    const rawSubtitle = typeof item.subtitle === "string" ? item.subtitle : null;
+    const title = cleanRoonDisplayText(String(item.title || "")) || "";
+    const artist = cleanRoonDisplayText(
+      pickNestedString(item, ["artist", "artist_name"]) || rawSubtitle
+    );
+    const album = cleanRoonDisplayText(pickNestedString(item, ["album", "album_name"]));
+    const albumArtist = cleanRoonDisplayText(
+      pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"])
+    );
+    const subtitle = cleanRoonDisplayText(rawSubtitle);
+    const version = inferVersionDetails(title, subtitle);
     const reference: MediaReference = {
       result_id: resultId,
       type,
       media_type: type,
-      title: String(item.title || ""),
+      title,
       roon_item_key: typeof item.item_key === "string" ? item.item_key : null,
       artist,
       album,

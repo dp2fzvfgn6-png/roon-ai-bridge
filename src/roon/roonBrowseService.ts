@@ -1,4 +1,5 @@
 import { ApiError } from "../utils/errors";
+import { cleanRoonDisplayText, hasRoonDisplayLink } from "./roonText";
 import { RoonClient } from "./roonClient";
 import { getZoneOrThrow } from "./roonZoneService";
 
@@ -190,18 +191,30 @@ function coverPayload(imageKey: string | null): Record<string, unknown> | null {
 export function enrichBrowseItem(item: BrowseItem): BrowseItem {
   const raw = asObject(item) || {};
   const rawMedia = asObject(raw.media) || {};
+  const roonLinkedMetadata = raw.roon_linked_metadata === true || [
+    raw.title,
+    raw.subtitle,
+    raw.artist,
+    raw.album,
+    raw.album_artist,
+    rawMedia.artist,
+    rawMedia.album,
+    rawMedia.album_artist
+  ].some(hasRoonDisplayLink);
   const imageKey =
     typeof item.image_key === "string" && item.image_key.trim() !== ""
       ? item.image_key.trim()
       : pickString(raw, ["album_art_key", "artwork_key", "cover_key"]);
 
+  const title = cleanRoonDisplayText(pickString(raw, ["title"]));
+  const subtitle = cleanRoonDisplayText(pickString(raw, ["subtitle"]));
   const media = {
-    title: pickString(raw, ["title"]) || null,
-    subtitle: pickString(raw, ["subtitle"]) || null,
-    artist: pickString(rawMedia, ["artist", "artist_name"]) || pickString(raw, ["artist", "artist_name"]) || null,
-    album: pickString(rawMedia, ["album", "album_name"]) || pickString(raw, ["album", "album_name"]) || null,
-    album_artist: pickString(rawMedia, ["album_artist", "albumartist"]) || pickString(raw, ["album_artist", "albumartist"]) || null,
-    composer: pickString(raw, ["composer"]) || null,
+    title,
+    subtitle,
+    artist: cleanRoonDisplayText(pickString(rawMedia, ["artist", "artist_name"]) || pickString(raw, ["artist", "artist_name"])),
+    album: cleanRoonDisplayText(pickString(rawMedia, ["album", "album_name"]) || pickString(raw, ["album", "album_name"])),
+    album_artist: cleanRoonDisplayText(pickString(rawMedia, ["album_artist", "albumartist"]) || pickString(raw, ["album_artist", "albumartist"])),
+    composer: cleanRoonDisplayText(pickString(raw, ["composer"])),
     genre: raw.genre ?? raw.genres ?? null,
     track_number: pickNumber(raw, ["track_number", "track"]) ?? null,
     disc_number: pickNumber(raw, ["disc_number", "disc"]) ?? null,
@@ -217,6 +230,9 @@ export function enrichBrowseItem(item: BrowseItem): BrowseItem {
 
   return {
     ...item,
+    title: title || item.title,
+    subtitle,
+    roon_linked_metadata: roonLinkedMetadata,
     image_key: imageKey || item.image_key || null,
     media
   };

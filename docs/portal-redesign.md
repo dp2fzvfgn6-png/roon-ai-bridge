@@ -34,6 +34,10 @@ fichas enriquecidas usan `/api/roon/media/:result_id/artist-detail` y
 `/api/roon/media/:result_id/album-detail` para mostrar la biografía disponible
 en Roon, canciones destacadas, álbumes, singles/EPs y las pistas del disco.
 
+Los enlaces internos que Roon incluye en algunos metadatos con formato
+`[[identificador|texto]]` se normalizan en la capa de datos. El portal y los
+contratos públicos reciben únicamente el texto visible, sin identificadores.
+
 La acción «Añadir canción» de una playlist abre la misma experiencia visual de
 búsqueda en contexto. Artistas y álbumes siguen siendo navegables, pero las
 pistas sustituyen los controles de reproducción por una única acción de añadir

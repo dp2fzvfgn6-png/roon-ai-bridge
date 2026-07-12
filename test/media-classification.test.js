@@ -8,6 +8,7 @@ const {
   mediaRelevanceScore,
   scoreSearchResult
 } = require("../dist/roon/roonMediaService");
+const { enrichBrowseItem } = require("../dist/roon/roonBrowseService");
 
 test("classifies TIDAL and high-resolution quality metadata", () => {
   const item = {
@@ -40,6 +41,13 @@ test("classifies Roon linked catalog results using configured streaming source",
       source: "tidal",
       confidence: "medium"
     }
+  );
+  assert.deepEqual(
+    inferConfiguredStreamingSource(
+      enrichBrowseItem({ title: "YHLQMDLG", subtitle: "[[9936250|Bad Bunny]]" }),
+      "tidal"
+    ),
+    { source: "tidal", confidence: "medium" }
   );
 });
 

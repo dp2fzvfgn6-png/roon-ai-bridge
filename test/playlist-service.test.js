@@ -170,6 +170,21 @@ test("enriches library items with normalized song metadata and cover payload", (
   });
 });
 
+test("enriches library items without exposing Roon internal link ids", () => {
+  const enriched = enrichBrowseItem({
+    title: "Space 1.8",
+    subtitle: "[[2562426|Nala Sinephro]]",
+    artist: "[[2562426|Nala Sinephro]]",
+    album: "[[30548830|Space 1.8]]"
+  });
+
+  assert.equal(enriched.title, "Space 1.8");
+  assert.equal(enriched.subtitle, "Nala Sinephro");
+  assert.equal(enriched.roon_linked_metadata, true);
+  assert.equal(enriched.media.artist, "Nala Sinephro");
+  assert.equal(enriched.media.album, "Space 1.8");
+});
+
 test("stores, serves and clears a validated custom playlist cover", () => {
   const config = tempConfig();
   const service = new PlaylistService(config);

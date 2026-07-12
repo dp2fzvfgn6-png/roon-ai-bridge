@@ -75,6 +75,29 @@ test("search_media returns stable result ids and details for mocked Roon results
   assert.deepEqual(details, search.results[0]);
 });
 
+test("search_media removes Roon internal link ids from visible metadata", async () => {
+  const service = new RoonMediaService(createSearchClient([{
+    title: "Space 1.8",
+    subtitle: "[[2562426|Nala Sinephro]]",
+    item_key: "linked-track",
+    hint: "action_list",
+    media: {
+      artist: "[[2562426|Nala Sinephro]]",
+      album: "[[30548830|Space 1.8]]",
+      album_artist: "[[2562426|Nala Sinephro]]"
+    }
+  }]), "tidal");
+
+  const search = await service.search({ query: "Space 1.8", types: ["track"], count: 1 });
+  const result = search.results[0];
+
+  assert.equal(result.title, "Space 1.8");
+  assert.equal(result.subtitle, "Nala Sinephro");
+  assert.equal(result.artist, "Nala Sinephro");
+  assert.equal(result.album, "Space 1.8");
+  assert.equal(result.album_artist, "Nala Sinephro");
+});
+
 test("media details fail clearly for expired or unknown result ids", () => {
   const service = new RoonMediaService(createSearchClient(), "tidal");
   assert.throws(
