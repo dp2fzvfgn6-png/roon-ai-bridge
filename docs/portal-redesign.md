@@ -92,6 +92,11 @@ la interfaz no depende de la carpeta local y no versionada `logos/`. Los iconos
 usan Google Material Symbols Rounded. Las carátulas y fotos proceden del
 servicio de imágenes de Roon y mantienen un fallback local.
 
+El documento HTML y los recursos JavaScript/CSS se sirven con `no-store`, y el
+HTML referencia los assets con una revisión explícita. Esto evita que un proxy
+o navegador combine la estructura de una versión del portal con los manejadores
+de otra durante una actualización.
+
 El minirreproductor consulta el estado de Roon periódicamente, pero suspende el
 repintado de sus controles mientras el usuario arrastra el progreso o el volumen
 o mantiene abierto el selector de zona. Las respuestas que llegan durante el

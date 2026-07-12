@@ -513,13 +513,22 @@ export function createPortalServer(context: ApiContext): express.Express {
 
   app.use(express.static(assetsPath, {
     etag: true,
-    maxAge: context.config.nodeEnv === "production" ? "5m" : 0
+    maxAge: context.config.nodeEnv === "production" ? "5m" : 0,
+    setHeaders: (res, filePath) => {
+      if (/\.(?:html|js|css)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "no-store");
+      }
+    }
   }));
 
   app.get("*", (_req, res, next) => {
-    res.sendFile(path.join(assetsPath, "index.html"), (error) => {
-      if (error) next(error);
-    });
+    res.sendFile(
+      path.join(assetsPath, "index.html"),
+      { headers: { "Cache-Control": "no-store" } },
+      (error) => {
+        if (error) next(error);
+      }
+    );
   });
 
   app.use(

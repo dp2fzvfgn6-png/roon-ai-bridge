@@ -78,11 +78,16 @@ test("serves portal assets publicly but protects every administration endpoint",
   try {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
+    assert.equal(page.headers.get("cache-control"), "no-store");
     assert.match(page.headers.get("content-security-policy"), /img-src 'self' data: blob:/);
     const portalPageText = await page.text();
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.2"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.2"/);
+    assert.match(portalPageText, /id="refresh"[^>]*hidden/);
+    assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
 
     const logo = await fetch(`${baseUrl}/roonia-logo.svg`);
@@ -92,6 +97,7 @@ test("serves portal assets publicly but protects every administration endpoint",
 
     const portalStyles = await fetch(`${baseUrl}/styles.css`);
     assert.equal(portalStyles.status, 200);
+    assert.equal(portalStyles.headers.get("cache-control"), "no-store");
     const portalStylesText = await portalStyles.text();
     assert.match(portalStylesText, /\.playlist-collage \{[^}]*gap: 0;[^}]*padding: 0;[^}]*background: #000;/);
     assert.match(portalStylesText, /\.playlist-collage\.collage-2x2 \{[^}]*repeat\(2,/);
@@ -101,6 +107,7 @@ test("serves portal assets publicly but protects every administration endpoint",
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
+    assert.equal(portalScript.headers.get("cache-control"), "no-store");
     const portalScriptText = await portalScript.text();
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /active-zone-select/);
