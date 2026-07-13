@@ -102,7 +102,8 @@ same search returned that artist.
 
 Album-like results additionally expose `release_type` (`album`, `ep`, `single`,
 `single_ep`, `compilation`, `live`, `remix` or `unknown`) and
-`release_type_source` (`roon_metadata`, `roon_section`, `inferred` or `unknown`).
+`release_type_source` (`roon_metadata`, `roon_section`, `musicbrainz`, `inferred`
+or `unknown`).
 The Roon search-root result is used as the principal relevance/popularity signal;
 native category order breaks ties when Roon exposes no direct match.
 Unknown Roon metadata is returned as `unknown`, `low`, `null`, or omitted
@@ -115,6 +116,10 @@ the `tracks` array represents the complete Roon list rather than its first page.
 When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category
 using the exact album title, artist ownership and shared cover fingerprint.
+If Roon exposes no discography sections, the artist fallback loads up to the
+requested release limit, enriches exact title/artist matches with MusicBrainz
+type and first-release year, and classifies remaining releases by their Roon
+track count (one track is a single, two to six an EP, seven or more an album).
 
 Broaden a search when the right candidate is missing:
 

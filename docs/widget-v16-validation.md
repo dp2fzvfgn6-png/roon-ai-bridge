@@ -10,7 +10,8 @@ media-search and artist-detail contracts.
 - artist detail reads Roon discography sections and rejects mere substring
   matches such as `Gabriella Quevedo` for the artist `Quevedo`.
 - albums, EPs and singles are returned separately; a mixed Single/EP section
-  uses explicit metadata first and track count only as a deterministic fallback.
+  uses explicit metadata first, then exact MusicBrainz type/year metadata, and
+  track count only as a deterministic fallback.
 - album detail follows counted track-list and disc levels and loads every page
   up to the requested limit; streaming `action_list` results use Roon's shared
   cover and artist fingerprint to recover the full ordered Tracks category.

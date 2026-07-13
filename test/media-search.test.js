@@ -697,3 +697,58 @@ test("artist detail groups albums and singles and keeps biography optional", asy
   assert.deepEqual(detail.albums.map((album) => album.title), ["Kid A"]);
   assert.deepEqual(detail.singles_eps.map((album) => album.title), ["Burn the Witch"]);
 });
+
+test("artist fallback loads beyond 25 releases and enriches albums EPs singles and years", async () => {
+  const metadata = {
+    listArtistReleases: async () => Array.from({ length: 30 }, (_, index) => ({
+      title: `Release ${index + 1}`,
+      artists: ["Quevedo"],
+      release_type: index < 10 ? "album" : index < 20 ? "ep" : "single",
+      release_year: 2000 + index,
+      score: 100
+    }))
+  };
+  const service = new RoonMediaService(createArtistSearchClient([{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]), "tidal", metadata);
+  const search = await service.search({ query: "Quevedo", types: ["artist"], count: 1 });
+  service.listArtistReleases = async () => ({ artist: search.results[0], releases: [], list_title: null });
+  service.searchGlobalCategory = async (_query, type, _zone, count) => ({
+    directItems: [],
+    items: type === "album"
+      ? Array.from({ length: 30 }, (_, index) => ({ title: `Release ${index + 1}`, subtitle: "Quevedo", item_key: `release-${index + 1}`, hint: "action_list", image_key: `cover-${index + 1}` })).slice(0, count)
+      : []
+  });
+  service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: [], groups: { artist: [], album: [], ep: [], single_ep: [], single: [], track: [], playlist: [] }, best_match: null, best_by_type: {}, ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
+  service.readArtistBio = async () => null;
+
+  const detail = await service.getArtistDetail(search.results[0].result_id, undefined, 200);
+  assert.equal(detail.albums.length, 10);
+  assert.equal(detail.singles_eps.filter((release) => release.release_type === "ep").length, 10);
+  assert.equal(detail.singles_eps.filter((release) => release.release_type === "single").length, 10);
+  assert.equal(detail.albums[0].release_year, 2000);
+  assert.equal(detail.singles_eps.at(-1).release_year, 2029);
+});
+
+test("artist fallback classifies unmatched catalog releases from their Roon track counts", async () => {
+  const metadata = { listArtistReleases: async () => [] };
+  const service = new RoonMediaService(createArtistSearchClient([{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]), "tidal", metadata);
+  const search = await service.search({ query: "Quevedo", types: ["artist"], count: 1 });
+  service.listArtistReleases = async () => ({ artist: search.results[0], releases: [], list_title: null });
+  service.searchGlobalCategory = async () => ({
+    directItems: [],
+    items: [
+      { title: "Long Release", subtitle: "Quevedo", item_key: "long", hint: "action_list", image_key: "long-cover" },
+      { title: "Short Release", subtitle: "Quevedo", item_key: "short", hint: "action_list", image_key: "short-cover" },
+      { title: "One Song", subtitle: "Quevedo", item_key: "single", hint: "action_list", image_key: "single-cover" }
+    ]
+  });
+  service.readAlbumTracksFromSearch = async (release) => Array.from({ length: release.title === "Long Release" ? 10 : release.title === "Short Release" ? 4 : 1 }, () => ({}));
+  service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: [], groups: { artist: [], album: [], ep: [], single_ep: [], single: [], track: [], playlist: [] }, best_match: null, best_by_type: {}, ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
+  service.readArtistBio = async () => null;
+
+  const detail = await service.getArtistDetail(search.results[0].result_id, undefined, 200);
+  assert.deepEqual(detail.albums.map((release) => release.title), ["Long Release"]);
+  assert.deepEqual(detail.singles_eps.map((release) => [release.title, release.release_type, release.content_count]), [
+    ["Short Release", "ep", 4],
+    ["One Song", "single", 1]
+  ]);
+});

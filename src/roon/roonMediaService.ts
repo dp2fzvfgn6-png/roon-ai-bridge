@@ -12,10 +12,14 @@ import {
 import { RoonClient } from "./roonClient";
 import { cleanRoonDisplayText } from "./roonText";
 import { getZoneOrThrow } from "./roonZoneService";
+import {
+  matchReleaseCatalog,
+  ReleaseMetadataService
+} from "../services/releaseMetadataService";
 
 export type MediaType = "track" | "album" | "artist" | "playlist";
 export type ReleaseType = "album" | "ep" | "single" | "single_ep" | "compilation" | "live" | "remix" | "unknown";
-export type ReleaseTypeSource = "roon_metadata" | "roon_section" | "inferred" | "unknown";
+export type ReleaseTypeSource = "roon_metadata" | "roon_section" | "musicbrainz" | "inferred" | "unknown";
 export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
@@ -1038,7 +1042,8 @@ export class RoonMediaService {
 
   constructor(
     private readonly roonClient: RoonClient,
-    private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null
+    private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null,
+    private readonly releaseMetadataService = new ReleaseMetadataService()
   ) {}
 
   async search(request: SearchMediaRequest): Promise<SearchMediaResponse> {
@@ -1295,6 +1300,7 @@ export class RoonMediaService {
 
     const warnings: string[] = [];
     let releases: MediaResult[] = [];
+    let usedSearchFallback = false;
     try {
       releases = (await this.listArtistReleases(resultId, zoneId, count)).releases;
     } catch (error) {
@@ -1303,18 +1309,24 @@ export class RoonMediaService {
 
     if (releases.length === 0) {
       try {
-        const fallback = await this.search({
-          query: artist.title,
-          types: ["album"],
+        const fallback = await this.searchGlobalCategory(
+          artist.title,
+          "album",
           zoneId,
-          count: Math.min(25, Math.max(count, 1)),
-          sourcePreference: "library_first"
-        });
-        releases = fallback.results.filter((release) => mediaBelongsToArtist(release, artist.title));
+          Math.max(1, Math.min(count, 200))
+        );
+        releases = uniqueMedia(fallback.items.map((item, ordinal) =>
+          this.registerReference(artist.title, "album", item, ordinal)
+        )).filter((release) => mediaBelongsToArtist(release, artist.title));
+        usedSearchFallback = true;
         warnings.push("discography_sections_unavailable: strictly matched releases use search classification");
       } catch (error) {
         warnings.push(`album_search: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+
+    if (usedSearchFallback && releases.length) {
+      releases = await this.enrichFallbackReleases(artist, releases, zoneId, warnings);
     }
 
     let popularTracks: MediaResult[] = [];
@@ -1354,6 +1366,62 @@ export class RoonMediaService {
       singles_eps: singlesEps.slice(0, count),
       warnings
     };
+  }
+
+  private async enrichFallbackReleases(
+    artist: MediaReference,
+    releases: MediaResult[],
+    zoneId: string | undefined,
+    warnings: string[]
+  ): Promise<MediaResult[]> {
+    let catalog: Awaited<ReturnType<ReleaseMetadataService["listArtistReleases"]>> = [];
+    try {
+      catalog = await this.releaseMetadataService.listArtistReleases(artist.title);
+    } catch (error) {
+      warnings.push(`release_metadata: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const enriched: MediaResult[] = [];
+    for (let offset = 0; offset < releases.length; offset += 4) {
+      const batch = releases.slice(offset, offset + 4);
+      enriched.push(...await Promise.all(batch.map(async (release) => {
+        const reference = this.references.get(release.result_id);
+        if (!reference) return release;
+        const releaseArtists = release.artists.length
+          ? release.artists.map((entry) => entry.title)
+          : splitArtistCredit(release.artist || release.subtitle || artist.title);
+        const metadata = matchReleaseCatalog(catalog, release.title, releaseArtists);
+        const canReplaceClassification = !["roon_metadata", "roon_section"].includes(
+          release.release_type_source || ""
+        );
+        let contentCount = release.content_count ?? null;
+        let classifiedType = canReplaceClassification ? metadata?.release_type || null : release.release_type;
+        let classifiedSource: ReleaseTypeSource | null = canReplaceClassification && metadata?.release_type
+          ? "musicbrainz"
+          : release.release_type_source;
+
+        if (canReplaceClassification && !classifiedType) {
+          try {
+            contentCount = (await this.readAlbumTracksFromSearch(reference, zoneId, 200)).length || null;
+          } catch {
+            contentCount = null;
+          }
+          if (contentCount === 1) classifiedType = "single";
+          else if (contentCount !== null && contentCount >= 2 && contentCount <= 6) classifiedType = "ep";
+          else if (contentCount !== null && contentCount >= 7) classifiedType = "album";
+          if (classifiedType) classifiedSource = "inferred";
+        }
+
+        Object.assign(reference, {
+          release_year: release.release_year ?? metadata?.release_year ?? null,
+          release_type: classifiedType || release.release_type || "album",
+          release_type_source: classifiedSource || release.release_type_source || "unknown",
+          content_count: contentCount
+        });
+        return this.publicReference(reference);
+      })));
+    }
+    return enriched;
   }
 
   async getAlbumDetail(
