@@ -3,7 +3,7 @@
 ## Purpose
 
 MCP v2 replaces the previous 89-tool facade with 30 canonical intent tools,
-three focused widget entry points and one app-only navigation tool. It is a
+three focused widget entry points and two app-only interaction tools. It is a
 breaking contract with no legacy aliases. The HTTP API, portal and persisted
 user data remain outside this replacement.
 
@@ -26,11 +26,12 @@ The implementation lives in `src/bridge-v2`:
 - `mcp/tools.ts` owns schemas, annotations and the 30-tool intent catalog.
 - `mcp/server.ts` owns server instructions and HTTP/stdio construction.
 - `widgets/viewService.ts` creates bounded, presentation-ready view models.
-- `widgets/tools.ts` owns three model entry points and app-only navigation.
+- `widgets/tools.ts` owns three model entry points plus app-only navigation and actions.
 - `widgets/resources.ts` owns the cache-busted MCP Apps HTML resources.
 
-The widget layer does not duplicate domain mutations. Buttons call canonical
-intent tools, while `roon_ui_navigate` handles read-only in-widget drilldown.
+The widget layer does not duplicate domain mutations. `roon_ui_action` maps a
+user click to the canonical intent gateway and returns verified state in the
+same call, while `roon_ui_navigate` handles read-only in-widget drilldown.
 Full view payloads live in result `_meta`; model-visible `structuredContent`
 stays concise.
 
@@ -64,9 +65,10 @@ keeping playlist deletion in a separate destructive tool.
 
 `roon_open_media_explorer` mounts search results. Selecting an artist, album or
 track calls app-only `roon_ui_navigate`, so exploration does not require a new
-model/tool round trip. Playback and queue buttons use the same canonical tools
-that the model uses directly. Player and queue state refresh only while the
-document is visible.
+model/tool round trip. Playback and queue buttons call `roon_ui_action`, whose
+handler delegates to the same intent gateway used by model-visible tools.
+Player and queue reconciliation runs only while the document is visible; the
+player clock progresses locally between silent reconciliations.
 
 ## Result semantics
 

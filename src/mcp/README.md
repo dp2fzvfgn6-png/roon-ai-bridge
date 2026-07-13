@@ -90,9 +90,10 @@ Widget entry points visible to the model:
 - `roon_open_media_explorer`
 - `roon_open_library`
 
-`roon_ui_navigate` is app-only. It lets a mounted widget drill from search to
-artist, album, playlist or queue without another model turn. The three focused
-resources are cache-busted under `ui://roon-ai-bridge/v11/` and support both
+`roon_ui_navigate` and `roon_ui_action` are app-only. They let a mounted widget
+drill into media and execute a user-clicked canonical intent without another
+model turn. The three focused resources are cache-busted under
+`ui://roon-ai-bridge/v12/` and support both
 the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
 
 ## Running locally

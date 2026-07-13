@@ -131,6 +131,8 @@ test("read-only MCP credentials expose no mutating or interactive tools", () => 
   assert.equal(tools.has("roon_control_playback"), false);
   assert.equal(tools.has("roon_play_media"), false);
   assert.equal(tools.has("roon_open_player"), false);
+  assert.equal(tools.has("roon_ui_action"), false);
+  assert.equal(tools.has("roon_ui_navigate"), false);
   for (const tool of tools.values()) assert.equal(tool.annotations.readOnlyHint, true);
 });
 
@@ -157,7 +159,7 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 34);
+    assert.equal(tools.size, 35);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
@@ -165,9 +167,9 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     const renderTools = ["roon_open_player", "roon_open_media_explorer", "roon_open_library"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v11\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v12\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
-      } else if (name === "roon_ui_navigate") {
+      } else if (name === "roon_ui_navigate" || name === "roon_ui_action") {
         assert.equal(tool._meta["openai/outputTemplate"], undefined);
         assert.deepEqual(tool._meta.ui.visibility, ["app"]);
       } else {
@@ -177,6 +179,7 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     }
     assert.equal(tools.has("roon_status"), false);
     assert.equal(tools.has("roon_get_media_search_widget"), false);
+    assert.equal(tools.get("roon_ui_action")._meta["openai/widgetAccessible"], true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     database.close();

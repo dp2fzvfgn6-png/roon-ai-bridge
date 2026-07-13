@@ -6,6 +6,9 @@ each release lives under [`docs/`](docs/README.md).
 ## 0.17.1 Beta - Unreleased
 
 - Development continues on the `beta` branch from the validated v0.17.0 tag.
+- Rebuilt the embedded widgets under `ui://roon-ai-bridge/v12/` using the
+  portal visual system, app-only verified actions and flicker-free state reconciliation.
+- Added a locally advancing playback clock with seek support between live Roon snapshots.
 
 ## 0.17.0 - 2026-07-13
 
