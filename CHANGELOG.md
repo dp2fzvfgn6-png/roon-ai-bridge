@@ -10,7 +10,7 @@ each release lives under [`docs/`](docs/README.md).
 - Canonical MCP v2 facade with 30 intent tools, three model-visible widget
   entry points and one app-only navigation tool.
 - Focused player, media explorer and library widgets under the cache-busted
-  `ui://roon-ai-bridge/v10/` resource namespace.
+  `ui://roon-ai-bridge/v11/` resource namespace.
 - Portal connection management for ChatGPT OAuth and generic MCP clients.
 - Artist releases, album tracks, deeper entity views and richer media search
   ranking.
@@ -38,6 +38,8 @@ each release lives under [`docs/`](docs/README.md).
 - Preserved the queue when the first playlist recording cannot be resolved
   safely and unambiguously.
 - Corrected portal controls and artwork loading after updates.
+- Completed MCP Apps `tool-input` notification and ChatGPT `toolInput` global
+  handling in the focused widgets.
 - Made connection and update failures observable without exposing secrets.
 
 ### Upgrade notes

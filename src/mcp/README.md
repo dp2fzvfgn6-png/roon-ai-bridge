@@ -92,7 +92,7 @@ Widget entry points visible to the model:
 
 `roon_ui_navigate` is app-only. It lets a mounted widget drill from search to
 artist, album, playlist or queue without another model turn. The three focused
-resources are cache-busted under `ui://roon-ai-bridge/v10/` and support both
+resources are cache-busted under `ui://roon-ai-bridge/v11/` and support both
 the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
 
 ## Running locally

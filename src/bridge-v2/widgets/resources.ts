@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-export const WIDGET_V2_VERSION = "v10";
+export const WIDGET_V2_VERSION = "v11";
 export const WIDGET_V2_URIS = {
   player: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/player.html`,
   media: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/media-explorer.html`,
@@ -107,6 +107,7 @@ export const widgetV2Html = `
   let requestId = 1;
   const pending = new Map();
   let payload = null;
+  let latestInput = window.openai?.toolInput || {};
   let state = Object.assign({ view: "player", selectedZoneId: null, query: "", history: [] }, window.openai?.widgetState || {});
 
   function esc(value) { return String(value == null ? "" : value).replace(/[&<>"']/g, function(ch){ if(ch==="&")return "&amp;";if(ch==="<")return "&lt;";if(ch===">")return "&gt;";if(ch.charCodeAt(0)===34)return "&quot;";return "&#39;"; }); }
@@ -289,7 +290,15 @@ export const widgetV2Html = `
   document.getElementById("search-form").addEventListener("submit", async function(event){ event.preventDefault(); const query = searchInput.value.trim(); if (!query) return; state.query=query; await navigate({view:"search",query:query,zone:zoneRef()},true); });
   zoneSelect.addEventListener("change", async function(){ state.selectedZoneId=zoneSelect.value; persist(); await updateModelContext("User selected Roon zone "+zoneSelect.options[zoneSelect.selectedIndex]?.text+" in the widget."); await navigate(navArgs(state.view),false); });
 
+  function applyToolInput(input) {
+    if (!input || typeof input !== "object") return;
+    latestInput = input;
+    if (typeof latestInput.query === "string" && latestInput.query.trim()) state.query = latestInput.query.trim();
+    if (typeof latestInput.zone?.id === "string" && latestInput.zone.id) state.selectedZoneId = latestInput.zone.id;
+    persist();
+  }
   function applyInitial(globals) {
+    applyToolInput(globals?.toolInput);
     const meta = globals?.toolResponseMetadata;
     const initial = widgetFromResult(meta) || widgetFromResult(globals?.toolOutput) || globals?.toolOutput?.widget;
     if (initial) render(initial);
@@ -299,6 +308,7 @@ export const widgetV2Html = `
   window.addEventListener("message", function(event){
     if (event.source !== window.parent) return; const message=event.data; if (!message || message.jsonrpc!=="2.0") return;
     if (message.id && pending.has(message.id)) { const request=pending.get(message.id); pending.delete(message.id); if (message.error) request.reject(new Error(message.error.message||"Host error")); else request.resolve(message.result); return; }
+    if (message.method === "ui/notifications/tool-input") { applyToolInput(message.params?.arguments ?? message.params ?? {}); return; }
     if (message.method === "ui/notifications/tool-result") { const initial=widgetFromResult(message.params); if (initial) render(initial); }
   }, {passive:true});
   setInterval(function(){ if (!document.hidden && (state.view === "player" || state.view === "queue") && payload) navigate(navArgs(state.view),false); }, 5000);

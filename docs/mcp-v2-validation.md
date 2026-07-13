@@ -36,7 +36,7 @@ git diff --check
 Do not deploy or reconnect ChatGPT in this phase. Before a future deployment:
 
 1. Verify the deployed commit and reported version.
-2. Verify `tools/list` schemas, visibility metadata and v10 widget templates.
+2. Verify `tools/list` schemas, visibility metadata and v11 widget templates.
 3. Exercise semantic zone-name calls against Despacho.
 4. Exercise search, ambiguous selection and exact playback through MCP.
 5. Verify final playback, queue, volume and grouping state in Roon.

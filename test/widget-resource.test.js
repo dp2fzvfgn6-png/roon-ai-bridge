@@ -5,7 +5,7 @@ const {
   WIDGET_V2_URIS
 } = require("../dist/bridge-v2/widgets/resources");
 
-test("serves three focused v10 MCP Apps widget resources", async () => {
+test("serves three focused v11 MCP Apps widget resources", async () => {
   const resources = new Map();
   const server = {
     registerResource(name, uri, options, handler) {
@@ -21,6 +21,8 @@ test("serves three focused v10 MCP Apps widget resources", async () => {
     const resource = response.contents[0];
     assert.equal(resource.uri, uri);
     assert.equal(resource.mimeType, "text/html;profile=mcp-app");
+    assert.match(resource.text, /window\.openai\?\.toolInput/);
+    assert.match(resource.text, /ui\/notifications\/tool-input/);
     assert.match(resource.text, /ui\/notifications\/tool-result/);
     assert.match(resource.text, /ui\/update-model-context/);
     assert.match(resource.text, /roon_ui_navigate/);

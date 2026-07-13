@@ -18,9 +18,9 @@ live Roon validation and ChatGPT reconnection remain pending by design.
 
 The resources are:
 
-- `ui://roon-ai-bridge/v10/player.html`
-- `ui://roon-ai-bridge/v10/media-explorer.html`
-- `ui://roon-ai-bridge/v10/library.html`
+- `ui://roon-ai-bridge/v11/player.html`
+- `ui://roon-ai-bridge/v11/media-explorer.html`
+- `ui://roon-ai-bridge/v11/library.html`
 
 They support the MCP Apps JSON-RPC bridge and ChatGPT
 `window.openai.toolInput`, `toolOutput`, `toolResponseMetadata`, `callTool` and
@@ -61,7 +61,7 @@ visibility and the complete MCP manifest.
 After an explicit deployment request:
 
 1. Confirm `tools/list` exposes 34 tools with the expected visibility metadata.
-2. Read all three v10 resources through MCP.
+2. Read all three v11 resources through MCP.
 3. Exercise widget actions against Despacho without increasing volume.
 4. Verify final playback, queue and selected-zone state in Roon.
 5. Reconnect the ChatGPT app, refresh it and start a new conversation.

@@ -165,7 +165,7 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     const renderTools = ["roon_open_player", "roon_open_media_explorer", "roon_open_library"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v10\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v11\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else if (name === "roon_ui_navigate") {
         assert.equal(tool._meta["openai/outputTemplate"], undefined);
