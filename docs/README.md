@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.12 repository:
+This documentation covers the current v0.17.0 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
@@ -13,6 +13,8 @@ This documentation covers the current v0.12 repository:
 - [MCP v2 Local Validation](mcp-v2-validation.md)
 - [Widget v2 Local Validation](widget-v2-validation.md)
 - [Connections and OAuth](connections.md)
+- [v0.17.0 Release Notes](v0.17.0-release-notes.md)
+- [v0.17.0 Validation](v0.17.0-validation.md)
 - [v0.1 Validation](v0.1-validation.md)
 - [v0.2 Validation](v0.2-validation.md)
 - [v0.3 Validation](v0.3-validation.md)
@@ -27,6 +29,14 @@ This documentation covers the current v0.12 repository:
 - [v0.10 Validation](v0.10-validation.md)
 - [v0.11 Validation](v0.11-validation.md)
 - [v0.12 Validation](v0.12-validation.md)
+- [v0.12.1 Validation](v0.12.1-validation.md)
+- [v0.12.2 Validation](v0.12.2-validation.md)
+- [v0.12.3 Validation](v0.12.3-validation.md)
+- [v0.13.0 Validation](v0.13.0-validation.md)
+- [v0.14.0 Validation](v0.14.0-validation.md)
+- [v0.15.0 Validation](v0.15.0-validation.md)
+- [v0.16.0 Validation](v0.16.0-validation.md)
+- [v0.16.1 Beta Validation](v0.16.1-validation.md)
 - [ChatGPT App](chatgpt-app.md)
 - [Troubleshooting](troubleshooting.md)
 - [Roadmap](roadmap.md)

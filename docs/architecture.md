@@ -135,7 +135,7 @@ queue.
 - `user_preferences`
 - `search_cache`
 
-v0.12 persists Roon authorization state in `data/roonstate.json`, local virtual
+RoonIA persists Roon authorization state in `data/roonstate.json`, local virtual
 playlists, portal users/sessions, zone presets, volume policies and hashed
 managed API keys in `data/roonia.sqlite`, and private
 OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an
