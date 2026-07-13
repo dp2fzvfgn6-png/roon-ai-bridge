@@ -117,9 +117,9 @@ When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category
 using the exact album title, artist ownership and shared cover fingerprint.
 If Roon exposes no discography sections, the artist fallback loads up to the
-requested release limit, enriches exact title/artist matches with MusicBrainz
-type and first-release year, and classifies remaining releases by their Roon
-track count (one track is a single, two to six an EP, seven or more an album).
+requested release limit and enriches exact title/artist matches with MusicBrainz
+type and first-release year. It does not traverse every unmatched release, so
+artist detail remains fast; the year is presented only in release detail.
 
 Broaden a search when the right candidate is missing:
 

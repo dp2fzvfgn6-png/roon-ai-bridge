@@ -1325,33 +1325,40 @@ export class RoonMediaService {
       }
     }
 
-    if (usedSearchFallback && releases.length) {
-      releases = await this.enrichFallbackReleases(artist, releases, zoneId, warnings);
-    }
-
-    let popularTracks: MediaResult[] = [];
-    try {
-      const trackSearch = await this.search({
-        query: artist.title,
-        types: ["track"],
-        zoneId,
-        count: Math.min(25, count),
-        sourcePreference: "library_first"
-      });
-      const matching = trackSearch.results.filter((result) => {
-        return mediaBelongsToArtist(result, artist.title);
-      });
-      popularTracks = matching.slice(0, 12);
-    } catch (error) {
-      warnings.push(`popular_tracks: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    let bio: string | null = null;
-    try {
-      bio = await this.readArtistBio(artist, zoneId);
-    } catch (error) {
-      warnings.push(`biography: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    const releasesPromise = usedSearchFallback && releases.length
+      ? this.enrichFallbackReleases(artist, releases, warnings)
+      : Promise.resolve(releases);
+    const popularTracksPromise = (async (): Promise<MediaResult[]> => {
+      try {
+        const trackSearch = await this.search({
+          query: artist.title,
+          types: ["track"],
+          zoneId,
+          count: Math.min(25, count),
+          sourcePreference: "library_first"
+        });
+        return trackSearch.results
+          .filter((result) => mediaBelongsToArtist(result, artist.title))
+          .slice(0, 12);
+      } catch (error) {
+        warnings.push(`popular_tracks: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
+      }
+    })();
+    const bioPromise = (async (): Promise<string | null> => {
+      try {
+        return await this.readArtistBio(artist, zoneId);
+      } catch (error) {
+        warnings.push(`biography: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      }
+    })();
+    const [enrichedReleases, popularTracks, bio] = await Promise.all([
+      releasesPromise,
+      popularTracksPromise,
+      bioPromise
+    ]);
+    releases = enrichedReleases;
 
     const singlesEps = releases.filter((release) =>
       ["single", "ep", "single_ep"].includes(release.release_type || "")
@@ -1371,7 +1378,6 @@ export class RoonMediaService {
   private async enrichFallbackReleases(
     artist: MediaReference,
     releases: MediaResult[],
-    zoneId: string | undefined,
     warnings: string[]
   ): Promise<MediaResult[]> {
     let catalog: Awaited<ReturnType<ReleaseMetadataService["listArtistReleases"]>> = [];
@@ -1394,29 +1400,16 @@ export class RoonMediaService {
         const canReplaceClassification = !["roon_metadata", "roon_section"].includes(
           release.release_type_source || ""
         );
-        let contentCount = release.content_count ?? null;
-        let classifiedType = canReplaceClassification ? metadata?.release_type || null : release.release_type;
-        let classifiedSource: ReleaseTypeSource | null = canReplaceClassification && metadata?.release_type
+        const classifiedType = canReplaceClassification ? metadata?.release_type || null : release.release_type;
+        const classifiedSource: ReleaseTypeSource | null = canReplaceClassification && metadata?.release_type
           ? "musicbrainz"
           : release.release_type_source;
-
-        if (canReplaceClassification && !classifiedType) {
-          try {
-            contentCount = (await this.readAlbumTracksFromSearch(reference, zoneId, 200)).length || null;
-          } catch {
-            contentCount = null;
-          }
-          if (contentCount === 1) classifiedType = "single";
-          else if (contentCount !== null && contentCount >= 2 && contentCount <= 6) classifiedType = "ep";
-          else if (contentCount !== null && contentCount >= 7) classifiedType = "album";
-          if (classifiedType) classifiedSource = "inferred";
-        }
 
         Object.assign(reference, {
           release_year: release.release_year ?? metadata?.release_year ?? null,
           release_type: classifiedType || release.release_type || "album",
           release_type_source: classifiedSource || release.release_type_source || "unknown",
-          content_count: contentCount
+          content_count: release.content_count ?? null
         });
         return this.publicReference(reference);
       })));

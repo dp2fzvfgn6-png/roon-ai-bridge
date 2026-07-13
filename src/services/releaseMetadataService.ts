@@ -98,7 +98,7 @@ export class ReleaseMetadataService {
       const waitMs = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - this.lastRequestAt));
       if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
+      const timeout = setTimeout(() => controller.abort(), 2500);
       try {
         const query = `artist:\"${artist.replace(/[\\\"]/g, "\\$&")}\"`;
         const url = new URL("https://musicbrainz.org/ws/2/release-group");

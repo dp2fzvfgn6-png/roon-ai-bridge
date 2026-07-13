@@ -728,7 +728,7 @@ test("artist fallback loads beyond 25 releases and enriches albums EPs singles a
   assert.equal(detail.singles_eps.at(-1).release_year, 2029);
 });
 
-test("artist fallback classifies unmatched catalog releases from their Roon track counts", async () => {
+test("artist fallback never opens every unmatched release to infer its track count", async () => {
   const metadata = { listArtistReleases: async () => [] };
   const service = new RoonMediaService(createArtistSearchClient([{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]), "tidal", metadata);
   const search = await service.search({ query: "Quevedo", types: ["artist"], count: 1 });
@@ -741,14 +741,13 @@ test("artist fallback classifies unmatched catalog releases from their Roon trac
       { title: "One Song", subtitle: "Quevedo", item_key: "single", hint: "action_list", image_key: "single-cover" }
     ]
   });
-  service.readAlbumTracksFromSearch = async (release) => Array.from({ length: release.title === "Long Release" ? 10 : release.title === "Short Release" ? 4 : 1 }, () => ({}));
+  let albumTraversals = 0;
+  service.readAlbumTracksFromSearch = async () => { albumTraversals += 1; return []; };
   service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: [], groups: { artist: [], album: [], ep: [], single_ep: [], single: [], track: [], playlist: [] }, best_match: null, best_by_type: {}, ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
   service.readArtistBio = async () => null;
 
   const detail = await service.getArtistDetail(search.results[0].result_id, undefined, 200);
-  assert.deepEqual(detail.albums.map((release) => release.title), ["Long Release"]);
-  assert.deepEqual(detail.singles_eps.map((release) => [release.title, release.release_type, release.content_count]), [
-    ["Short Release", "ep", 4],
-    ["One Song", "single", 1]
-  ]);
+  assert.equal(albumTraversals, 0);
+  assert.deepEqual(detail.albums.map((release) => release.title), ["Long Release", "Short Release", "One Song"]);
+  assert.deepEqual(detail.singles_eps, []);
 });
