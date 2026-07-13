@@ -82,13 +82,15 @@ test("enforces read and control roles on the main HTTP API", async () => {
   app.use(createAuthMiddleware(context));
   app.get("/resource", (_req, res) => res.json({ ok: true }));
   app.post("/resource", (_req, res) => res.json({ ok: true }));
+  app.post("/mcp", (_req, res) => res.json({ ok: true }));
   app.use((error, _req, res, _next) => {
     res.status(error.status || 500).json({ error: error.code || "INTERNAL_ERROR" });
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   const address = server.address();
-  const baseUrl = `http://127.0.0.1:${address.port}/resource`;
+  const rootUrl = `http://127.0.0.1:${address.port}`;
+  const baseUrl = `${rootUrl}/resource`;
 
   try {
     const readResponse = await fetch(baseUrl, {
@@ -101,6 +103,12 @@ test("enforces read and control roles on the main HTTP API", async () => {
       headers: { Authorization: `Bearer ${readKey.token}` }
     });
     assert.equal(deniedWrite.status, 403);
+
+    const allowedMcpTransport = await fetch(`${rootUrl}/mcp`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${readKey.token}` }
+    });
+    assert.equal(allowedMcpTransport.status, 200);
 
     const allowedWrite = await fetch(baseUrl, {
       method: "POST",

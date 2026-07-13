@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const { createServer } = require("../dist/api/server");
 const { registerBridgeV2Tools } = require("../dist/bridge-v2/mcp/tools");
+const { registerWidgetV2Tools } = require("../dist/bridge-v2/widgets/tools");
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
 const { VolumeLimitService } = require("../dist/services/volumeLimitService");
@@ -110,6 +111,27 @@ test("registers the compact MCP v2 intent catalog", () => {
 
   for (const legacy of ["roon_status", "roon_list_zones", "roon_play_by_query", "roon_get_now_playing_widget"])
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
+});
+
+test("read-only MCP credentials expose no mutating or interactive tools", () => {
+  const tools = new Map();
+  const server = { registerTool(name, options) { tools.set(name, options); } };
+  const context = {
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    roonClient: {},
+    volumeLimitService: {},
+    activeApiKey: { role: "read", tool_permissions: null }
+  };
+
+  registerBridgeV2Tools(server, context);
+  registerWidgetV2Tools(server, context);
+
+  assert.ok(tools.has("roon_get_state"));
+  assert.ok(tools.has("roon_search_media"));
+  assert.equal(tools.has("roon_control_playback"), false);
+  assert.equal(tools.has("roon_play_media"), false);
+  assert.equal(tools.has("roon_open_player"), false);
+  for (const tool of tools.values()) assert.equal(tool.annotations.readOnlyHint, true);
 });
 
 test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only tools", async () => {

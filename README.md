@@ -124,8 +124,8 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 API_TOKEN=
-PUBLIC_BASE_URL=https://roonia.ipchome.com
-OAUTH_ISSUER=https://roonia.ipchome.com
+PUBLIC_BASE_URL=https://roonia-bridge.ipchome.com
+OAUTH_ISSUER=https://roonia-bridge.ipchome.com
 OAUTH_APPROVAL_PIN=
 ROON_STREAMING_SOURCE=TIDAL
 ```
@@ -515,8 +515,9 @@ virtual playlists, volume policies, zone presets and diagnostics. See
 
 Player, media explorer and library widgets are published under the cache-busted
 `ui://roon-ai-bridge/v10/` namespace. They use canonical tools for actions and
-app-only navigation for drilldown. ChatGPT reconnection remains intentionally
-deferred until the new facade is deployed and validated live.
+app-only navigation for drilldown. ChatGPT connections are managed from the
+portal under `Settings -> Connections`, together with OAuth
+clients, approval PIN rotation and generic MCP client profiles.
 
 Keep the stdio process local. The remote endpoint must stay behind HTTPS and authentication.
 
@@ -530,7 +531,7 @@ named additional zones. A preliminary state-list call is unnecessary.
 Remote MCP endpoint:
 
 ```text
-https://roonia.ipchome.com/mcp
+https://roonia-bridge.ipchome.com/mcp
 ```
 
 ChatGPT uses an OAuth access token. Administrative API calls may still use `API_TOKEN`:

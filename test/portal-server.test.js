@@ -9,6 +9,7 @@ const { ApiKeyService } = require("../dist/services/apiKeyService");
 const { ToolAccessService } = require("../dist/services/toolAccessService");
 const { createDatabase } = require("../dist/db/database");
 const { PortalAuthService } = require("../dist/services/portalAuthService");
+const { OAuthService } = require("../dist/services/oauthService");
 
 function createConfig(dataDir) {
   return {
@@ -61,7 +62,7 @@ test("serves portal assets publicly but protects every administration endpoint",
         include_tracks: false
       })
     },
-    oauthService: {},
+    oauthService: new OAuthService(config),
     mediaService: {},
     apiKeyService,
     portalAuthService,
@@ -84,8 +85,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.3"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.3"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.4"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.4"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
@@ -140,6 +141,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
     assert.match(portalPageText, /data-tab="users">Usuarios/);
+    assert.match(portalPageText, /data-tab="connections">Conexiones/);
     assert.match(portalPageText, /id="system-bridge-url"/);
     assert.match(portalScriptText, /delete_forever/);
     assert.match(portalScriptText, /function confirmPortal/);
@@ -176,6 +178,39 @@ test("serves portal assets publicly but protects every administration endpoint",
     });
     assert.equal(userSession.status, 200);
     assert.equal((await userSession.json()).user.username, "administrator");
+
+    const connectionsResponse = await fetch(`${baseUrl}/api/admin/connections`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    const connections = await connectionsResponse.json();
+    assert.equal(connections.chatgpt.mcp_url, "https://example.test/mcp");
+    assert.equal(connections.mcp_clients.profiles.length, 3);
+
+    const oauthClientResponse = await fetch(`${baseUrl}/api/admin/connections/oauth/clients`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        client_name: "ChatGPT portal",
+        redirect_uris: ["https://chatgpt.com/connector/oauth/portal"]
+      })
+    });
+    assert.equal(oauthClientResponse.status, 201);
+    assert.match((await oauthClientResponse.json()).client_id, /^roonia_/);
+
+    const mcpCredentialResponse = await fetch(`${baseUrl}/api/admin/connections/mcp-credentials`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ client_type: "generic", name: "Test host", role: "read" })
+    });
+    const mcpCredential = await mcpCredentialResponse.json();
+    assert.equal(mcpCredentialResponse.status, 201);
+    assert.match(mcpCredential.config_json, /Bearer rnb_/);
 
     const managed = apiKeyService.create({ name: "Scoped", role: "control" });
     const restricted = await fetch(`${baseUrl}/api/admin/api-keys/${managed.key_id}`, {

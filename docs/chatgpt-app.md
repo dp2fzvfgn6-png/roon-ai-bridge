@@ -1,16 +1,17 @@
 # ChatGPT App
 
-> Current status: ChatGPT is intentionally disconnected while the new MCP v2
-> facade and later widget redesign are developed. The setup and legacy tool
-> examples below are historical and must not be used to validate MCP v2.
+> Current status: MCP v2 and widget v10 are available for ChatGPT connection.
+> Use `Settings -> Connections` in the portal as the authoritative setup and
+> OAuth administration surface.
 
-v0.12.4 exposes Roon AI Bridge as a private ChatGPT app with typed media tools, OAuth, verified playback results and an interactive widget resource.
+Roon AI Bridge exposes a private ChatGPT app with intent-oriented media tools,
+OAuth, verified playback results and focused interactive widgets.
 
 ## Public URLs
 
-- MCP endpoint: `https://roonia.ipchome.com/mcp`
-- Health check: `https://roonia.ipchome.com/health`
-- Privacy notice: `https://roonia.ipchome.com/privacy`
+- MCP endpoint: `https://roonia-bridge.ipchome.com/mcp`
+- Health check: `https://roonia-bridge.ipchome.com/health`
+- Privacy notice: `https://roonia-bridge.ipchome.com/privacy`
 
 `/health`, `/privacy`, `/.well-known/*` and `/oauth/*` are public. `/mcp` requires an OAuth access token or the admin API token:
 
@@ -36,16 +37,16 @@ The MCP server exposes tools for:
 - Queue snapshots and queue mutations.
 - Local virtual playlists.
 
-The server also registers a minimal Apps SDK widget resource:
+The server registers three focused Apps SDK widget resources under:
 
 ```text
-ui://roon-ai-bridge/control-v6/default.html
+ui://roon-ai-bridge/v10/
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
-metadata cached even after the backend deploy succeeds; the versioned
-`ui://roon-ai-bridge/control-v6/default.html` resource URI invalidates the widget cache.
+metadata cached even after the backend deploy succeeds; the versioned v10
+resource URIs invalidate the widget cache.
 
 ## ChatGPT Developer Setup
 
@@ -57,33 +58,33 @@ Application fields:
 Name: RoonIA
 Description: Control privado de Roon desde ChatGPT: zonas, reproducción, volumen, búsqueda, cola y playlists virtuales.
 Connection: URL del servidor
-Server URL: https://roonia.ipchome.com/mcp
+Server URL: https://roonia-bridge.ipchome.com/mcp
 Authentication: OAuth
 ```
 
 OAuth should be auto-detected from:
 
 ```text
-https://roonia.ipchome.com/.well-known/oauth-protected-resource
-https://roonia.ipchome.com/.well-known/oauth-authorization-server
+https://roonia-bridge.ipchome.com/.well-known/oauth-protected-resource
+https://roonia-bridge.ipchome.com/.well-known/oauth-authorization-server
 ```
 
 Dynamic client registration endpoint:
 
 ```text
-https://roonia.ipchome.com/oauth/register
+https://roonia-bridge.ipchome.com/oauth/register
 ```
 
 Authorization endpoint:
 
 ```text
-https://roonia.ipchome.com/oauth/authorize
+https://roonia-bridge.ipchome.com/oauth/authorize
 ```
 
 Token endpoint:
 
 ```text
-https://roonia.ipchome.com/oauth/token
+https://roonia-bridge.ipchome.com/oauth/token
 ```
 
 If ChatGPT asks for scopes, use:
@@ -95,13 +96,14 @@ roon:control
 If the setup asks for a privacy URL:
 
 ```text
-https://roonia.ipchome.com/privacy
+https://roonia-bridge.ipchome.com/privacy
 ```
 
-During authorization, RoonIA asks for an approval PIN. The PIN is:
+During authorization, RoonIA asks for an approval PIN. It is:
 
-- `OAUTH_APPROVAL_PIN` if configured in `/opt/roon-ai-bridge/.env`.
-- Otherwise the existing `API_TOKEN`.
+- the portal-managed PIN after it has been rotated in Connections;
+- `OAUTH_APPROVAL_PIN` if configured in `/opt/roon-ai-bridge/.env`;
+- otherwise the existing `API_TOKEN`.
 
 ## First Prompts
 

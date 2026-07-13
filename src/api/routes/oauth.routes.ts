@@ -22,7 +22,10 @@ export function createOAuthRouter(context: ApiContext): Router {
     res.json(context.oauthService.getMetadata());
   });
 
-  router.get("/.well-known/oauth-protected-resource", (_req, res) => {
+  router.get([
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/mcp"
+  ], (_req, res) => {
     res.json(context.oauthService.getProtectedResourceMetadata());
   });
 

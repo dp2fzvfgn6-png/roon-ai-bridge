@@ -80,7 +80,7 @@ export function createAuthMiddleware(context: ApiContext) {
     }
 
     const needsControl =
-      req.path === "/mcp" ||
+      req.path !== "/mcp" &&
       !["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase());
     if (managedKey && needsControl && !roleCanControl(managedKey.role)) {
       next(new ApiError("AUTH_FORBIDDEN", "This API key is read-only"));

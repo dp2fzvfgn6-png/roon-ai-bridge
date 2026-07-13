@@ -29,6 +29,7 @@ type OAuthToken = {
   resource: string;
   scope: string;
   expires_at: number;
+  last_used_at?: string | null;
 };
 
 type OAuthStore = {
@@ -40,6 +41,18 @@ type OAuthStore = {
 type RegisterClientInput = {
   client_name?: string;
   redirect_uris?: string[];
+};
+
+type OAuthPinSettings = {
+  salt: string;
+  hash: string;
+  updated_at: string;
+};
+
+export type OAuthClientSummary = OAuthClient & {
+  active_tokens: number;
+  last_authorized_at: string | null;
+  last_used_at: string | null;
 };
 
 const emptyStore = (): OAuthStore => ({
@@ -62,9 +75,11 @@ function isExpired(expiresAt: number): boolean {
 
 export class OAuthService {
   private readonly storePath: string;
+  private readonly settingsPath: string;
 
   constructor(private readonly config: AppConfig) {
     this.storePath = path.join(config.dataDir, "oauth-store.json");
+    this.settingsPath = path.join(config.dataDir, "oauth-settings.json");
   }
 
   getMetadata(): Record<string, unknown> {
@@ -84,9 +99,11 @@ export class OAuthService {
   getProtectedResourceMetadata(): Record<string, unknown> {
     return {
       resource: `${this.config.publicBaseUrl}/mcp`,
+      resource_name: "RoonIA MCP",
       authorization_servers: [this.config.oauthIssuer],
       bearer_methods_supported: ["header"],
-      scopes_supported: ["roon:control"]
+      scopes_supported: ["roon:control"],
+      resource_documentation: `${this.config.publicBaseUrl}/privacy`
     };
   }
 
@@ -114,6 +131,48 @@ export class OAuthService {
 
   getClient(clientId: string): OAuthClient | null {
     return this.readStore().clients.find((client) => client.client_id === clientId) || null;
+  }
+
+  listClients(): OAuthClientSummary[] {
+    const store = this.readStore();
+    const now = Date.now();
+    return store.clients.map((client) => {
+      const tokens = store.tokens.filter(
+        (token) => token.client_id === client.client_id && token.expires_at > now
+      );
+      const newest = (values: Array<string | null | undefined>): string | null =>
+        values.filter((value): value is string => Boolean(value)).sort().at(-1) || null;
+      return {
+        ...client,
+        active_tokens: tokens.length,
+        last_authorized_at: newest(tokens.map((token) => token.created_at)),
+        last_used_at: newest(tokens.map((token) => token.last_used_at))
+      };
+    }).sort((left, right) => right.created_at.localeCompare(left.created_at));
+  }
+
+  revokeClientTokens(clientId: string): OAuthClientSummary {
+    const store = this.readStore();
+    if (!store.clients.some((client) => client.client_id === clientId)) {
+      throw new ApiError("AUTH_INVALID", "OAuth client not found", { client_id: clientId }, 404);
+    }
+    store.codes = store.codes.filter((code) => code.client_id !== clientId);
+    store.tokens = store.tokens.filter((token) => token.client_id !== clientId);
+    this.writeStore(store);
+    return this.listClients().find((client) => client.client_id === clientId)!;
+  }
+
+  deleteClient(clientId: string): OAuthClient {
+    const store = this.readStore();
+    const client = store.clients.find((item) => item.client_id === clientId);
+    if (!client) {
+      throw new ApiError("AUTH_INVALID", "OAuth client not found", { client_id: clientId }, 404);
+    }
+    store.clients = store.clients.filter((item) => item.client_id !== clientId);
+    store.codes = store.codes.filter((code) => code.client_id !== clientId);
+    store.tokens = store.tokens.filter((token) => token.client_id !== clientId);
+    this.writeStore(store);
+    return client;
   }
 
   createAuthorizationCode(params: {
@@ -208,7 +267,8 @@ export class OAuthService {
       created_at: new Date().toISOString(),
       resource: code.resource,
       scope: code.scope,
-      expires_at: Date.now() + 180 * 24 * 60 * 60 * 1000
+      expires_at: Date.now() + 180 * 24 * 60 * 60 * 1000,
+      last_used_at: null
     };
 
     store.tokens.push(token);
@@ -223,13 +283,21 @@ export class OAuthService {
     requiredScope = "roon:control"
   ): boolean {
     const store = this.readStore();
-    return store.tokens.some(
-      (token) =>
-        token.access_token === accessToken &&
-        !isExpired(token.expires_at) &&
-        token.resource === resource &&
-        token.scope.split(/\s+/).includes(requiredScope)
+    const token = store.tokens.find(
+      (item) =>
+        item.access_token === accessToken &&
+        !isExpired(item.expires_at) &&
+        item.resource === resource &&
+        item.scope.split(/\s+/).includes(requiredScope)
     );
+    if (!token) return false;
+    const now = new Date();
+    const previous = token.last_used_at ? Date.parse(token.last_used_at) : 0;
+    if (!previous || now.getTime() - previous > 60_000) {
+      token.last_used_at = now.toISOString();
+      this.writeStore(store);
+    }
+    return true;
   }
 
   getExpectedResource(): string {
@@ -237,12 +305,41 @@ export class OAuthService {
   }
 
   approvalPinMatches(value: string): boolean {
+    const settings = this.readPinSettings();
+    if (settings) {
+      const actual = crypto.scryptSync(value, settings.salt, 32);
+      const expected = Buffer.from(settings.hash, "hex");
+      return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+    }
     const pin = this.config.oauthApprovalPin;
     if (!pin) return false;
     const providedBuffer = Buffer.from(value);
     const expectedBuffer = Buffer.from(pin);
     if (providedBuffer.length !== expectedBuffer.length) return false;
     return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+  }
+
+  approvalPinConfigured(): boolean {
+    return Boolean(this.readPinSettings() || this.config.oauthApprovalPin);
+  }
+
+  setApprovalPin(value: unknown): { configured: true; updated_at: string } {
+    if (typeof value !== "string" || value.length < 6 || value.length > 64) {
+      throw new ApiError(
+        "INVALID_AUTH_REQUEST",
+        "OAuth approval PIN must contain between 6 and 64 characters"
+      );
+    }
+    const salt = crypto.randomBytes(16).toString("hex");
+    const updatedAt = new Date().toISOString();
+    const settings: OAuthPinSettings = {
+      salt,
+      hash: crypto.scryptSync(value, salt, 32).toString("hex"),
+      updated_at: updatedAt
+    };
+    fs.mkdirSync(path.dirname(this.settingsPath), { recursive: true });
+    fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2), { mode: 0o600 });
+    return { configured: true, updated_at: updatedAt };
   }
 
   private readStore(): OAuthStore {
@@ -263,12 +360,25 @@ export class OAuthService {
           ? parsed.tokens.map((token) => ({
               ...token,
               resource: token.resource || this.getExpectedResource(),
-              scope: token.scope || "roon:control"
+              scope: token.scope || "roon:control",
+              last_used_at: token.last_used_at || null
             }))
           : []
       };
     } catch {
       return emptyStore();
+    }
+  }
+
+  private readPinSettings(): OAuthPinSettings | null {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.settingsPath, "utf8")) as Partial<OAuthPinSettings>;
+      if (typeof parsed.salt !== "string" || typeof parsed.hash !== "string" || typeof parsed.updated_at !== "string") {
+        return null;
+      }
+      return parsed as OAuthPinSettings;
+    } catch {
+      return null;
     }
   }
 

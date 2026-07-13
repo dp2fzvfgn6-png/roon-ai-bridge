@@ -46,8 +46,10 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
   const views = new WidgetV2ViewService(context);
   const allowed = (name: string): boolean =>
     context.manifestMode ||
-    !context.toolAccessService ||
-    context.toolAccessService.canUse(name, context.activeApiKey);
+    (context.activeApiKey?.role !== "read" && (
+      !context.toolAccessService ||
+      context.toolAccessService.canUse(name, context.activeApiKey)
+    ));
 
   if (allowed("roon_open_player")) {
     server.registerTool("roon_open_player", {

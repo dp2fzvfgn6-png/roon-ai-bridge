@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-25..0&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=20260713.3">
+  <link rel="stylesheet" href="/styles.css?v=20260713.4">
 </head>
 <body>
   <div id="auth-screen" class="auth-screen">
@@ -112,7 +112,15 @@
 
         <section class="view" id="view-admin">
           <div class="page-heading"><div><span class="overline">Control del bridge</span><h1>Administración</h1><p>Accesos, capacidades y salud operativa.</p></div><div id="admin-health-badge" class="health-badge"><i></i>Comprobando</div></div>
-          <div class="segmented admin-tabs" id="admin-tabs"><button class="active" data-tab="system">Sistema</button><button data-tab="access">APIs</button><button data-tab="users">Usuarios</button><button data-tab="tools">Tools</button><button data-tab="operation">Registros</button></div>
+          <div class="segmented admin-tabs" id="admin-tabs"><button class="active" data-tab="system">Sistema</button><button data-tab="connections">Conexiones</button><button data-tab="access">APIs</button><button data-tab="users">Usuarios</button><button data-tab="tools">Tools</button><button data-tab="operation">Registros</button></div>
+          <div class="tab-page" id="admin-connections">
+            <div class="connections-layout">
+              <section class="connection-hero" id="chatgpt-connection"></section>
+              <section class="panel"><div class="panel-head"><div><span class="overline">OAuth administrado</span><h3>Clientes de ChatGPT</h3><p>Consulta conexiones, crea una alternativa manual y revoca accesos sin editar archivos del servidor.</p></div><button class="btn secondary" id="new-oauth-client"><span class="material-symbols-rounded">add_link</span>Crear cliente</button></div><div id="oauth-clients" class="connection-list"></div></section>
+              <section class="panel"><div class="panel-head"><div><span class="overline">Otros asistentes</span><h3>Clientes MCP</h3><p>Genera una credencial aislada y una configuración para LM Studio, un host con Ollama o cualquier cliente Streamable HTTP.</p></div></div><div id="mcp-client-profiles" class="connection-profile-grid"></div><div class="section-title compact"><div><span class="overline">Credenciales creadas</span><h2>Accesos MCP</h2></div></div><div id="mcp-credentials" class="connection-list"></div></section>
+              <details class="panel connection-advanced"><summary>OAuth avanzado y diagnóstico <span class="material-symbols-rounded">expand_more</span></summary><div id="oauth-advanced"></div></details>
+            </div>
+          </div>
           <div class="tab-page" id="admin-access"><div class="panel"><div class="panel-head"><div><span class="overline">Credenciales</span><h3>API keys</h3><p>Edita permisos, revoca temporalmente o elimina definitivamente una credencial.</p></div><button class="btn primary" id="new-key"><span class="material-symbols-rounded">add</span>Nueva API key</button></div><div id="keys-list" class="key-list"></div></div></div>
           <div class="tab-page" id="admin-users"><div class="panel"><div class="panel-head"><div><span class="overline">Acceso al portal</span><h3>Usuarios</h3><p>Crea cuentas, restablece contraseñas y retira accesos al portal.</p></div><button class="btn primary" id="new-user"><span class="material-symbols-rounded">person_add</span>Nuevo usuario</button></div><div id="users-list" class="key-list"></div></div></div>
           <div class="tab-page" id="admin-tools"><div class="panel"><div class="panel-head"><div><span class="overline">Capacidades MCP</span><h3>Catálogo de tools</h3><p>Desactiva una tool globalmente o limita su uso desde los permisos de cada API key.</p></div><div class="tool-summary" id="tool-summary"></div></div><div class="tool-filter"><span class="material-symbols-rounded">search</span><input id="tool-filter" placeholder="Filtrar tools"><select id="tool-class-filter"><option value="all">Todas</option><option value="read">Solo lectura</option><option value="write">Acciones</option><option value="disabled">Deshabilitadas</option></select></div><div id="tools-list" class="tools-list"></div></div></div>
@@ -134,6 +142,6 @@
   <dialog id="context-modal" class="context-dialog"><div id="context-modal-content"></div></dialog>
   <dialog id="playback-actions-dialog" class="action-dialog"><div id="playback-actions-content"></div></dialog>
   <dialog id="secret-dialog" class="compact-dialog"><div class="modal-head"><div><span class="overline">API key creada</span><h2>Guárdala ahora</h2></div><button class="icon-btn" data-close><span class="material-symbols-rounded">close</span></button></div><p>Por seguridad no podremos volver a mostrar el secreto completo.</p><div class="secret-field"><code id="new-secret"></code><button class="btn primary" id="copy-secret"><span class="material-symbols-rounded">content_copy</span>Copiar</button></div></dialog>
-  <script src="/app.js?v=20260713.3" defer></script>
+  <script src="/app.js?v=20260713.4" defer></script>
 </body>
 </html>

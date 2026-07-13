@@ -900,3 +900,19 @@ Example now-playing payload:
   ]
 }
 ```
+
+## Portal connection administration
+
+Authenticated portal administrators can inspect and manage AI connections:
+
+- `GET /api/admin/connections`
+- `POST /api/admin/connections/oauth/clients`
+- `POST /api/admin/connections/oauth/clients/:client_id/revoke`
+- `DELETE /api/admin/connections/oauth/clients/:client_id`
+- `PATCH /api/admin/connections/oauth/pin`
+- `POST /api/admin/connections/mcp-credentials`
+
+The overview returns public endpoints, readiness checks and sanitized client
+records. Access tokens are never returned. Creating an MCP credential returns
+its Bearer token and generated configuration once; subsequent reads expose only
+the key prefix and usage metadata.

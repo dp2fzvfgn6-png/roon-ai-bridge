@@ -77,3 +77,45 @@ test("rejects OAuth authorization without PKCE S256", () => {
     /PKCE with S256 is required/
   );
 });
+
+test("administers OAuth clients, tokens and a portal-managed approval PIN", () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-oauth-admin-"));
+  const service = new OAuthService(testConfig(dataDir));
+  const client = service.registerClient({
+    client_name: "ChatGPT managed",
+    redirect_uris: ["https://chatgpt.com/connector/oauth/managed"]
+  });
+  const verifier = "managed-verifier-with-enough-entropy-1234567890";
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  const code = service.createAuthorizationCode({
+    client_id: client.client_id,
+    redirect_uri: client.redirect_uris[0],
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource: service.getExpectedResource(),
+    scope: "roon:control"
+  });
+  const token = service.exchangeCode({
+    code,
+    client_id: client.client_id,
+    redirect_uri: client.redirect_uris[0],
+    code_verifier: verifier,
+    resource: service.getExpectedResource()
+  });
+
+  assert.equal(service.tokenIsValid(token.access_token), true);
+  assert.equal(service.listClients()[0].active_tokens, 1);
+  assert.ok(service.listClients()[0].last_used_at);
+  assert.equal(service.revokeClientTokens(client.client_id).active_tokens, 0);
+
+  service.setApprovalPin("new-secure-pin");
+  assert.equal(service.approvalPinMatches("123456"), false);
+  assert.equal(service.approvalPinMatches("new-secure-pin"), true);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(dataDir, "oauth-settings.json"), "utf8"),
+    /new-secure-pin/
+  );
+
+  assert.equal(service.deleteClient(client.client_id).client_id, client.client_id);
+  assert.equal(service.listClients().length, 0);
+});

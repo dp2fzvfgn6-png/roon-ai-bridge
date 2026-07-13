@@ -55,6 +55,11 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
   ): void => {
     if (
       !context.manifestMode &&
+      context.activeApiKey?.role === "read" &&
+      options.annotations.readOnlyHint !== true
+    ) return;
+    if (
+      !context.manifestMode &&
       context.toolAccessService &&
       !context.toolAccessService.canUse(name, context.activeApiKey)
     ) return;

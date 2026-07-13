@@ -19,6 +19,7 @@ import { ApiError, sendError } from "../utils/errors";
 import { APP_VERSION } from "../config/version";
 import { createActionAuditMiddleware, createObservabilityRouter } from "../api/routes/observability.routes";
 import { buildToolsManifest } from "../services/toolManifestService";
+import { ConnectionService } from "../services/connectionService";
 
 function createPortalAuth(context: ApiContext) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -60,6 +61,11 @@ function createPortalAuth(context: ApiContext) {
 export function createPortalServer(context: ApiContext): express.Express {
   const app = express();
   const assetsPath = path.join(process.cwd(), "portal");
+  const connections = new ConnectionService(
+    context.config,
+    context.oauthService,
+    context.apiKeyService
+  );
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8mb" }));
@@ -237,6 +243,71 @@ export function createPortalServer(context: ApiContext): express.Express {
 
   app.get("/api/admin/system", (_req, res) => {
     res.json(context.systemManagementService.getSystemInfo());
+  });
+
+  app.get("/api/admin/connections", (_req, res) => {
+    res.json(connections.overview());
+  });
+
+  app.post("/api/admin/connections/oauth/clients", (req, res, next) => {
+    try {
+      const client = context.oauthService.registerClient(req.body || {});
+      context.logger.info("OAuth client created from portal", {
+        clientId: client.client_id,
+        clientName: client.client_name
+      });
+      res.status(201).json(client);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/connections/oauth/clients/:client_id/revoke", (req, res, next) => {
+    try {
+      const client = context.oauthService.revokeClientTokens(req.params.client_id);
+      context.logger.warn("OAuth client tokens revoked from portal", {
+        clientId: client.client_id
+      });
+      res.json(client);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/connections/oauth/clients/:client_id", (req, res, next) => {
+    try {
+      const client = context.oauthService.deleteClient(req.params.client_id);
+      context.logger.warn("OAuth client deleted from portal", {
+        clientId: client.client_id,
+        clientName: client.client_name
+      });
+      res.json(client);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/connections/oauth/pin", (req, res, next) => {
+    try {
+      const result = context.oauthService.setApprovalPin(req.body?.pin);
+      context.logger.warn("OAuth approval PIN rotated from portal");
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/connections/mcp-credentials", (req, res, next) => {
+    try {
+      const result = connections.createMcpCredential(req.body || {});
+      context.logger.info("MCP client credential created from portal", {
+        clientType: result.client_type,
+        keyId: (result.credential as { key_id?: string }).key_id
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.patch("/api/admin/system/ports", (req, res, next) => {

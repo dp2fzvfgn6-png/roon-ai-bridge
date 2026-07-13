@@ -141,12 +141,13 @@ test("action log sanitizes arguments and clear requires confirmation", () => {
     const entry = actions.record({
       source: "mcp",
       toolOrEndpoint: "roon_status",
-      arguments: { api_token: "secret-token", harmless: "visible" },
+      arguments: { api_token: "secret-token", pin: "approval-pin", harmless: "visible" },
       result: { ok: true },
       durationMs: 4
     });
     const fetched = actions.get(entry.action_id);
     assert.equal(fetched.arguments_sanitized.api_token, "[REDACTED]");
+    assert.equal(fetched.arguments_sanitized.pin, "[REDACTED]");
     assert.equal(fetched.arguments_sanitized.harmless, "visible");
     assert.equal(actions.clear(false).requires_confirmation, true);
     assert.equal(actions.clear(true).ok, true);
