@@ -3,53 +3,57 @@ import { TargetReference } from "../contracts";
 import { TargetResolver } from "../targetResolver";
 import { formatZone } from "../../roon/roonZoneService";
 import type { MediaResult, MediaType, SourcePreference } from "../../roon/roonMediaService";
-import { getQueueSnapshot } from "../../roon/roonQueueService";
 import { createWidgetAssetUrl } from "../../services/widgetAssetService";
+import { ApiError } from "../../utils/errors";
 
 export type WidgetView =
-  | "player"
-  | "search"
+  | "now_playing"
+  | "search_results"
   | "artist"
   | "album"
   | "track"
-  | "queue"
-  | "playlists"
   | "playlist";
 
 export type WidgetPayload = {
-  widget_version: 1;
+  widget_version: 3;
   view: WidgetView;
+  title: string;
   generated_at: string;
-  navigation: {
-    title: string;
-    can_go_back: boolean;
-    parent_view: WidgetView | null;
-  };
   [key: string]: unknown;
 };
 
-function imageUrl(config: BridgeV2Context["config"], imageKey: unknown): string | null {
-  if (typeof imageKey !== "string" || !imageKey) return null;
-  return imageKey.startsWith("custom:")
-    ? createWidgetAssetUrl(config, "playlist-cover", imageKey.slice("custom:".length))
-    : createWidgetAssetUrl(config, "roon-image", imageKey);
+function basePayload(view: WidgetView, title: string): WidgetPayload {
+  return {
+    widget_version: 3,
+    view,
+    title,
+    generated_at: new Date().toISOString()
+  };
 }
 
-function basePayload(
-  view: WidgetView,
-  title: string,
-  parentView: WidgetView | null = null
-): WidgetPayload {
-  return {
-    widget_version: 1,
-    view,
-    generated_at: new Date().toISOString(),
-    navigation: {
-      title,
-      can_go_back: parentView !== null,
-      parent_view: parentView
-    }
-  };
+function imageUrl(context: BridgeV2Context, imageKey: unknown): string | null {
+  if (typeof imageKey !== "string" || !imageKey) return null;
+  return imageKey.startsWith("custom:")
+    ? createWidgetAssetUrl(context.config, "playlist-cover", imageKey.slice("custom:".length))
+    : createWidgetAssetUrl(context.config, "roon-image", imageKey);
+}
+
+function playlistImageUrl(context: BridgeV2Context, imageKey: unknown): string | null {
+  if (typeof imageKey !== "string" || !imageKey) return null;
+  return createWidgetAssetUrl(
+    context.config,
+    "playlist-cover",
+    imageKey.startsWith("custom:") ? imageKey.slice("custom:".length) : imageKey
+  );
+}
+
+function normalize(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export class WidgetV2ViewService {
@@ -59,282 +63,163 @@ export class WidgetV2ViewService {
     this.targets = new TargetResolver(context.roonClient);
   }
 
-  async player(input: { zone?: TargetReference } = {}): Promise<WidgetPayload> {
-    const zones = this.context.roonClient.getZones().map(formatZone);
-    const selected = input.zone
-      ? this.targets.zone(input.zone)
-      : this.context.roonClient.getZones().find((zone) => zone.state === "playing") ||
-        this.context.roonClient.getZones()[0] || null;
-    const selectedZone = selected
-      ? zones.find((zone) => zone.zone_id === selected.zone_id) || null
-      : null;
-    let queuePreview: unknown[] = [];
-    let queueWarning: string | null = null;
-    if (selected && this.context.roonClient.isTransportReady()) {
-      try {
-        const queue = await getQueueSnapshot(this.context.roonClient, selected.zone_id, 8);
-        queuePreview = queue.items.map((item: any, index) => ({
-          ...item,
-          position: index + 1,
-          title: item.title || item.three_line?.line1 || null,
-          artist: item.artist || item.three_line?.line2 || null,
-          album: item.album || item.three_line?.line3 || null,
-          image_url: imageUrl(this.context.config, item.image_key)
-        }));
-      } catch (error) {
-        queueWarning = error instanceof Error ? error.message : String(error);
-      }
-    }
-    return {
-      ...basePayload("player", "Now Playing"),
-      core: {
-        connected: this.context.roonClient.isCoreConnected(),
-        name: this.context.roonClient.getCoreName(),
-        transport_ready: this.context.roonClient.isTransportReady()
-      },
-      selected_zone_id: selected?.zone_id || null,
-      zones: zones.map((zone) => {
-        const output = zone.outputs.find((candidate) => candidate.volume) || zone.outputs[0] || null;
+  nowPlaying(input: { zone?: TargetReference } = {}): WidgetPayload {
+    const requestedZone = input.zone ? this.targets.zone(input.zone) : null;
+    const candidates = requestedZone ? [requestedZone] : this.context.roonClient.getZones();
+    const zones = candidates
+      .filter((zone) => {
+        const nowPlaying = zone.now_playing;
+        const lines = nowPlaying?.three_line;
+        return zone.state === "playing" && Boolean(
+          nowPlaying?.image_key || lines?.line1 || lines?.line2 || lines?.line3
+        );
+      })
+      .map((zone) => {
+        const formatted = formatZone(zone);
         return {
-          zone_id: zone.zone_id,
-          name: zone.display_name,
-          state: zone.state,
-          now_playing: {
-            title: zone.now_playing.line1,
-            artist: zone.now_playing.line2,
-            album: zone.now_playing.line3,
-            image_key: zone.now_playing.image_key,
-            image_url: imageUrl(this.context.config, zone.now_playing.image_key),
-            position_seconds: zone.now_playing.seek_position,
-            duration_seconds: zone.now_playing.length
+          zone_id: formatted.zone_id,
+          name: formatted.display_name,
+          media: {
+            title: formatted.now_playing.line1,
+            artist: formatted.now_playing.line2,
+            album: formatted.now_playing.line3,
+            image_url: imageUrl(this.context, formatted.now_playing.image_key)
           },
-          volume: output?.volume
-            ? {
-                output_id: output.output_id,
-                value: output.volume.value ?? null,
-                min: output.volume.min ?? null,
-                max: output.volume.max ?? null,
-                step: output.volume.step ?? 1,
-                muted: Boolean(output.volume.is_muted)
-              }
-            : null,
-          playback_options: zone.playback_settings,
-          grouped_outputs: zone.outputs.map((item) => ({
-            output_id: item.output_id,
-            name: item.display_name
+          outputs: formatted.outputs.map((output) => ({
+            output_id: output.output_id,
+            name: output.display_name,
+            volume: output.volume
+              ? {
+                  value: output.volume.value ?? null,
+                  type: output.volume.type ?? null,
+                  muted: Boolean(output.volume.is_muted)
+                }
+              : null
           }))
         };
-      }),
-      selected_zone: selectedZone,
-      queue_preview: queuePreview,
-      warnings: queueWarning ? [queueWarning] : []
+      });
+
+    return {
+      ...basePayload("now_playing", requestedZone ? requestedZone.display_name : "Ahora suena"),
+      requested_zone: requestedZone
+        ? { zone_id: requestedZone.zone_id, name: requestedZone.display_name }
+        : null,
+      zones
     };
   }
 
-  async search(input: {
-    query: string;
+  async media(input: {
+    query?: string;
+    result_id?: string;
     types?: MediaType[];
     count?: number;
     source_preference?: SourcePreference;
-    zone?: TargetReference;
   }): Promise<WidgetPayload> {
+    if (input.result_id) return this.mediaEntity(input.result_id, input.count);
+    const query = input.query?.trim();
+    if (!query) throw new ApiError("VALIDATION_ERROR", "query or result_id is required");
+
     const result = await this.context.mediaService.search({
-      query: input.query,
+      query,
       types: input.types,
-      count: input.count || 20,
-      sourcePreference: input.source_preference || "highest_quality"
+      count: input.count ?? 12,
+      sourcePreference: input.source_preference ?? "highest_quality"
     });
-    const selectedZoneId = this.selectedZoneId(input.zone);
+    const explicitType = input.types?.length === 1 ? input.types[0] : null;
+    const recommended = result.recommended_result_id
+      ? result.results.find((item) => item.result_id === result.recommended_result_id)
+      : null;
+    if (
+      explicitType &&
+      explicitType !== "playlist" &&
+      recommended?.media_type === explicitType &&
+      !result.ambiguous &&
+      !result.selection_required
+    ) {
+      return this.mediaEntity(recommended.result_id, input.count);
+    }
+    const cards = result.results.map((item) => this.mediaCard(item));
     return {
-      ...basePayload("search", `Results for “${input.query}”`),
-      query: input.query,
-      zones: this.zoneOptions(),
-      selected_zone_id: selectedZoneId,
-      filters: {
-        types: input.types || [],
-        source_preference: input.source_preference || "highest_quality"
-      },
-      results: result.results.map((media) => this.mediaCard(media)),
-      recommended_result_id: result.recommended_result_id,
-      selection_required: result.selection_required,
+      ...basePayload("search_results", `Resultados para “${query}”`),
+      query,
+      results: cards,
+      best_match: result.best_match ? this.mediaCard(result.best_match) : cards.find((item) => item.is_best_match) || cards[0] || null,
+      groups: result.groups
+        ? Object.fromEntries(Object.entries(result.groups).map(([key,items]) => [key,items.map((item) => this.mediaCard(item))]))
+        : this.groupCards(cards),
       ambiguous: result.ambiguous,
       warnings: result.warnings || []
     };
   }
 
-  async entity(input: {
-    result_id: string;
-    zone?: TargetReference;
-    count?: number;
-  }): Promise<WidgetPayload> {
-    const media = this.context.mediaService.get(input.result_id);
-    const zoneId = this.selectedZoneId(input.zone);
-    if (media.media_type === "artist") {
-      const detail = await this.context.mediaService.getArtistDetail(
-        input.result_id,
-        zoneId || undefined,
-        input.count || 50
-      );
-      return {
-        ...basePayload("artist", detail.artist.title, "search"),
-        zones: this.zoneOptions(),
-        selected_zone_id: zoneId,
-        artist: this.mediaCard(detail.artist),
-        biography: detail.bio,
-        popular_tracks: detail.popular_tracks.map((item) => this.mediaCard(item)),
-        albums: detail.albums.map((item) => this.mediaCard(item)),
-        singles_eps: detail.singles_eps.map((item) => this.mediaCard(item)),
-        warnings: detail.warnings
-      };
-    }
-    if (media.media_type === "album") {
-      const detail = await this.context.mediaService.getAlbumDetail(
-        input.result_id,
-        zoneId || undefined,
-        input.count || 100
-      );
-      return {
-        ...basePayload("album", detail.album.title, "search"),
-        zones: this.zoneOptions(),
-        selected_zone_id: zoneId,
-        album: this.mediaCard(detail.album),
-        description: detail.description,
-        tracks: detail.tracks.map((item) => this.mediaCard(item)),
-        warnings: detail.warnings
-      };
-    }
-    return {
-      ...basePayload(media.media_type === "track" ? "track" : "search", media.title, "search"),
-      zones: this.zoneOptions(),
-      selected_zone_id: zoneId,
-      entity: this.mediaCard(media),
-      warnings: media.warnings || []
-    };
-  }
-
-  async queue(input: { zone: TargetReference; count?: number }): Promise<WidgetPayload> {
-    const zone = this.targets.zone(input.zone);
-    const queue = await getQueueSnapshot(this.context.roonClient, zone.zone_id, input.count || 100);
-    return {
-      ...basePayload("queue", `Queue · ${zone.display_name}`, "player"),
-      zones: this.zoneOptions(),
-      selected_zone_id: zone.zone_id,
-      zone: { zone_id: zone.zone_id, name: zone.display_name, state: zone.state },
-      items: queue.items.map((item: any, index) => ({
-        ...item,
-        position: index + 1,
-        title: item.title || item.three_line?.line1 || null,
-        artist: item.artist || item.three_line?.line2 || null,
-        album: item.album || item.three_line?.line3 || null,
-        image_url: imageUrl(this.context.config, item.image_key)
-      }))
-    };
-  }
-
-  playlists(input: { limit?: number; offset?: number } = {}): WidgetPayload {
-    const result = this.context.playlistService.listPlaylists({
+  playlist(input: {
+    playlist: { id?: string; name?: string };
+    limit?: number;
+    offset?: number;
+  }): WidgetPayload {
+    const playlistId = this.resolvePlaylistId(input.playlist);
+    const detail = this.context.playlistService.getPlaylistDetail(playlistId, {
       includeTracks: true,
-      trackLimit: 1,
-      trackOffset: 0,
-      limit: input.limit || 40,
-      offset: input.offset || 0
+      limit: input.limit ?? 50,
+      offset: input.offset ?? 0
     });
+    const tracks = detail.tracks || [];
+    const coverKey = detail.cover_image_key || tracks.find((track) => track.image_key)?.image_key || null;
     return {
-      ...basePayload("playlists", "RoonIA Playlists"),
-      zones: this.zoneOptions(),
-      selected_zone_id: this.selectedZoneId(),
-      playlists: result.playlists.map((playlist) => {
-        const coverKey = playlist.cover_image_key || playlist.tracks?.[0]?.image_key || null;
-        return {
-          playlist_id: playlist.playlist_id,
-          name: playlist.name,
-          description: playlist.description,
-          track_count: playlist.track_count,
-          updated_at: playlist.updated_at,
-          image_key: coverKey,
-          image_url: imageUrl(this.context.config, coverKey)
-        };
-      }),
-      pagination: {
-        limit: input.limit || 40,
-        offset: input.offset || 0,
-        total: result.total,
-        has_more: (input.offset || 0) + result.playlists.length < result.total
-      }
-    };
-  }
-
-  playlist(input: { playlist_id: string; limit?: number; offset?: number }): WidgetPayload {
-    const playlist = this.context.playlistService.getPlaylistDetail(input.playlist_id, {
-      includeTracks: true,
-      limit: input.limit || 100,
-      offset: input.offset || 0
-    });
-    return {
-      ...basePayload("playlist", playlist.name, "playlists"),
-      zones: this.zoneOptions(),
-      selected_zone_id: this.selectedZoneId(),
+      ...basePayload("playlist", detail.name),
       playlist: {
-        playlist_id: playlist.playlist_id,
-        name: playlist.name,
-        description: playlist.description,
-        track_count: playlist.track_count,
-        image_key: playlist.cover_image_key,
-        image_url: imageUrl(this.context.config, playlist.cover_image_key)
+        playlist_id: detail.playlist_id,
+        name: detail.name,
+        description: detail.description,
+        track_count: detail.track_count,
+        image_url: playlistImageUrl(this.context, coverKey)
       },
-      tracks: (playlist.tracks || []).map((track) => ({
-        playlist_id: playlist.playlist_id,
+      tracks: tracks.map((track) => ({
         track_id: track.track_id,
         position: track.position,
         title: track.audio_metadata?.title || track.title || track.query,
         artist: track.audio_metadata?.artist || track.artist,
         album: track.audio_metadata?.album || track.album,
         duration_seconds: track.audio_metadata?.duration_seconds ?? null,
-        image_key: track.image_key,
-        image_url: imageUrl(this.context.config, track.image_key),
-        resolution_status: track.resolution?.status || "missing",
-        roon_binding_status: track.roon_binding.state
+        image_url: imageUrl(this.context, track.image_key)
       })),
       pagination: {
-        limit: input.limit || 100,
-        offset: input.offset || 0,
-        total: playlist.track_count,
-        has_more: playlist.has_more
+        offset: input.offset ?? 0,
+        returned: tracks.length,
+        total: detail.track_count,
+        has_more: detail.has_more
       }
     };
   }
 
-  async navigate(input: {
-    view: WidgetView;
-    zone?: TargetReference;
-    query?: string;
-    types?: MediaType[];
-    result_id?: string;
-    playlist_id?: string;
-    count?: number;
-    limit?: number;
-    offset?: number;
-    source_preference?: SourcePreference;
-  }): Promise<WidgetPayload> {
-    if (input.view === "player") return this.player({ zone: input.zone });
-    if (input.view === "search") {
-      if (!input.query) throw new Error("query is required for search view");
-      return this.search(input as any);
+  private async mediaEntity(resultId: string, count = 50): Promise<WidgetPayload> {
+    const media = this.context.mediaService.get(resultId);
+    if (media.media_type === "artist") {
+      const detail = await this.context.mediaService.getArtistDetail(resultId, undefined, count);
+      return {
+        ...basePayload("artist", detail.artist.title),
+        artist: this.mediaCard(detail.artist),
+        popular_tracks: detail.popular_tracks.map((item) => this.mediaCard(item)),
+        albums: detail.albums.map((item) => this.mediaCard(item)),
+        singles_eps: detail.singles_eps.map((item) => this.mediaCard(item)),
+        warnings: detail.warnings || []
+      };
     }
-    if (["artist", "album", "track"].includes(input.view)) {
-      if (!input.result_id) throw new Error("result_id is required for entity view");
-      return this.entity(input as any);
+    if (media.media_type === "album") {
+      const detail = await this.context.mediaService.getAlbumDetail(resultId, undefined, Math.max(count, 100));
+      return {
+        ...basePayload("album", detail.album.title),
+        album: this.mediaCard(detail.album),
+        description: detail.description,
+        tracks: detail.tracks.map((item) => this.mediaCard(item)),
+        warnings: detail.warnings || []
+      };
     }
-    if (input.view === "queue") {
-      if (!input.zone) throw new Error("zone is required for queue view");
-      return this.queue(input as any);
-    }
-    if (input.view === "playlists") return this.playlists(input);
-    if (input.view === "playlist") {
-      if (!input.playlist_id) throw new Error("playlist_id is required for playlist view");
-      return this.playlist(input as any);
-    }
-    throw new Error(`Unsupported widget view: ${input.view}`);
+    return {
+      ...basePayload("track", media.title),
+      track: this.mediaCard(media),
+      warnings: media.warnings || []
+    };
   }
 
   private mediaCard(media: MediaResult): Record<string, unknown> {
@@ -352,25 +237,41 @@ export class WidgetV2ViewService {
       disc_number: media.disc_number ?? null,
       source: media.source,
       quality: media.quality,
-      confidence: media.confidence,
-      playable: media.playable,
-      image_key: media.image_key,
-      image_url: imageUrl(this.context.config, media.image_key)
+      release_type: media.release_type,
+      release_type_source: media.release_type_source,
+      direct_match: media.direct_match,
+      is_best_match: media.is_best_match,
+      links: media.links,
+      image_url: imageUrl(this.context, media.image_key)
     };
   }
 
-  private zoneOptions(): Array<{ zone_id: string; name: string; state: string }> {
-    return this.context.roonClient.getZones().map((zone) => ({
-      zone_id: zone.zone_id,
-      name: zone.display_name,
-      state: zone.state
-    }));
+  private groupCards(cards: Array<Record<string, unknown>>): Record<string, Array<Record<string, unknown>>> {
+    const groups: Record<string, Array<Record<string, unknown>>> = {
+      artist: [], album: [], ep: [], single_ep: [], single: [], track: [], playlist: []
+    };
+    for (const card of cards) {
+      const releaseType = String(card.release_type || "");
+      const key = card.media_type === "album" && ["ep", "single_ep", "single"].includes(releaseType)
+        ? releaseType
+        : String(card.media_type || "track");
+      (groups[key] || groups.track).push(card);
+    }
+    return groups;
   }
 
-  private selectedZoneId(ref?: TargetReference): string | null {
-    if (ref) return this.targets.zone(ref).zone_id;
-    const selected = this.context.roonClient.getZones().find((zone) => zone.state === "playing") ||
-      this.context.roonClient.getZones()[0];
-    return selected?.zone_id || null;
+  private resolvePlaylistId(ref: { id?: string; name?: string }): string {
+    if (ref?.id) return ref.id;
+    const wanted = normalize(ref?.name || "");
+    if (!wanted) throw new ApiError("VALIDATION_ERROR", "playlist requires id or name");
+    const result = this.context.playlistService.listPlaylists({ limit: 100, offset: 0 });
+    const matches = result.playlists.filter((playlist) => normalize(playlist.name) === wanted);
+    if (matches.length === 1) return matches[0].playlist_id;
+    if (matches.length > 1) {
+      throw new ApiError("AMBIGUOUS_MATCH", "Several playlists have the requested name", {
+        candidates: matches.map((playlist) => ({ id: playlist.playlist_id, name: playlist.name }))
+      });
+    }
+    throw new ApiError("PLAYLIST_NOT_FOUND", "Virtual playlist not found", { requested: ref });
   }
 }

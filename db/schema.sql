@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS virtual_playlists (
   name TEXT NOT NULL,
   description TEXT,
   cover_image_key TEXT,
+  last_played_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

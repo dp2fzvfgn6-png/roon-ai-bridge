@@ -85,11 +85,14 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.5"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.5"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.7"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.7"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
+    assert.match(portalPageText, /data-tab="browse">Mi Música<\/button>/);
+    assert.doesNotMatch(portalPageText, /id="browse-hierarchy"/);
+    assert.match(portalPageText, /id="playlist-sort"/);
 
     const logo = await fetch(`${baseUrl}/roonia-logo.svg`);
     assert.equal(logo.status, 200);
@@ -105,6 +108,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.playlist-collage\.collage-3x3 \{[^}]*repeat\(3,/);
     assert.match(portalStylesText, /\.playlist-collage\.collage-4x4 \{[^}]*repeat\(4,/);
     assert.match(portalStylesText, /\.playlist-collage > img \{[^}]*min-width: 0;[^}]*object-fit: cover;[^}]*object-position: center;/);
+    assert.match(portalStylesText, /\.playlist-card p \{[^}]*-webkit-line-clamp:4;/);
+    assert.match(portalStylesText, /\.library-destination-grid/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -113,11 +118,15 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /active-zone-select/);
     assert.match(portalScriptText, /data-play-mode="play_next"/);
-    assert.match(portalScriptText, /artist:6, album:6, track:12/);
+    assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
     assert.match(portalScriptText, /data-more-results/);
     assert.match(portalScriptText, /playlist-search-form/);
     assert.match(portalScriptText, /artist-detail/);
     assert.match(portalScriptText, /album-detail/);
+    assert.match(portalScriptText, /entityByline\(np\.line2,np\.line3/);
+    assert.match(portalScriptText, /entityByline\(item\.artist,null,item\.subtitle\|\|""\)/);
+    assert.match(portalScriptText, /entityLink\("album",item\.album,item\.artist\|\|null\)/);
+    assert.match(portalScriptText, /data-entity-link="\$\{esc\(type\)\}"/);
     assert.match(portalScriptText, /playlist-collage/);
     assert.match(portalScriptText, /keys\.length<=4\?2:keys\.length<=9\?3:4/);
     assert.match(portalScriptText, /capacity=columns\*columns/);
@@ -128,6 +137,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /setInterval\(animatePlaylistCollages,2600\)/);
     assert.match(portalScriptText, /prefers-reduced-motion: reduce/);
     assert.match(portalScriptText, /playlist-cover-file/);
+    assert.match(portalScriptText, /function sortedPlaylists/);
+    assert.match(portalScriptText, /last_played_at/);
+    assert.match(portalScriptText, /function loadMyMusic/);
+    assert.match(portalScriptText, /data-library-hierarchy/);
+    assert.match(portalScriptText, /\['settings','setting','ajustes','configuracion'\]/);
     assert.match(portalScriptText, /event\.target!==dialog/);
     assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
     assert.match(portalScriptText, /data-mini-seek/);
@@ -145,6 +159,17 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="system-bridge-url"/);
     assert.match(portalScriptText, /delete_forever/);
     assert.match(portalScriptText, /function confirmPortal/);
+
+    const previewScriptText = fs.readFileSync(
+      path.join(__dirname, "..", "scripts", "portal-ux-preview.js"),
+      "utf8"
+    );
+    assert.match(previewScriptText, /function previewSearchPayload/);
+    assert.match(previewScriptText, /best_match:/);
+    assert.match(previewScriptText, /best_by_type/);
+    assert.match(previewScriptText, /groups/);
+    assert.match(previewScriptText, /release_type_source:"roon_metadata"/);
+    assert.doesNotMatch(previewScriptText, /three_line/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
     assert.equal((await authStatus.json()).setup_required, true);

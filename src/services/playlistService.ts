@@ -80,6 +80,7 @@ export type VirtualPlaylist = {
   tracks: VirtualPlaylistTrack[];
   track_count: number;
   tracks_count: number;
+  last_played_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -138,6 +139,7 @@ type PlaylistRow = {
   name: string;
   description: string | null;
   cover_image_key: string | null;
+  last_played_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -684,7 +686,7 @@ export class PlaylistService {
     const total = this.countPlaylists();
     const playlistRows = this.database.db
       .prepare(
-        `SELECT playlist_id, name, description, cover_image_key, created_at, updated_at
+        `SELECT playlist_id, name, description, cover_image_key, last_played_at, created_at, updated_at
          FROM virtual_playlists
          ORDER BY updated_at DESC, name ASC
          LIMIT ? OFFSET ?`
@@ -739,6 +741,7 @@ export class PlaylistService {
       offset,
       returned_count: tracks?.length || 0,
       has_more: includeTracks ? offset + (tracks?.length || 0) < trackCount : false,
+      last_played_at: row.last_played_at,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
@@ -1498,9 +1501,14 @@ export class PlaylistService {
       }
     }
 
+    const lastPlayedAt = mode === "play_now" && results.length > 0
+      ? this.markPlaylistPlayed(playlistId)
+      : playlist.last_played_at;
+
     return {
       ok: failures.length === 0,
       playlist_id: playlist.playlist_id,
+      last_played_at: lastPlayedAt,
       zone_id: zoneId,
       mode,
       requested: tracks.length,
@@ -1609,7 +1617,7 @@ export class PlaylistService {
   private getPlaylistRowOrThrow(playlistId: string): PlaylistRow {
     const row = this.database.db
       .prepare(
-        `SELECT playlist_id, name, description, cover_image_key, created_at, updated_at
+        `SELECT playlist_id, name, description, cover_image_key, last_played_at, created_at, updated_at
          FROM virtual_playlists
          WHERE playlist_id = ?`
       )
@@ -1636,6 +1644,7 @@ export class PlaylistService {
       tracks,
       track_count: trackCount,
       tracks_count: trackCount,
+      last_played_at: row.last_played_at,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
@@ -1654,6 +1663,7 @@ export class PlaylistService {
       cover: buildCover(row.cover_image_key),
       track_count: trackCount,
       tracks_count: trackCount,
+      last_played_at: row.last_played_at,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
@@ -1941,6 +1951,7 @@ export class PlaylistService {
       });
 
       const candidates = payload.results
+        .filter((result) => result.media_type === "track")
         .map((result) => ({
           result,
           scoring: scoreSearchResult(result, {
@@ -1971,7 +1982,6 @@ export class PlaylistService {
       const ambiguous = Boolean(
         second &&
         second.result.media_type === best.result.media_type &&
-        second.scoring.score >= 60 &&
         !sameRecordingCandidate(best.result, second.result) &&
         Math.abs(best.scoring.score - second.scoring.score) <= AMBIGUOUS_SCORE_DELTA
       );
@@ -2146,6 +2156,14 @@ export class PlaylistService {
         position: index + 1
       });
     });
+  }
+
+  private markPlaylistPlayed(playlistId: string): string {
+    const lastPlayedAt = nowIso();
+    this.database.db
+      .prepare("UPDATE virtual_playlists SET last_played_at = ? WHERE playlist_id = ?")
+      .run(lastPlayedAt, playlistId);
+    return lastPlayedAt;
   }
 
   private touchPlaylist(playlistId: string, updatedAt = nowIso()): void {

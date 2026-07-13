@@ -102,7 +102,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_get_state", {
     title: "Get Roon State",
-    description: "Use this when programmatic Roon system, zone or output state is needed for diagnostics or follow-up reasoning. For a user-facing request asking what is playing or for now-playing status, use roon_open_player instead so the interactive widget is shown. It accepts a zone name directly, so do not list zones first.",
+    description: "Use this when programmatic Roon system, zone or output state is needed for diagnostics or follow-up reasoning. For a user-facing request asking what is playing, use roon_show_now_playing instead so the compact visual widget is shown. It accepts a zone name directly, so do not list zones first.",
     annotations: readOnly,
     inputSchema: {
       scope: z.enum(["system", "zones", "zone", "outputs"]).default("system"),
@@ -180,7 +180,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_search_media", {
     title: "Search Roon Media",
-    description: "Use this when the user wants to explore or select tracks, albums, artists or playlists. It never starts playback.",
+    description: "Use this when the user wants to explore or select music. It returns Roon's best match followed by separately ranked artists, albums, EPs, singles, tracks and playlists, and never starts playback. Pass one explicit type when the user clearly says artist, album or song.",
     annotations: readOnly,
     inputSchema: {
       query: z.string().min(1),
@@ -192,7 +192,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_get_media_entity", {
     title: "Get Roon Media Entity",
-    description: "Use this when a selected artist, album, track or playlist needs deep details. Artist results include releases and popular tracks; album results include their track list.",
+    description: "Use this when a selected artist, album, track or playlist needs deep details. Artist results preserve Roon album versus single/EP sections and include popular tracks; album results include their track list.",
     annotations: readOnly,
     inputSchema: {
       result_id: z.string().min(1),
@@ -203,7 +203,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_play_media", {
     title: "Play Roon Media",
-    description: "Use this when the user wants new music to start now and replace the zone queue. Pass either a prior result_id or a query; ambiguous matches are returned without playing.",
+    description: "Use this when the user wants new music to start now and replace the zone queue. Pass a prior result_id when available; otherwise pass the query and explicit artist, album or track type when the user stated it. Ambiguous matches are returned without playing.",
     annotations: write,
     inputSchema: { zone: targetSchema, media: mediaSelector }
   }, (input) => gateway.playMedia(input));

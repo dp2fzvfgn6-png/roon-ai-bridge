@@ -89,9 +89,20 @@ curl -X POST http://localhost:3000/roon/media/search \
   -d '{"query":"Red Right Hand Nick Cave","types":["track"],"count":10}'
 ```
 
-Responses include `ambiguous`, `recommended_result_id`, `selection_required`,
-and per-result `match_score`, `confidence`, `match_reasons`,
-`match_penalties`, `version_hint`, `source`, `quality`, and `is_library`.
+Responses include `best_match`, `best_by_type`, grouped `artist`, `album`, `ep`,
+`single_ep`, `single`, `track` and `playlist` results, plus the compatible flat
+`results` array. `ambiguous`, `recommended_result_id` and `selection_required`
+remain available for callers deciding whether an automatic playback action is
+safe. Each result exposes `match_score`, `confidence`, `match_reasons`,
+`match_penalties`, `version_hint`, `source`, `quality`, `is_library`, native
+`roon_rank`, `direct_match`, `direct_match_score` and navigable artist/album
+`links`.
+
+Album-like results additionally expose `release_type` (`album`, `ep`, `single`,
+`single_ep`, `compilation`, `live`, `remix` or `unknown`) and
+`release_type_source` (`roon_metadata`, `roon_section`, `inferred` or `unknown`).
+The Roon search-root result is used as the principal relevance/popularity signal;
+native category order breaks ties when Roon exposes no direct match.
 Unknown Roon metadata is returned as `unknown`, `low`, `null`, or omitted
 rather than guessed.
 

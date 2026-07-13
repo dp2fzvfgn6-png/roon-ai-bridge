@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.17.0 repository:
+This documentation covers the current v0.17.1 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
@@ -13,6 +13,9 @@ This documentation covers the current v0.17.0 repository:
 - [MCP v2 Local Validation](mcp-v2-validation.md)
 - [Widget v2 Local Validation](widget-v2-validation.md)
 - [Widget v13 Validation](widget-v13-validation.md)
+- [Widget v15 Validation](widget-v15-validation.md)
+- [Deterministic Search Validation](deterministic-search-validation.md)
+- [Music UX Validation](music-ux-validation.md)
 - [Connections and OAuth](connections.md)
 - [v0.17.0 Release Notes](v0.17.0-release-notes.md)
 - [v0.17.0 Validation](v0.17.0-validation.md)

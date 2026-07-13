@@ -14,6 +14,8 @@ import { cleanRoonDisplayText } from "./roonText";
 import { getZoneOrThrow } from "./roonZoneService";
 
 export type MediaType = "track" | "album" | "artist" | "playlist";
+export type ReleaseType = "album" | "ep" | "single" | "single_ep" | "compilation" | "live" | "remix" | "unknown";
+export type ReleaseTypeSource = "roon_metadata" | "roon_section" | "inferred" | "unknown";
 export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
@@ -66,6 +68,46 @@ export type MediaResult = {
   track_number?: number | null;
   disc_number?: number | null;
   content_count?: number | null;
+  release_type: ReleaseType | null;
+  release_type_source: ReleaseTypeSource | null;
+  roon_rank: number;
+  direct_match: boolean;
+  direct_match_score: number;
+  links: {
+    artist: MediaEntityLink | null;
+    album: MediaEntityLink | null;
+  };
+};
+
+export type MediaEntityLink = {
+  type: "artist" | "album";
+  title: string;
+  artist: string | null;
+  result_id: string | null;
+};
+
+export type SearchMediaGroups = {
+  artist: MediaResult[];
+  album: MediaResult[];
+  ep: MediaResult[];
+  single_ep: MediaResult[];
+  single: MediaResult[];
+  track: MediaResult[];
+  playlist: MediaResult[];
+};
+
+export type SearchMediaResponse = {
+  query: string;
+  source_preference: SourcePreference;
+  results: MediaResult[];
+  groups: SearchMediaGroups;
+  best_match: MediaResult | null;
+  best_by_type: Partial<Record<keyof SearchMediaGroups, MediaResult>>;
+  ambiguous: boolean;
+  ambiguity_reason: string | null;
+  recommended_result_id: string | null;
+  selection_required: boolean;
+  warnings: string[];
 };
 
 export type ArtistMediaDetail = {
@@ -180,9 +222,103 @@ function artistContentCount(subtitle: string | null | undefined): number | null 
   return match ? Number.parseInt(match[1], 10) : null;
 }
 
-function artistHasContent(result: MediaResult): boolean {
-  return result.media_type !== "artist" || result.content_count !== 0;
+function releaseTypeValue(value: unknown): ReleaseType | null {
+  const normalized = normalize(typeof value === "string" ? value : "");
+  if (!normalized) return null;
+  if (/\b(single\s*[&/]\s*ep|ep\s*[&/]\s*single)\b/.test(normalized)) return "single_ep";
+  if (/\b(ep|extended play)\b/.test(normalized)) return "ep";
+  if (/\b(single|sencillo)\b/.test(normalized)) return "single";
+  if (/\b(compilation|recopilatorio)\b/.test(normalized)) return "compilation";
+  if (/\b(live|en vivo|directo)\b/.test(normalized)) return "live";
+  if (/\b(remix|remixes)\b/.test(normalized)) return "remix";
+  if (/\b(album|lp)\b/.test(normalized)) return "album";
+  return null;
 }
+
+export function inferReleaseType(
+  item: BrowseItem,
+  sectionType?: ReleaseType | null
+): { type: ReleaseType; source: ReleaseTypeSource } {
+  const raw = objectValue(item) || {};
+  const media = objectValue(item.media) || {};
+  for (const key of ["release_type", "album_type", "product_type", "release_format", "format"]) {
+    const typed = releaseTypeValue(media[key]) || releaseTypeValue(raw[key]);
+    if (typed) return { type: typed, source: "roon_metadata" };
+  }
+  const inferred = releaseTypeValue(`${item.title || ""} ${item.subtitle || ""}`);
+  const context = releaseTypeValue(raw.release_type_context) || sectionType || null;
+  if (context === "single_ep" && inferred && ["single", "ep"].includes(inferred)) {
+    return { type: inferred, source: "inferred" };
+  }
+  if (context) return { type: context, source: "roon_section" };
+  if (inferred) return { type: inferred, source: "inferred" };
+  return { type: "album", source: "unknown" };
+}
+
+function emptyGroups(): SearchMediaGroups {
+  return { artist: [], album: [], ep: [], single_ep: [], single: [], track: [], playlist: [] };
+}
+
+function groupKey(result: MediaResult): keyof SearchMediaGroups {
+  if (result.media_type !== "album") return result.media_type;
+  if (result.release_type === "ep") return "ep";
+  if (result.release_type === "single") return "single";
+  if (result.release_type === "single_ep") return "single_ep";
+  return "album";
+}
+
+function entityPriority(result: MediaResult): number {
+  return ({ artist: 0, album: 1, ep: 2, single_ep: 3, single: 4, track: 5, playlist: 6 } as const)[groupKey(result)];
+}
+
+function mediaEntityLink(
+  type: "artist" | "album",
+  title: string | null,
+  artist: string | null,
+  candidates: MediaResult[]
+): MediaEntityLink | null {
+  if (!title) return null;
+  const normalizedTitle = normalize(title);
+  const normalizedArtist = normalize(artist || "");
+  const match = candidates.find((candidate) =>
+    candidate.media_type === type &&
+    normalize(candidate.title) === normalizedTitle &&
+    (!normalizedArtist || normalize(candidate.artist || candidate.subtitle || "").includes(normalizedArtist))
+  );
+  return { type, title, artist, result_id: match?.result_id || null };
+}
+
+function directSearchItems(items: BrowseItem[]): BrowseItem[] {
+  return selectableItems(itemsWithSourceContext(items)).filter((item) =>
+    !Object.keys(CATEGORY_TITLE).some((type) => titleMatchesCategory(String(item.title || ""), type as MediaType)) &&
+    isMediaContentItem(item)
+  );
+}
+
+function directMatchScore(result: MediaResult, directItems: BrowseItem[]): number {
+  const title = normalize(result.title);
+  const artist = normalize(result.artist || result.subtitle || "");
+  let score = 0;
+  for (const direct of directItems) {
+    if (normalize(String(direct.title || "")) !== title) continue;
+    const directArtist = normalize(String(direct.subtitle || ""));
+    let candidate = 70;
+    if (artist && directArtist && (artist === directArtist || artist.includes(directArtist) || directArtist.includes(artist))) candidate += 20;
+    if (result.image_key && direct.image_key === result.image_key) candidate += 30;
+    score = Math.max(score, candidate);
+  }
+  return score;
+}
+
+function sortGroup(results: MediaResult[]): MediaResult[] {
+  return results.sort((a, b) =>
+    b.direct_match_score - a.direct_match_score ||
+    b.match_score - a.match_score ||
+    a.roon_rank - b.roon_rank
+  );
+}
+
+type SearchTypeResult = { items: BrowseItem[]; directItems: BrowseItem[] };
 
 const ENTITY_SECTION_TITLES = [
   "albums",
@@ -556,11 +692,6 @@ export function scoreSearchResult(
   const penalties: string[] = [];
   let score = 0;
 
-  if (result.media_type === "track") {
-    score += 18;
-    reasons.push("type_match", "track result");
-  }
-
   if (result.playable) {
     score += 8;
     reasons.push("playable");
@@ -616,9 +747,7 @@ export function scoreSearchResult(
     const queryTokens = query.split(" ").filter((token) => token.length > 2);
     const titleMatches = queryTokens.filter((token) => resultTitle.includes(token)).length;
     const subtitleMatches = queryTokens.filter((token) => resultSubtitle.includes(token)).length;
-    const tokenScore = result.media_type === "track"
-      ? Math.min(45, titleMatches * 7 + subtitleMatches * 6)
-      : Math.min(18, titleMatches * 3 + subtitleMatches * 2);
+    const tokenScore = Math.min(30, titleMatches * 6 + subtitleMatches * 5);
     if (tokenScore > 0) {
       score += tokenScore;
       reasons.push("query_token_match");
@@ -627,9 +756,15 @@ export function scoreSearchResult(
     const subtitleTokens = resultSubtitle.split(" ").filter((token) => token.length > 2);
     const titleCovered = titleTokens.length > 0 && titleTokens.every((token) => query.includes(token));
     const artistCovered = subtitleTokens.length > 0 && subtitleTokens.some((token) => query.includes(token));
-    if (result.media_type === "track" && titleCovered && artistCovered) {
-      score += 35;
+    if (titleCovered && artistCovered) {
+      score += 25;
       reasons.push("query_title_artist_match");
+    }
+    const candidateTerms = new Set(resultTitle.split(" ").filter((token) => token.length > 2));
+    const extraTerms = [...candidateTerms].filter((token) => !query.includes(token));
+    if (extraTerms.length > 0 && titleCovered) {
+      score -= Math.min(12, extraTerms.length * 3);
+      penalties.push("extra_title_terms");
     }
   }
 
@@ -643,11 +778,6 @@ export function scoreSearchResult(
   if (source > 0) {
     score += Math.min(5, source);
     reasons.push(`${result.source}_source`);
-  }
-
-  if (result.media_type !== "track") {
-    score -= 25;
-    penalties.push("non_track");
   }
 
   if (!result.playable) {
@@ -795,16 +925,7 @@ export class RoonMediaService {
     private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null
   ) {}
 
-  async search(request: SearchMediaRequest): Promise<{
-    query: string;
-    source_preference: SourcePreference;
-    results: MediaResult[];
-    ambiguous: boolean;
-    ambiguity_reason: string | null;
-    recommended_result_id: string | null;
-    selection_required: boolean;
-    warnings: string[];
-  }> {
+  async search(request: SearchMediaRequest): Promise<SearchMediaResponse> {
     const query = request.query.trim().replace(/\s+/g, " ");
     if (!query) throw new ApiError("INVALID_SEARCH_QUERY", "Search query is required");
 
@@ -812,14 +933,16 @@ export class RoonMediaService {
     const count = Math.max(1, Math.min(request.count || 10, 25));
     const preference = request.sourcePreference || "highest_quality";
     const results: MediaResult[] = [];
+    const directItems: BrowseItem[] = [];
     const warnings: string[] = [];
 
     this.pruneReferences();
 
     for (const type of types) {
       try {
-        const items = await this.searchType(query, type, request.zoneId, count);
-        for (const [ordinal, item] of items.entries()) {
+        const searchType = await this.searchType(query, type, request.zoneId, count);
+        directItems.push(...searchType.directItems);
+        for (const [ordinal, item] of searchType.items.entries()) {
           results.push(
             this.registerReference(
               query,
@@ -837,42 +960,76 @@ export class RoonMediaService {
       }
     }
 
-    results.sort(
-      (a, b) =>
-        mediaResultScore(b, preference, query) -
-        mediaResultScore(a, preference, query)
-    );
-    const scored = results.map((result) => this.withMatchScoring(result, {
+    const uniqueDirect = directItems.filter((item, index, all) => all.findIndex((candidate) =>
+      normalize(String(candidate.title || "")) === normalize(String(item.title || "")) &&
+      normalize(String(candidate.subtitle || "")) === normalize(String(item.subtitle || "")) &&
+      candidate.image_key === item.image_key
+    ) === index);
+    const scored = results.map((result) => {
+      const scoredResult = this.withMatchScoring(result, {
       query,
       sourcePreference: preference,
       strategy: request.strategy
-    }));
-    scored.sort((a, b) => b.match_score - a.match_score);
-    const visibleResults = scored.filter(artistHasContent);
-    const hiddenEmptyArtists = scored.length - visibleResults.length;
-    if (hiddenEmptyArtists > 0) warnings.push(`artist: filtered ${hiddenEmptyArtists} result(s) without content`);
-    const best = visibleResults[0] || null;
-    const second = visibleResults[1] || null;
+      });
+      const directScore = directMatchScore(scoredResult, uniqueDirect);
+      return {
+        ...scoredResult,
+        direct_match: directScore > 0,
+        direct_match_score: directScore,
+        match_score: Math.min(100, scoredResult.match_score + (directScore > 0 ? 15 : 0))
+      };
+    });
+
+    const groups = emptyGroups();
+    for (const result of scored) groups[groupKey(result)].push(result);
+    for (const key of Object.keys(groups) as Array<keyof SearchMediaGroups>) sortGroup(groups[key]);
+
+    const orderedKeys: Array<keyof SearchMediaGroups> = ["artist", "album", "ep", "single_ep", "single", "track", "playlist"];
+    const orderedResults = orderedKeys.flatMap((key) => groups[key]);
+    const directCandidates = scored.filter((result) => result.direct_match);
+    const best = directCandidates.length
+      ? directCandidates.sort((a, b) =>
+          b.direct_match_score - a.direct_match_score ||
+          entityPriority(a) - entityPriority(b) ||
+          a.roon_rank - b.roon_rank
+        )[0]
+      : [...scored].sort((a, b) =>
+          b.match_score - a.match_score ||
+          (Math.abs(a.match_score - b.match_score) <= 5 ? entityPriority(a) - entityPriority(b) : 0) ||
+          a.roon_rank - b.roon_rank
+        )[0] || null;
+    const second = best
+      ? scored.filter((candidate) => candidate.result_id !== best.result_id && entityPriority(candidate) === entityPriority(best))
+          .sort((a, b) => b.match_score - a.match_score || a.roon_rank - b.roon_rank)[0] || null
+      : null;
     const closeCandidates = Boolean(
       best &&
       second &&
+      !best.direct_match &&
       second.match_score >= 60 &&
       Math.abs(best.match_score - second.match_score) <= 12
     );
     const recommendedResultId =
-      best && !closeCandidates && best.playable && best.roon_item_key && best.confidence !== "low"
+      best && !closeCandidates && best.playable && best.roon_item_key && (best.direct_match || best.match_score >= 55)
         ? best.result_id
         : null;
-    const selectionRequired =
-      closeCandidates || !recommendedResultId || Boolean(best && best.confidence !== "high");
-    const publicResults = visibleResults.map((result) => ({
+    const selectionRequired = closeCandidates || !recommendedResultId;
+    const linkedResults = orderedResults.map((result) => ({
       ...result,
+      links: {
+        artist: mediaEntityLink("artist", result.artist || (result.media_type === "artist" ? result.title : result.subtitle), null, scored),
+        album: mediaEntityLink("album", result.album || (result.media_type === "album" ? result.title : null), result.artist || result.subtitle, scored)
+      },
       is_best_match: recommendedResultId === result.result_id,
       selection_required: recommendedResultId === result.result_id
         ? selectionRequired
         : Boolean(best && result.match_score >= 60 && Math.abs(best.match_score - result.match_score) <= 12)
     }));
-    for (const result of publicResults) {
+    const linkedById = new Map(linkedResults.map((result) => [result.result_id, result]));
+    for (const key of Object.keys(groups) as Array<keyof SearchMediaGroups>) {
+      groups[key] = groups[key].map((result) => linkedById.get(result.result_id) || result);
+    }
+    for (const result of linkedResults) {
       const reference = this.references.get(result.result_id);
       if (reference) {
         reference.is_best_match = result.is_best_match;
@@ -883,13 +1040,23 @@ export class RoonMediaService {
         reference.match_penalties = result.match_penalties;
         reference.version_penalties = result.version_penalties;
         reference.warnings = result.warnings;
+        reference.direct_match = result.direct_match;
+        reference.direct_match_score = result.direct_match_score;
+        reference.links = result.links;
       }
     }
+
+    const publicBest = best ? linkedById.get(best.result_id) || null : null;
+    const bestByType: Partial<Record<keyof SearchMediaGroups, MediaResult>> = {};
+    for (const key of orderedKeys) if (groups[key][0]) bestByType[key] = groups[key][0];
 
     return {
       query,
       source_preference: preference,
-      results: publicResults,
+      results: linkedResults,
+      groups,
+      best_match: publicBest,
+      best_by_type: bestByType,
       ambiguous: closeCandidates,
       ambiguity_reason: closeCandidates ? "multiple_close_candidates" : null,
       recommended_result_id: recommendedResultId,
@@ -1007,17 +1174,20 @@ export class RoonMediaService {
       warnings.push(`discography: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    try {
-      const fallback = await this.search({
-        query: artist.title,
-        types: ["album"],
-        zoneId,
-        count: Math.min(25, count),
-        sourcePreference: "library_first"
-      });
-      releases = uniqueMedia([...releases, ...fallback.results]);
-    } catch (error) {
-      warnings.push(`album_search: ${error instanceof Error ? error.message : String(error)}`);
+    if (releases.length === 0) {
+      try {
+        const fallback = await this.search({
+          query: artist.title,
+          types: ["album"],
+          zoneId,
+          count: Math.min(25, count),
+          sourcePreference: "library_first"
+        });
+        releases = fallback.results;
+        warnings.push("discography_sections_unavailable: releases use search classification");
+      } catch (error) {
+        warnings.push(`album_search: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     let popularTracks: MediaResult[] = [];
@@ -1049,7 +1219,7 @@ export class RoonMediaService {
     }
 
     const singlesEps = releases.filter((release) =>
-      /\b(single|ep|sencillo)\b/.test(normalize(`${release.title} ${release.subtitle || ""}`))
+      ["single", "ep", "single_ep"].includes(release.release_type || "")
     );
     const albums = releases.filter((release) => !singlesEps.includes(release));
 
@@ -1158,62 +1328,69 @@ export class RoonMediaService {
       });
     }
 
-    const browse = requireBrowse(this.roonClient);
-    const sessionKey = this.sessionKey("releases");
-    const item = await this.resolveItem(artist, zoneId, sessionKey);
-    const first = await browseCall(browse, {
-      hierarchy: "search",
-      multi_session_key: sessionKey,
-      item_key: item.item_key,
-      ...(zoneId ? { zone_or_output_id: zoneId } : {})
-    });
+    const sectionDefinitions: Array<{ names: string[]; context: ReleaseType }> = [
+      { names: ["albums", "discography", "main albums", "albumes", "discografia"], context: "album" },
+      { names: ["singles and eps", "singles & eps", "singles", "sencillos"], context: "single_ep" },
+      { names: ["eps", "extended plays"], context: "ep" }
+    ];
+    let listTitle: string | null = null;
+    const collected: Array<{ item: BrowseItem; context: ReleaseType; ordinal: number }> = [];
 
-    if (first.action !== "list") {
-      throw new ApiError("SEARCH_NO_RESULTS", "Artist releases are not available", {
-        result_id: resultId,
-        action: first.action
-      });
-    }
-
-    let current = await loadCurrentList(browse, "search", sessionKey, 0, count);
-    const albumsEntry = current.items.find((candidate) =>
-      ["albums", "discography", "main albums", "albumes", "discografia"].includes(
-        normalize(String(candidate.title || ""))
-      )
-    );
-
-    if (albumsEntry?.item_key) {
-      const next = await browseCall(browse, {
+    for (const definition of sectionDefinitions) {
+      const browse = requireBrowse(this.roonClient);
+      const sessionKey = this.sessionKey(`releases-${definition.context}`);
+      const item = await this.resolveItem(artist, zoneId, sessionKey);
+      const first = await browseCall(browse, {
         hierarchy: "search",
         multi_session_key: sessionKey,
-        item_key: albumsEntry.item_key,
+        item_key: item.item_key,
         ...(zoneId ? { zone_or_output_id: zoneId } : {})
       });
-      if (next.action === "list") {
-        current = await loadCurrentList(browse, "search", sessionKey, 0, count);
+      if (first.action !== "list") continue;
+      const root = await loadCurrentList(browse, "search", sessionKey, 0, Math.max(count, 100));
+      listTitle ||= root.list?.title || null;
+      const entry = root.items.find((candidate) =>
+        definition.names.includes(normalize(String(candidate.title || "")))
+      );
+      if (!entry?.item_key) continue;
+      const selected = await browseCall(browse, {
+        hierarchy: "search",
+        multi_session_key: sessionKey,
+        item_key: entry.item_key,
+        ...(zoneId ? { zone_or_output_id: zoneId } : {})
+      });
+      if (selected.action !== "list") continue;
+      const loaded = await loadCurrentList(browse, "search", sessionKey, 0, count);
+      for (const candidate of selectableItems(loaded.items).filter(isMediaContentItem)) {
+        collected.push({ item: candidate, context: definition.context, ordinal: collected.length });
       }
     }
 
-    const releases = selectableItems(current.items)
-      .filter(isMediaContentItem)
-      .map((candidate, ordinal) => {
-        const rawMedia = objectValue(candidate.media) || {};
-        return this.registerReference(artist.title, "album", {
-          ...candidate,
-          media: {
-            ...rawMedia,
-            artist: pickString(rawMedia, ["artist", "artist_name"]) || artist.title,
-            album_artist:
-              pickString(rawMedia, ["album_artist", "albumartist"]) || artist.title
-          }
-        }, ordinal);
-      })
-      .sort((a, b) => this.releaseYear(b) - this.releaseYear(a));
+    if (collected.length === 0) {
+      const detail = await this.openReference(artist, zoneId, "releases-direct", count);
+      listTitle = detail.current.list?.title || null;
+      for (const candidate of selectableItems(detail.current.items).filter(isMediaContentItem)) {
+        collected.push({ item: candidate, context: "album", ordinal: collected.length });
+      }
+    }
+
+    const releases = uniqueMedia(collected.map(({ item: candidate, context, ordinal }) => {
+      const rawMedia = objectValue(candidate.media) || {};
+      return this.registerReference(artist.title, "album", {
+        ...candidate,
+        release_type_context: context,
+        media: {
+          ...rawMedia,
+          artist: pickString(rawMedia, ["artist", "artist_name"]) || artist.title,
+          album_artist: pickString(rawMedia, ["album_artist", "albumartist"]) || artist.title
+        }
+      }, ordinal);
+    })).sort((a, b) => this.releaseYear(b) - this.releaseYear(a) || a.roon_rank - b.roon_rank);
 
     return {
       artist: this.publicReference(artist),
       releases,
-      list_title: current.list?.title || null
+      list_title: listTitle
     };
   }
 
@@ -1222,10 +1399,10 @@ export class RoonMediaService {
     type: MediaType,
     zoneId: string | undefined,
     count: number
-  ): Promise<BrowseItem[]> {
+  ): Promise<SearchTypeResult> {
     if (type === "playlist") {
       const globalResults = await this.searchGlobalCategory(query, type, zoneId, count);
-      if (globalResults.length > 0) return globalResults;
+      if (globalResults.items.length > 0) return globalResults;
 
       const playlistBrowse = await browseLibrary(this.roonClient, {
         hierarchy: "playlists",
@@ -1237,10 +1414,10 @@ export class RoonMediaService {
         sessionKey: this.sessionKey("playlists")
       });
       const normalizedQuery = normalize(query);
-      return selectableItems(itemsWithSourceContext(playlistBrowse.items))
+      return { items: selectableItems(itemsWithSourceContext(playlistBrowse.items))
         .filter((item) => normalize(`${item.title} ${item.subtitle || ""}`).includes(normalizedQuery))
         .map((item) => ({ ...item, result_hierarchy: "playlists" }))
-        .slice(0, count);
+        .slice(0, count), directItems: globalResults.directItems };
     }
 
     return this.searchGlobalCategory(query, type, zoneId, count);
@@ -1251,7 +1428,7 @@ export class RoonMediaService {
     type: MediaType,
     zoneId: string | undefined,
     count: number
-  ): Promise<BrowseItem[]> {
+  ): Promise<SearchTypeResult> {
     const browse = requireBrowse(this.roonClient);
     const sessionKey = this.sessionKey(`search-${type}`);
     const root = await searchRoon(this.roonClient, {
@@ -1261,8 +1438,9 @@ export class RoonMediaService {
       count: 100,
       sessionKey
     });
+    const rootDirectItems = directSearchItems(root.items);
     const category = root.items.find((item) => titleMatchesCategory(String(item.title || ""), type));
-    if (!category?.item_key) return [];
+    if (!category?.item_key) return { items: [], directItems: rootDirectItems };
 
     const selected = await browseCall(browse, {
       hierarchy: "search",
@@ -1270,10 +1448,10 @@ export class RoonMediaService {
       item_key: category.item_key,
       ...(zoneId ? { zone_or_output_id: zoneId } : {})
     });
-    if (selected.action !== "list") return [];
+    if (selected.action !== "list") return { items: [], directItems: rootDirectItems };
 
     const loaded = await loadCurrentList(browse, "search", sessionKey, 0, count);
-    return selectableItems(itemsWithSourceContext(loaded.items));
+    return { items: selectableItems(itemsWithSourceContext(loaded.items)), directItems: rootDirectItems };
   }
 
   private registerReference(
@@ -1289,15 +1467,16 @@ export class RoonMediaService {
     const quality = inferMediaQuality(item);
     const rawSubtitle = typeof item.subtitle === "string" ? item.subtitle : null;
     const title = cleanRoonDisplayText(String(item.title || "")) || "";
-    const artist = cleanRoonDisplayText(
-      pickNestedString(item, ["artist", "artist_name"]) || rawSubtitle
-    );
+    const artist = type === "artist"
+      ? title
+      : cleanRoonDisplayText(pickNestedString(item, ["artist", "artist_name"]) || rawSubtitle);
     const album = cleanRoonDisplayText(pickNestedString(item, ["album", "album_name"]));
     const albumArtist = cleanRoonDisplayText(
       pickNestedString(item, ["album_artist", "albumartist", "album_artist_name"])
     );
     const subtitle = cleanRoonDisplayText(rawSubtitle);
     const version = inferVersionDetails(title, subtitle);
+    const release = type === "album" ? inferReleaseType(item) : null;
     const reference: MediaReference = {
       result_id: resultId,
       type,
@@ -1329,6 +1508,12 @@ export class RoonMediaService {
       track_number: pickNestedNumber(item, ["track_number", "track"]),
       disc_number: pickNestedNumber(item, ["disc_number", "disc"]),
       content_count: type === "artist" ? artistContentCount(subtitle) : null,
+      release_type: release?.type || null,
+      release_type_source: release?.source || null,
+      roon_rank: ordinal,
+      direct_match: false,
+      direct_match_score: 0,
+      links: { artist: null, album: null },
       query,
       ordinal,
       hierarchy

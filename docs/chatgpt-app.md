@@ -1,11 +1,11 @@
 # ChatGPT App
 
-> Current status: MCP v2 and widget v13 are available for ChatGPT connection.
+> Current status: MCP v2 and widget v15 are available for ChatGPT connection.
 > Use `Settings -> Connections` in the portal as the authoritative setup and
 > OAuth administration surface.
 
 Roon AI Bridge exposes a private ChatGPT app with intent-oriented media tools,
-OAuth, verified playback results and focused interactive widgets.
+OAuth, verified playback results and focused read-only widgets.
 
 ## Connection route
 
@@ -57,12 +57,12 @@ The MCP server exposes tools for:
 The server registers three focused Apps SDK widget resources under:
 
 ```text
-ui://roon-ai-bridge/v13/
+ui://roon-ai-bridge/v15/
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
-metadata cached even after the backend deploy succeeds; the versioned v13
+metadata cached even after the backend deploy succeeds; the versioned v15
 resource URIs invalidate the widget cache.
 
 ## ChatGPT Developer Setup (public URL mode)
@@ -128,13 +128,13 @@ During authorization, RoonIA asks for an approval PIN. It is:
 Comprueba el estado de Roon.
 ```
 
-Expected tool: `roon_status`.
+Expected tool: `roon_get_state`.
 
 ```text
 Lista las zonas de Roon.
 ```
 
-Expected tool: `roon_list_zones`.
+Expected tool: `roon_get_state`.
 
 ```text
 Pausa la zona Despacho.
@@ -149,15 +149,36 @@ state and `state_verified: true`. ChatGPT must not claim success otherwise.
 Traslada lo que esta sonando en el Despacho a la Cocina.
 ```
 
-Expected flow: `roon_list_zones` if IDs are not already known, followed by one
-`roon_transfer_playback` call. The app must not search for the current music or
-rebuild the destination queue.
+Expected tool: `roon_transfer_playback`. Zone names are resolved inside the
+intent, so no preliminary list call is needed. The app must not search for the
+current music or rebuild the destination queue.
 
 ```text
 Busca Bad Bunny en Roon.
 ```
 
 Expected tool: `roon_search_media`.
+
+```text
+¿Qué está sonando?
+```
+
+Expected tool: `roon_show_now_playing`. It shows every active playing zone.
+Adding `en Despacho` filters the same widget to that zone.
+
+```text
+Muéstrame el artista Radiohead.
+```
+
+Expected tool: `roon_show_media` with `types: ["artist"]`. A clear typed match
+expands to the artist, album or track view in one call; generic and ambiguous
+searches remain a compact categorized result grid.
+
+```text
+Muéstrame la playlist Focus.
+```
+
+Expected tool: `roon_show_playlist`.
 
 ```text
 Reproduce Bad Bunny en Despacho.

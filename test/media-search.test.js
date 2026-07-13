@@ -341,6 +341,71 @@ test("expand_media_search tries context-stripped searches and returns best candi
   assert.equal(expanded.best_candidates[0].title, "Red Right Hand");
 });
 
+function createMultiTypeSearchClient({ direct = [], artist = [], album = [], track = [], playlist = [] }) {
+  let stage = "root";
+  const titles = { artist: "Artists", album: "Albums", track: "Tracks", playlist: "Playlists" };
+  const collections = { artist, album, track, playlist };
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      const match = Object.keys(titles).find((type) => opts.item_key === `${type}-category`);
+      if (match) { stage = match; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") {
+        callback(false, { list: { title: "Search" }, items: [
+          ...direct,
+          ...Object.keys(titles).map((type) => ({ title: titles[type], item_key: `${type}-category`, hint: "list" }))
+        ] });
+        return;
+      }
+      callback(false, { list: { title: titles[stage] }, items: collections[stage] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("best match follows Roon direct result and resolves entity priority deterministically", async (t) => {
+  await t.test("Bad Bunny selects the artist even when Roon reports zero albums", async () => {
+    const service = new RoonMediaService(createMultiTypeSearchClient({
+      direct: [{ title: "Bad Bunny", subtitle: "4 Albums", item_key: "direct-bad", image_key: "bad-image", hint: "action_list" }],
+      artist: [{ title: "Bad Bunny", subtitle: "0 Albums", item_key: "artist-bad", image_key: "bad-image", hint: "action_list" }],
+      album: [{ title: "Bad Bunny Hits", subtitle: "Various Artists", item_key: "album-hits", hint: "action_list" }]
+    }), "tidal");
+    const search = await service.search({ query: "Bad Bunny", types: ["artist", "album", "track"] });
+    assert.equal(search.best_match.media_type, "artist");
+    assert.equal(search.best_match.title, "Bad Bunny");
+    assert.equal(search.groups.artist[0].content_count, 0);
+  });
+
+  await t.test("El Baifo selects the release above its same-title track", async () => {
+    const service = new RoonMediaService(createMultiTypeSearchClient({
+      direct: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "direct-baifo", image_key: "baifo", hint: "action_list" }],
+      album: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "album-baifo", image_key: "baifo", hint: "action_list", media: { release_type: "Album", artist: "Quevedo" } }],
+      track: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "track-baifo", image_key: "baifo", hint: "action_list" }]
+    }), "tidal");
+    const search = await service.search({ query: "El Baifo", types: ["artist", "album", "track"] });
+    assert.equal(search.best_match.media_type, "album");
+    assert.equal(search.best_match.release_type, "album");
+  });
+
+  await t.test("La Mudanza selects Bad Bunny's popular direct track over namesakes", async () => {
+    const service = new RoonMediaService(createMultiTypeSearchClient({
+      direct: [{ title: "LA MuDANZA", subtitle: "Bad Bunny", item_key: "direct-mudanza", image_key: "mudanza", hint: "action_list" }],
+      album: [{ title: "La Mudanza", subtitle: "Otro Artista", item_key: "album-other", image_key: "other-album", hint: "action_list" }],
+      track: [
+        { title: "La Mudanza", subtitle: "Otro Artista", item_key: "track-other", image_key: "other-track", hint: "action_list" },
+        { title: "LA MuDANZA", subtitle: "Bad Bunny", item_key: "track-bad", image_key: "mudanza", hint: "action_list", media: { artist: "Bad Bunny", album: "DeBÍ TiRAR MáS FOToS" } }
+      ]
+    }), "tidal");
+    const search = await service.search({ query: "La Mudanza", types: ["artist", "album", "track"] });
+    assert.equal(search.best_match.media_type, "track");
+    assert.equal(search.best_match.artist, "Bad Bunny");
+    assert.equal(search.best_match.album, "DeBÍ TiRAR MáS FOToS");
+  });
+});
+
 function createAlbumDetailClient() {
   let stage = "root";
   const browse = {
@@ -413,24 +478,24 @@ function createArtistSearchClient(items = [{ title: "Radiohead", subtitle: "Arti
   return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
 }
 
-test("artist search filters Roon candidates that explicitly have zero albums", async () => {
+test("artist search preserves Roon candidates even when the subtitle reports zero albums", async () => {
   const service = new RoonMediaService(createArtistSearchClient([
     { title: "Daft Punk", subtitle: "10 Albums", item_key: "artist-real", hint: "action_list" },
     { title: "Queen vs. Daft Punk", subtitle: "0 Albums", item_key: "artist-empty", hint: "action_list" }
   ]), "tidal");
   const search = await service.search({ query: "Daft Punk", types: ["artist"], count: 10 });
 
-  assert.deepEqual(search.results.map((result) => result.title), ["Daft Punk"]);
+  assert.deepEqual(search.results.map((result) => result.title), ["Daft Punk", "Queen vs. Daft Punk"]);
   assert.equal(search.results[0].content_count, 10);
-  assert.match(search.warnings.join(" "), /filtered 1 result/);
+  assert.equal(search.results[1].content_count, 0);
 });
 
 test("artist detail groups albums and singles and keeps biography optional", async () => {
   const service = new RoonMediaService(createArtistSearchClient(), "tidal");
   const search = await service.search({ query: "Radiohead", types: ["artist"], count: 1 });
   const artist = search.results[0];
-  const media = (title, media_type, subtitle) => ({ ...artist, result_id: `media-${title}`, title, type: media_type, media_type, subtitle, artist: media_type === "track" ? "Radiohead" : null });
-  service.listArtistReleases = async () => ({ artist, list_title: "Radiohead", releases: [media("Kid A", "album", "2000"), media("Burn the Witch", "album", "Single · 2016")] });
+  const media = (title, media_type, subtitle, release_type = null) => ({ ...artist, result_id: `media-${title}`, title, type: media_type, media_type, subtitle, release_type, artist: media_type === "track" ? "Radiohead" : null });
+  service.listArtistReleases = async () => ({ artist, list_title: "Radiohead", releases: [media("Kid A", "album", "2000", "album"), media("Burn the Witch", "album", "Single · 2016", "single")] });
   service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: request.types[0] === "track" ? [media("Paranoid Android", "track", "Radiohead")] : [], ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
   service.readArtistBio = async () => null;
 

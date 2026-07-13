@@ -1,8 +1,8 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. v0.17.0 promotes the current beta line to stable with
-the canonical MCP v2 intent facade, redesigned widgets and portal, connection
+administration portal. The current package is v0.17.1 and builds on the v0.17.0
+stable line with the canonical MCP v2 intent facade, redesigned widgets and portal, connection
 management, persistent playlist identity and hardened Roon/update handling.
 
 See the [changelog](CHANGELOG.md), [v0.17.0 release notes](docs/v0.17.0-release-notes.md)
@@ -74,7 +74,7 @@ v0.17.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Check GitHub versions and request a host-supervised update.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register focused interactive Apps SDK widget resources under `ui://roon-ai-bridge/v13/`.
+- Register three lightweight read-only Apps SDK widgets under `ui://roon-ai-bridge/v15/`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -507,8 +507,8 @@ Run from `/opt/roon-ai-bridge`:
 DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
 ```
 
-The active MCP v2 facade exposes 30 canonical intent tools, three focused
-model-visible widget entry points and two app-only interaction tools. It replaces
+The active MCP v2 facade exposes 30 canonical intent tools and three focused
+model-visible read-only widget entry points. It replaces
 the previous 89-tool catalog without legacy aliases. Named zones and outputs
 are resolved inside each intent, and playback tools can search and act in one
 MCP call when the match is unambiguous.
@@ -519,9 +519,10 @@ virtual playlists, volume policies, zone presets and diagnostics. See
 [MCP Server](src/mcp/README.md) for the complete list and
 [MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
 
-Player, media explorer and library widgets are published under the cache-busted
-`ui://roon-ai-bridge/v13/` namespace. They use app-only navigation and action
-adapters backed by the canonical intent gateway. ChatGPT connections are managed from the
+Now-playing, adaptive media and playlist widgets are published under the
+cache-busted `ui://roon-ai-bridge/v15/` namespace. They contain no controls,
+polling loops or widget-to-tool calls: each renders the bounded result returned
+by one model-visible tool. ChatGPT connections are managed from the
 portal under `Settings -> Connections`, together with OAuth
 clients, approval PIN rotation and generic MCP client profiles.
 

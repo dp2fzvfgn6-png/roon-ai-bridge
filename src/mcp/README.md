@@ -86,14 +86,13 @@ Configuration and operations:
 
 Widget entry points visible to the model:
 
-- `roon_open_player`
-- `roon_open_media_explorer`
-- `roon_open_library`
+- `roon_show_now_playing`
+- `roon_show_media`
+- `roon_show_playlist`
 
-`roon_ui_navigate` and `roon_ui_action` are app-only. They let a mounted widget
-drill into media and execute a user-clicked canonical intent without another
-model turn. The three focused resources are cache-busted under
-`ui://roon-ai-bridge/v12/` and support both
+The widgets are read-only and contain no interactive tool calls or polling.
+The three focused resources are cache-busted under
+`ui://roon-ai-bridge/v15/` and support both
 the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
 
 ## Running locally

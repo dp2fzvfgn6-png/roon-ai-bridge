@@ -8,7 +8,7 @@ const { WidgetV2ViewService } = require("../dist/bridge-v2/widgets/viewService")
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
 
-function media(id, type, title) {
+function media(id, type, title, overrides = {}) {
   return {
     result_id: id,
     type,
@@ -31,115 +31,205 @@ function media(id, type, title) {
     match_penalties: [],
     version_penalties: [],
     warnings: [],
-    expires_at: new Date(Date.now() + 60000).toISOString()
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+    ...overrides
+  };
+}
+
+function zone(id, name, state, title, outputs) {
+  return {
+    zone_id: id,
+    display_name: name,
+    state,
+    now_playing: {
+      image_key: `now-${id}`,
+      three_line: { line1: title, line2: "Radiohead", line3: "Kid A" }
+    },
+    outputs,
+    settings: { shuffle: false, auto_radio: false, loop: "disabled" }
+  };
+}
+
+function output(id, name, value, muted = false) {
+  return {
+    output_id: id,
+    display_name: name,
+    volume: { type: "number", min: 0, max: 60, value, step: 1, is_muted: muted }
   };
 }
 
 function fixture() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v2-"));
-  const config = { dataDir, publicBaseUrl: "https://example.test" };
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v15-"));
+  const config = { dataDir, publicBaseUrl: "https://example.test", enableAuth: false, apiToken: null };
   const database = createDatabase(config);
   const playlists = new PlaylistService(config, database);
   playlists.createPlaylist({
     playlist_id: "focus",
     name: "Focus",
-    tracks: [{ track_id: "t1", query: "Everything", title: "Everything", artist: "Radiohead", image_key: "cover-1" }]
+    description: "Concentración sin distracciones.",
+    cover_image_key: "custom-cover",
+    tracks: [{
+      track_id: "t1",
+      query: "Everything",
+      title: "Everything In Its Right Place",
+      artist: "Radiohead",
+      album: "Kid A",
+      image_key: "cover-1"
+    }]
   });
-  const zone = {
-    zone_id: "zone-1",
-    display_name: "Despacho",
-    state: "playing",
-    now_playing: {
-      image_key: "now-1", seek_position: 30, length: 240,
-      three_line: { line1: "Everything In Its Right Place", line2: "Radiohead", line3: "Kid A" }
-    },
-    outputs: [{
-      output_id: "out-1", display_name: "Despacho",
-      volume: { type: "number", min: 0, max: 60, value: 18, step: 1, is_muted: false }
-    }],
-    settings: { shuffle: false, auto_radio: false, loop: "disabled" }
-  };
+
+  const zones = [
+    zone("zone-office", "Despacho", "playing", "Everything In Its Right Place", [
+      output("out-left", "Despacho izquierdo", 18),
+      output("out-right", "Despacho derecho", 21, true)
+    ]),
+    zone("zone-kitchen", "Cocina", "playing", "Idioteque", [output("out-kitchen", "Cocina", 12)]),
+    zone("zone-lounge", "Salón", "paused", "How to Disappear Completely", [output("out-lounge", "Salón", 15)])
+  ];
+  const outputs = zones.flatMap((item) => item.outputs);
   const artist = media("artist-1", "artist", "Radiohead");
-  const album = media("album-1", "album", "Kid A");
-  const track = media("track-1", "track", "Everything In Its Right Place");
+  const album = media("album-1", "album", "Kid A", { release_year: 2000 });
+  const track = media("track-1", "track", "Everything In Its Right Place", { duration_seconds: 251 });
   const refs = new Map([[artist.result_id, artist], [album.result_id, album], [track.result_id, track]]);
   const context = {
     config,
     roonClient: {
-      getZones: () => [zone], getZone: (id) => id === zone.zone_id ? zone : null,
-      getOutputs: () => zone.outputs, getOutput: () => zone.outputs[0],
-      getTransport: () => ({}), isCoreConnected: () => true, getCoreName: () => "Test Core",
-      isTransportReady: () => false, isBrowseReady: () => true, isImageReady: () => true
+      getZones: () => zones,
+      getZone: (id) => zones.find((item) => item.zone_id === id) || null,
+      getOutputs: () => outputs,
+      getOutput: (id) => outputs.find((item) => item.output_id === id) || null,
+      getTransport: () => ({}),
+      isCoreConnected: () => true,
+      getCoreName: () => "Test Core",
+      isTransportReady: () => false,
+      isBrowseReady: () => true,
+      isImageReady: () => true
     },
     playlistService: playlists,
     mediaService: {
-      search: async () => ({ query: "Radiohead", results: [artist, album, track], recommended_result_id: artist.result_id, selection_required: false, ambiguous: false, warnings: [] }),
+      search: async () => ({
+        query: "Radiohead",
+        results: [artist, album, track],
+        recommended_result_id: artist.result_id,
+        selection_required: false,
+        ambiguous: false,
+        warnings: []
+      }),
       get: (id) => refs.get(id),
-      getArtistDetail: async () => ({ artist, bio: "English alternative rock band.", popular_tracks: [track], albums: [album], singles_eps: [], warnings: [] }),
-      getAlbumDetail: async () => ({ album, description: "A landmark album.", tracks: [track], warnings: [] })
+      getArtistDetail: async () => ({
+        artist,
+        bio: "English alternative rock band.",
+        popular_tracks: [track],
+        albums: [album],
+        singles_eps: [],
+        warnings: []
+      }),
+      getAlbumDetail: async () => ({
+        album,
+        description: "A landmark album.",
+        tracks: [track],
+        warnings: []
+      })
     }
   };
   return { database, context };
 }
 
-test("v2 player view returns live zone state, artwork URL and controls data", async () => {
+test("now-playing shows only active zones and every grouped output volume", () => {
   const { database, context } = fixture();
   try {
-    const view = await new WidgetV2ViewService(context).player();
-    assert.equal(view.view, "player");
-    assert.equal(view.selected_zone_id, "zone-1");
-    assert.equal(view.zones[0].now_playing.title, "Everything In Its Right Place");
-    assert.equal(view.zones[0].now_playing.image_url, "https://example.test/roon/images/now-1");
-    assert.equal(view.zones[0].volume.value, 18);
-    assert.equal(JSON.stringify(view).includes("base64"), false);
+    const view = new WidgetV2ViewService(context).nowPlaying();
+    assert.equal(view.view, "now_playing");
+    assert.deepEqual(view.zones.map((item) => item.name), ["Despacho", "Cocina"]);
+    assert.equal(view.zones[0].media.title, "Everything In Its Right Place");
+    assert.equal(view.zones[0].media.image_url, "https://example.test/roon/images/now-zone-office");
+    assert.deepEqual(view.zones[0].outputs.map((item) => [item.name, item.volume.value, item.volume.muted]), [
+      ["Despacho izquierdo", 18, false],
+      ["Despacho derecho", 21, true]
+    ]);
   } finally { database.close(); }
 });
 
-test("v2 player uses signed artwork URLs when API authentication is enabled", async () => {
+test("now-playing filters a named zone and omits it when it is idle", () => {
+  const { database, context } = fixture();
+  try {
+    const service = new WidgetV2ViewService(context);
+    const office = service.nowPlaying({ zone: { name: "Despacho" } });
+    assert.deepEqual(office.zones.map((item) => item.name), ["Despacho"]);
+    const lounge = service.nowPlaying({ zone: { name: "Salón" } });
+    assert.equal(lounge.requested_zone.name, "Salón");
+    assert.deepEqual(lounge.zones, []);
+  } finally { database.close(); }
+});
+
+test("now-playing uses signed artwork URLs without exposing the API token", () => {
   const { database, context } = fixture();
   context.config.enableAuth = true;
   context.config.apiToken = "private-test-token";
   try {
-    const view = await new WidgetV2ViewService(context).player();
-    const artwork = new URL(view.zones[0].now_playing.image_url);
-    assert.equal(artwork.pathname, "/widget-assets/roon-images/now-1");
+    const view = new WidgetV2ViewService(context).nowPlaying({ zone: { id: "zone-office" } });
+    const artwork = new URL(view.zones[0].media.image_url);
+    assert.equal(artwork.pathname, "/widget-assets/roon-images/now-zone-office");
     assert.ok(artwork.searchParams.get("expires"));
     assert.ok(artwork.searchParams.get("signature"));
-    assert.equal(view.zones[0].now_playing.image_url.includes("private-test-token"), false);
+    assert.equal(artwork.href.includes("private-test-token"), false);
   } finally { database.close(); }
 });
 
-test("v2 media explorer exposes rich artist and album drill-down data", async () => {
+test("media adapts to artist, album and ambiguous search results", async () => {
   const { database, context } = fixture();
   try {
     const service = new WidgetV2ViewService(context);
-    const search = await service.search({ query: "Radiohead" });
-    assert.equal(search.view, "search");
-    assert.deepEqual(search.results.map((item) => item.media_type), ["artist", "album", "track"]);
-    const artist = await service.entity({ result_id: "artist-1" });
-    assert.equal(artist.view, "artist");
-    assert.equal(artist.biography, "English alternative rock band.");
-    assert.equal(artist.popular_tracks[0].title, "Everything In Its Right Place");
-    assert.equal(artist.albums[0].title, "Kid A");
-    const album = await service.entity({ result_id: "album-1" });
+    const artist = await service.media({ query: "Radiohead" });
+    assert.equal(artist.view, "search_results");
+    assert.equal(artist.best_match.title, "Radiohead");
+    assert.equal(artist.groups.artist[0].title, "Radiohead");
+
+    const artistDetail = await service.media({ query: "Radiohead", types: ["artist"] });
+    assert.equal(artistDetail.view, "artist");
+    assert.equal(artistDetail.artist.title, "Radiohead");
+    assert.equal(artistDetail.popular_tracks[0].title, "Everything In Its Right Place");
+    assert.equal(artistDetail.albums[0].title, "Kid A");
+
+    const album = await service.media({ result_id: "album-1" });
     assert.equal(album.view, "album");
+    assert.equal(album.description, "A landmark album.");
     assert.equal(album.tracks[0].title, "Everything In Its Right Place");
+
+    const catalogPlaylist = media("playlist-1", "playlist", "Radiohead Essentials");
+    context.mediaService.search = async () => ({
+      results: [catalogPlaylist],
+      recommended_result_id: catalogPlaylist.result_id,
+      selection_required: false,
+      ambiguous: false,
+      warnings: []
+    });
+    const playlistResults = await service.media({ query: "Radiohead", types: ["playlist"] });
+    assert.equal(playlistResults.view, "search_results");
+    assert.equal(playlistResults.groups.playlist[0].title, "Radiohead Essentials");
+
+    context.mediaService.search = async () => ({
+      results: [context.mediaService.get("album-1"), context.mediaService.get("track-1")],
+      recommended_result_id: null,
+      selection_required: true,
+      ambiguous: true,
+      warnings: []
+    });
+    const results = await service.media({ query: "Everything" });
+    assert.equal(results.view, "search_results");
+    assert.deepEqual(results.results.map((item) => item.media_type), ["album", "track"]);
   } finally { database.close(); }
 });
 
-test("v2 library views navigate from playlist cards to track details", () => {
+test("playlist view contains cover, description and lightweight track rows", () => {
   const { database, context } = fixture();
   try {
-    const service = new WidgetV2ViewService(context);
-    const list = service.playlists();
-    assert.equal(list.view, "playlists");
-    assert.equal(list.selected_zone_id, "zone-1");
-    assert.equal(list.zones[0].name, "Despacho");
-    assert.equal(list.playlists[0].playlist_id, "focus");
-    const detail = service.playlist({ playlist_id: "focus" });
-    assert.equal(detail.view, "playlist");
-    assert.equal(detail.tracks[0].title, "Everything");
-    assert.equal(detail.tracks[0].playlist_id, "focus");
-    assert.equal(detail.navigation.parent_view, "playlists");
+    const view = new WidgetV2ViewService(context).playlist({ playlist: { name: "Focus" } });
+    assert.equal(view.view, "playlist");
+    assert.equal(view.playlist.name, "Focus");
+    assert.equal(view.playlist.description, "Concentración sin distracciones.");
+    assert.equal(view.playlist.image_url, "https://example.test/playlists/covers/custom-cover");
+    assert.equal(view.tracks[0].title, "Everything In Its Right Place");
+    assert.equal(view.tracks[0].image_url, "https://example.test/roon/images/cover-1");
   } finally { database.close(); }
 });

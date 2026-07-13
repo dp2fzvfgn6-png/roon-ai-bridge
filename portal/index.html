@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-25..0&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=20260713.5">
+  <link rel="stylesheet" href="/styles.css?v=20260713.7">
 </head>
 <body>
   <div id="auth-screen" class="auth-screen">
@@ -89,18 +89,29 @@
         </section>
 
         <section class="view" id="view-music">
-          <div class="page-heading"><div><span class="overline">Biblioteca Roon</span><h1>Descubre tu música</h1><p>Busca, explora y actúa sin perder el contexto.</p></div><button class="btn primary" id="new-playlist"><span class="material-symbols-rounded">playlist_add</span>Nueva playlist</button></div>
-          <div class="segmented" id="music-tabs"><button class="active" data-tab="search">Buscar</button><button data-tab="browse">Explorar</button><button data-tab="playlists">Playlists</button></div>
+          <div class="page-heading"><div><span class="overline">Biblioteca Roon</span><h1>Tu música, a tu manera</h1><p>Encuentra, recorre y escucha tu colección sin perder el contexto.</p></div><button class="btn primary" id="new-playlist"><span class="material-symbols-rounded">playlist_add</span>Nueva playlist</button></div>
+          <div class="segmented" id="music-tabs"><button class="active" data-tab="search">Buscar</button><button data-tab="browse">Mi Música</button><button data-tab="playlists">Playlists</button></div>
           <div class="tab-page active" id="music-search">
             <form id="music-search-form" class="search-stage"><span class="material-symbols-rounded">search</span><input id="music-query" placeholder="¿Qué quieres escuchar?" autocomplete="off"><button class="btn primary" type="submit">Buscar</button></form>
             <div id="search-empty" class="discovery-stage"><div class="discovery-copy"><span class="overline">Búsqueda enriquecida</span><h2>Todo tu universo musical,<br>bien organizado.</h2><p>Los resultados aparecen separados por artistas, álbumes, canciones y playlists, con metadatos y acciones directas.</p></div><div class="vinyl-art" aria-hidden="true"><i></i><i></i><i></i></div></div>
             <div id="search-results" hidden></div>
           </div>
           <div class="tab-page" id="music-browse">
-            <div class="browse-toolbar"><div id="browse-breadcrumbs" class="breadcrumbs"></div><div class="inline-actions"><select id="browse-hierarchy"><option value="browse">Biblioteca</option><option value="albums">Álbumes</option><option value="artists">Artistas</option><option value="genres">Géneros</option><option value="composers">Compositores</option><option value="playlists">Playlists de Roon</option><option value="internet_radio">Radio por Internet</option></select><button class="icon-btn" id="browse-back"><span class="material-symbols-rounded">arrow_back</span></button><button class="icon-btn" id="browse-home"><span class="material-symbols-rounded">home</span></button></div></div>
-            <div id="browse-heading" class="section-title compact"></div><div id="browse-grid" class="media-grid"></div>
+            <div id="library-landing">
+              <section id="library-hero" class="library-hero" aria-live="polite"></section>
+              <div class="library-section-head"><div><span class="overline">Tu colección</span><h2>Explora a tu ritmo</h2><p>Entra directamente por el camino que mejor encaje con lo que quieres escuchar.</p></div></div>
+              <div id="library-destinations" class="library-destination-grid"></div>
+              <div id="library-shelves" class="library-shelves"></div>
+            </div>
+            <div id="library-browser" hidden>
+              <div class="browse-toolbar"><div id="browse-breadcrumbs" class="breadcrumbs"></div><div class="inline-actions"><button class="btn text small" id="browse-home"><span class="material-symbols-rounded">grid_view</span>Mi Música</button><button class="icon-btn" id="browse-back" title="Volver"><span class="material-symbols-rounded">arrow_back</span></button></div></div>
+              <div id="browse-heading" class="section-title compact"></div><div id="browse-grid" class="library-browser-grid"></div>
+            </div>
           </div>
-          <div class="tab-page" id="music-playlists"><div id="playlist-grid" class="playlist-grid"></div></div>
+          <div class="tab-page" id="music-playlists">
+            <div class="playlist-toolbar"><div><span class="overline">Colecciones personales</span><h2>Tus playlists</h2><p id="playlist-summary">Organiza y recupera tus selecciones.</p></div><label class="sort-control"><span>Ordenar por</span><select id="playlist-sort"><option value="recent">Reproducidas recientemente</option><option value="alphabetical">Alfabéticamente</option></select></label></div>
+            <div id="playlist-grid" class="playlist-grid"></div>
+          </div>
         </section>
 
         <section class="view" id="view-playback">
@@ -142,6 +153,6 @@
   <dialog id="context-modal" class="context-dialog"><div id="context-modal-content"></div></dialog>
   <dialog id="playback-actions-dialog" class="action-dialog"><div id="playback-actions-content"></div></dialog>
   <dialog id="secret-dialog" class="compact-dialog"><div class="modal-head"><div><span class="overline">API key creada</span><h2>Guárdala ahora</h2></div><button class="icon-btn" data-close><span class="material-symbols-rounded">close</span></button></div><p>Por seguridad no podremos volver a mostrar el secreto completo.</p><div class="secret-field"><code id="new-secret"></code><button class="btn primary" id="copy-secret"><span class="material-symbols-rounded">content_copy</span>Copiar</button></div></dialog>
-  <script src="/app.js?v=20260713.5" defer></script>
+  <script src="/app.js?v=20260713.7" defer></script>
 </body>
 </html>

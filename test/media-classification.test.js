@@ -5,6 +5,7 @@ const {
   inferConfiguredStreamingSource,
   inferMediaQuality,
   inferMediaSource,
+  inferReleaseType,
   mediaRelevanceScore,
   scoreSearchResult
 } = require("../dist/roon/roonMediaService");
@@ -120,7 +121,15 @@ test("uses inherited browse section source context", () => {
   );
 });
 
-test("scores playable track matches above non-track candidates", () => {
+test("classifies albums, EPs and singles from Roon metadata before text inference", () => {
+  assert.deepEqual(inferReleaseType({ title: "EL BAIFO", media: { release_type: "Album" } }), { type: "album", source: "roon_metadata" });
+  assert.deepEqual(inferReleaseType({ title: "Nuevas", release_type_context: "EP" }), { type: "ep", source: "roon_section" });
+  assert.deepEqual(inferReleaseType({ title: "Example - Single" }), { type: "single", source: "inferred" });
+  assert.deepEqual(inferReleaseType({ title: "Example - Single", release_type_context: "Single / EP" }), { type: "single", source: "inferred" });
+  assert.deepEqual(inferReleaseType({ title: "Example EP", release_type_context: "Single / EP" }), { type: "ep", source: "inferred" });
+});
+
+test("does not bias equivalent exact matches toward tracks", () => {
   const base = {
     result_id: "media_one",
     roon_item_key: "roon-key-one",
@@ -150,7 +159,7 @@ test("scores playable track matches above non-track candidates", () => {
     }
   );
 
-  assert.ok(trackScore.score > albumScore.score);
-  assert.ok(trackScore.reasons.includes("track result"));
+  assert.equal(trackScore.score, albumScore.score);
+  assert.equal(trackScore.reasons.includes("track result"), false);
   assert.ok(trackScore.reasons.includes("playable"));
 });

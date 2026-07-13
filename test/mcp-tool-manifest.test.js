@@ -113,7 +113,7 @@ test("registers the compact MCP v2 intent catalog", () => {
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
 });
 
-test("read-only MCP credentials expose no mutating or interactive tools", () => {
+test("read-only MCP credentials expose query tools and the three read-only widgets", () => {
   const tools = new Map();
   const server = { registerTool(name, options) { tools.set(name, options); } };
   const context = {
@@ -130,13 +130,16 @@ test("read-only MCP credentials expose no mutating or interactive tools", () => 
   assert.ok(tools.has("roon_search_media"));
   assert.equal(tools.has("roon_control_playback"), false);
   assert.equal(tools.has("roon_play_media"), false);
+  assert.ok(tools.has("roon_show_now_playing"));
+  assert.ok(tools.has("roon_show_media"));
+  assert.ok(tools.has("roon_show_playlist"));
   assert.equal(tools.has("roon_open_player"), false);
   assert.equal(tools.has("roon_ui_action"), false);
   assert.equal(tools.has("roon_ui_navigate"), false);
   for (const tool of tools.values()) assert.equal(tool.annotations.readOnlyHint, true);
 });
 
-test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only tools", async () => {
+test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render tools", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-v2-"));
   const config = createConfig(dataDir);
   const database = createDatabase(config);
@@ -159,19 +162,16 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 35);
+    assert.equal(tools.size, 33);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
-    const renderTools = ["roon_open_player", "roon_open_media_explorer", "roon_open_library"];
+    const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v13\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v15\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
-      } else if (name === "roon_ui_navigate" || name === "roon_ui_action") {
-        assert.equal(tool._meta["openai/outputTemplate"], undefined);
-        assert.deepEqual(tool._meta.ui.visibility, ["app"]);
       } else {
         assert.equal(tool._meta?.["openai/outputTemplate"], undefined);
       }
@@ -179,8 +179,17 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     }
     assert.equal(tools.has("roon_status"), false);
     assert.equal(tools.has("roon_get_media_search_widget"), false);
-    assert.equal(tools.get("roon_ui_navigate")._meta["openai/widgetAccessible"], true);
-    assert.equal(tools.get("roon_ui_action")._meta["openai/widgetAccessible"], true);
+    for (const name of renderTools) {
+      assert.equal(tools.get(name).annotations.readOnlyHint, true);
+      assert.equal(tools.get(name)._meta["openai/widgetAccessible"], undefined);
+    }
+    for (const removed of [
+      "roon_open_player",
+      "roon_open_media_explorer",
+      "roon_open_library",
+      "roon_ui_navigate",
+      "roon_ui_action"
+    ]) assert.equal(tools.has(removed), false);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     database.close();

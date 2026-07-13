@@ -1105,6 +1105,12 @@ test("play_now virtual playlist replaces the queue then starts verified playback
   assert.equal(result.failed, 0);
   assert.equal(result.playback.command, "play");
   assert.equal(result.playback.state_verified, true);
+  assert.ok(result.last_played_at);
+  assert.equal(service.getPlaylist(playlist.playlist_id).last_played_at, result.last_played_at);
+  assert.equal(
+    service.listPlaylists().playlists[0].last_played_at,
+    result.last_played_at
+  );
   assert.equal(zone.state, "playing");
   assert.deepEqual(
     calls
@@ -1274,6 +1280,8 @@ test("play_now leaves the current queue untouched when the first identity is amb
   assert.equal(result.ok, false);
   assert.equal(result.succeeded, 0);
   assert.equal(result.failed, 2);
+  assert.equal(result.last_played_at, null);
+  assert.equal(service.getPlaylist(playlist.playlist_id).last_played_at, null);
   assert.equal(result.failures[0].error.code, "PLAYLIST_TRACK_AMBIGUOUS");
   assert.equal(result.failures[1].error.code, "PLAYLIST_START_ABORTED");
   assert.equal(playCalls, 0);

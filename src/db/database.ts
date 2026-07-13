@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS virtual_playlists (
   name TEXT NOT NULL,
   description TEXT,
   cover_image_key TEXT,
+  last_played_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -302,6 +303,9 @@ export class SqliteDatabase {
     const playlistColumns = this.db.prepare("PRAGMA table_info(virtual_playlists)").all() as Array<{ name: string }>;
     if (!playlistColumns.some((column) => column.name === "cover_image_key")) {
       this.db.exec("ALTER TABLE virtual_playlists ADD COLUMN cover_image_key TEXT");
+    }
+    if (!playlistColumns.some((column) => column.name === "last_played_at")) {
+      this.db.exec("ALTER TABLE virtual_playlists ADD COLUMN last_played_at TEXT");
     }
 
     const apiKeyColumns = this.db.prepare("PRAGMA table_info(api_keys)").all() as Array<{ name: string }>;
