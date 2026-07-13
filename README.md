@@ -124,8 +124,8 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 API_TOKEN=
-PUBLIC_BASE_URL=https://roonia-bridge.ipchome.com
-OAUTH_ISSUER=https://roonia-bridge.ipchome.com
+PUBLIC_BASE_URL=https://roonia.ipchome.com
+OAUTH_ISSUER=https://roonia.ipchome.com
 OAUTH_APPROVAL_PIN=
 ROON_STREAMING_SOURCE=TIDAL
 ```
@@ -531,7 +531,7 @@ named additional zones. A preliminary state-list call is unnecessary.
 Remote MCP endpoint:
 
 ```text
-https://roonia-bridge.ipchome.com/mcp
+https://roonia.ipchome.com/mcp
 ```
 
 ChatGPT uses an OAuth access token. Administrative API calls may still use `API_TOKEN`:

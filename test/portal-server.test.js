@@ -85,8 +85,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.4"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.4"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.5"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.5"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);

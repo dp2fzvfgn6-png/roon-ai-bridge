@@ -245,8 +245,12 @@ export function createPortalServer(context: ApiContext): express.Express {
     res.json(context.systemManagementService.getSystemInfo());
   });
 
-  app.get("/api/admin/connections", (_req, res) => {
-    res.json(connections.overview());
+  app.get("/api/admin/connections", async (_req, res, next) => {
+    try {
+      res.json(await connections.overview());
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/api/admin/connections/oauth/clients", (req, res, next) => {

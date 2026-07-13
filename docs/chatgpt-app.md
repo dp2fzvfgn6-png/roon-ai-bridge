@@ -7,11 +7,28 @@
 Roon AI Bridge exposes a private ChatGPT app with intent-oriented media tools,
 OAuth, verified playback results and focused interactive widgets.
 
+## Connection route
+
+`roonia.ipchome.com` must resolve in **public DNS** for direct URL mode.
+A LAN-only DNS record is not sufficient: ChatGPT performs OAuth discovery from
+OpenAI infrastructure and will return a gateway error when it cannot reach the
+hostname.
+
+For a private home bridge, prefer OpenAI's Secure MCP Tunnel:
+
+1. Open the organization tunnel settings linked from `Settings -> Connections`.
+2. Create a tunnel and obtain its runtime command and short-lived API key.
+3. Run the tunnel client in the bridge network with the private MCP target
+   `http://127.0.0.1:3000/mcp`.
+4. In ChatGPT, select **Tunnel** instead of **Server URL** and choose the tunnel.
+
+The runtime API key must remain outside RoonIA configuration and logs.
+
 ## Public URLs
 
-- MCP endpoint: `https://roonia-bridge.ipchome.com/mcp`
-- Health check: `https://roonia-bridge.ipchome.com/health`
-- Privacy notice: `https://roonia-bridge.ipchome.com/privacy`
+- MCP endpoint: `https://roonia.ipchome.com/mcp`
+- Health check: `https://roonia.ipchome.com/health`
+- Privacy notice: `https://roonia.ipchome.com/privacy`
 
 `/health`, `/privacy`, `/.well-known/*` and `/oauth/*` are public. `/mcp` requires an OAuth access token or the admin API token:
 
@@ -48,7 +65,7 @@ app configuration and start a new conversation. ChatGPT can keep older tool
 metadata cached even after the backend deploy succeeds; the versioned v10
 resource URIs invalidate the widget cache.
 
-## ChatGPT Developer Setup
+## ChatGPT Developer Setup (public URL mode)
 
 Use the Apps SDK / MCP app flow, not Custom GPT Actions.
 
@@ -58,33 +75,33 @@ Application fields:
 Name: RoonIA
 Description: Control privado de Roon desde ChatGPT: zonas, reproducción, volumen, búsqueda, cola y playlists virtuales.
 Connection: URL del servidor
-Server URL: https://roonia-bridge.ipchome.com/mcp
+Server URL: https://roonia.ipchome.com/mcp
 Authentication: OAuth
 ```
 
 OAuth should be auto-detected from:
 
 ```text
-https://roonia-bridge.ipchome.com/.well-known/oauth-protected-resource
-https://roonia-bridge.ipchome.com/.well-known/oauth-authorization-server
+https://roonia.ipchome.com/.well-known/oauth-protected-resource
+https://roonia.ipchome.com/.well-known/oauth-authorization-server
 ```
 
 Dynamic client registration endpoint:
 
 ```text
-https://roonia-bridge.ipchome.com/oauth/register
+https://roonia.ipchome.com/oauth/register
 ```
 
 Authorization endpoint:
 
 ```text
-https://roonia-bridge.ipchome.com/oauth/authorize
+https://roonia.ipchome.com/oauth/authorize
 ```
 
 Token endpoint:
 
 ```text
-https://roonia-bridge.ipchome.com/oauth/token
+https://roonia.ipchome.com/oauth/token
 ```
 
 If ChatGPT asks for scopes, use:
@@ -96,7 +113,7 @@ roon:control
 If the setup asks for a privacy URL:
 
 ```text
-https://roonia-bridge.ipchome.com/privacy
+https://roonia.ipchome.com/privacy
 ```
 
 During authorization, RoonIA asks for an approval PIN. It is:

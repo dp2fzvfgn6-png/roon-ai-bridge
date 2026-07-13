@@ -6,12 +6,32 @@ or create credentials from a shell.
 
 ## ChatGPT
 
-The portal shows the MCP URL, OAuth endpoints, scope, local readiness checks
-and a shortcut to the ChatGPT plugin page. ChatGPT still requires the user to
-confirm plugin creation on `chatgpt.com`; no public API allows RoonIA to create
-the plugin in another account.
+The portal shows the MCP URL, OAuth endpoints, scope, route and public-DNS
+readiness checks. ChatGPT still requires the user to confirm the connection in
+its own account; no public API allows RoonIA to create it automatically.
 
-The preferred flow is OAuth dynamic client registration (DCR):
+There are two supported connection routes:
+
+- **Public URL:** the MCP hostname must resolve in public DNS and the endpoint
+  must be reachable from OpenAI over HTTPS. The portal then links to the
+  ChatGPT plugin page and the normal OAuth/DCR flow applies.
+- **Secure MCP Tunnel:** use this for a private or on-premises bridge. The
+  OpenAI tunnel client runs inside the private network and makes an outbound
+  connection; RoonIA does not need a public DNS record or inbound exposure.
+  The portal links to the organization tunnel settings and uses
+  `http://127.0.0.1:3000/mcp` as the private MCP target.
+
+If the configured hostname only exists in local DNS, direct URL setup fails in
+ChatGPT with a gateway/OAuth discovery error even when all OAuth metadata works
+inside the LAN. The portal reports this separately and recommends the tunnel.
+Changing the public bridge URL under `Settings -> System` also updates the
+effective OAuth issuer after restart, taking precedence over a legacy
+`OAUTH_ISSUER` value in the environment.
+Creating the tunnel still requires an OpenAI Platform organization, a tunnel
+ID and its short-lived runtime API key; those secrets are not stored by RoonIA.
+
+For a publicly reachable URL, the preferred flow is OAuth dynamic client
+registration (DCR):
 
 1. Copy the MCP URL from the portal.
 2. Create a developer-mode plugin in ChatGPT.

@@ -87,7 +87,7 @@ export function loadConfig(): AppConfig {
   const portalPort = runtimePorts.portalPort ?? intFromEnv(process.env.PORTAL_PORT, 3001);
   const publicBaseUrl = (runtimePorts.publicBaseUrl || process.env.PUBLIC_BASE_URL || "https://roonia.ipchome.com").replace(/\/+$/, "");
   const portalPublicUrl = (runtimePorts.portalPublicUrl || process.env.PUBLIC_PORTAL_URL || `http://localhost:${portalPort}`).replace(/\/+$/, "");
-  const oauthIssuer = (process.env.OAUTH_ISSUER || publicBaseUrl).replace(/\/+$/, "");
+  const oauthIssuer = (runtimePorts.publicBaseUrl || process.env.OAUTH_ISSUER || publicBaseUrl).replace(/\/+$/, "");
   const oauthApprovalPin =
     typeof process.env.OAUTH_APPROVAL_PIN === "string" && process.env.OAUTH_APPROVAL_PIN.trim() !== ""
       ? process.env.OAUTH_APPROVAL_PIN.trim()

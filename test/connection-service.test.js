@@ -19,7 +19,7 @@ function config(dataDir) {
   };
 }
 
-test("builds ChatGPT readiness and one-time MCP client configurations", () => {
+test("builds ChatGPT readiness and one-time MCP client configurations", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-connections-"));
   const appConfig = config(dataDir);
   const database = createDatabase(appConfig);
@@ -27,8 +27,9 @@ test("builds ChatGPT readiness and one-time MCP client configurations", () => {
   const oauth = new OAuthService(appConfig);
   const service = new ConnectionService(appConfig, oauth, apiKeys);
 
-  const overview = service.overview();
+  const overview = await service.overview();
   assert.equal(overview.chatgpt.ready, true);
+  assert.equal(overview.chatgpt.connection_mode, "public_url");
   assert.equal(overview.chatgpt.mcp_url, "https://roonia.example.test/mcp");
   assert.deepEqual(
     overview.mcp_clients.profiles.map((profile) => profile.id),
@@ -45,5 +46,27 @@ test("builds ChatGPT readiness and one-time MCP client configurations", () => {
     created.config.mcpServers.roonia.headers.Authorization,
     `Bearer ${created.credential.token}`
   );
-  assert.equal(service.overview().mcp_clients.credentials.length, 1);
+  assert.equal((await service.overview()).mcp_clients.credentials.length, 1);
+});
+
+test("recommends a secure tunnel for a private MCP address", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-private-connections-"));
+  const appConfig = {
+    ...config(dataDir),
+    port: 3000,
+    publicBaseUrl: "https://10.0.30.42",
+    oauthIssuer: "https://10.0.30.42"
+  };
+  const database = createDatabase(appConfig);
+  const service = new ConnectionService(
+    appConfig,
+    new OAuthService(appConfig),
+    new ApiKeyService(appConfig, database)
+  );
+
+  const overview = await service.overview();
+  assert.equal(overview.chatgpt.ready, false);
+  assert.equal(overview.chatgpt.connection_mode, "secure_tunnel");
+  assert.equal(overview.chatgpt.public_dns.detail, "Dirección privada");
+  assert.equal(overview.chatgpt.tunnel.private_mcp_url, "http://127.0.0.1:3000/mcp");
 });

@@ -460,11 +460,19 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .connection-hero-copy > p { max-width: 650px; color: var(--text-soft); line-height: 1.65; }
 .connection-url { max-width: 680px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; margin: 24px 0 18px; padding: 8px 8px 8px 14px; border: 1px solid var(--line-strong); background: rgba(0,0,0,.22); }
 .connection-url code { overflow: hidden; color: var(--brand-green-light); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.connection-route-warning { max-width: 680px; display: grid; grid-template-columns: auto 1fr; gap: 12px; margin-top: 20px; padding: 15px; color: var(--text-soft); background: rgba(193,96,72,.1); border: 1px solid rgba(193,96,72,.32); }
+.connection-route-warning > .material-symbols-rounded { color: var(--brand-orange); }
+.connection-route-warning strong { color: var(--text); }
+.connection-route-warning p { margin: 5px 0 0; line-height: 1.5; }
+.connection-route-warning code { color: var(--brand-green-light); }
 .connection-readiness { display: grid; gap: 10px; padding: 24px; background: rgba(0,0,0,.22); border-left: 1px solid var(--line-strong); }
 .connection-readiness > .status-tag { justify-self: start; margin-bottom: 8px; }
-.connection-check { display: flex; align-items: center; gap: 10px; color: var(--text-soft); font-size: 12px; }
+.connection-check { display: flex; align-items: flex-start; gap: 10px; color: var(--text-soft); font-size: 12px; }
 .connection-check .material-symbols-rounded { color: var(--danger); font-size: 18px; }
 .connection-check.ok .material-symbols-rounded { color: var(--good); }
+.connection-check span { display: grid; gap: 2px; }
+.connection-check strong { color: inherit; font-weight: 500; }
+.connection-check small { color: var(--text-dim); line-height: 1.35; }
 .connection-list { display: grid; border-top: 1px solid var(--line); }
 .connection-row { min-width: 0; display: grid; grid-template-columns: 42px minmax(240px,1.5fr) minmax(130px,.5fr) auto; align-items: center; gap: 15px; padding: 15px 0; border-bottom: 1px solid var(--line); }
 .connection-row.revoked { opacity: .55; }
