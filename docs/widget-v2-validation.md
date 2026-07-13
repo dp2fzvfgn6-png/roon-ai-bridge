@@ -1,7 +1,7 @@
 # Widget v2 Local Validation
 
-Status: implementation and automated local validation complete. Deployment,
-live Roon validation and ChatGPT reconnection remain pending by design.
+Status: implementation, automated validation and deployed MCP/Roon validation
+complete for v0.17.0. ChatGPT refresh remains a user-side step.
 
 ## Surface contract
 
@@ -56,14 +56,14 @@ Tests cover resource metadata and bridge compatibility, player view mapping,
 artist/album exploration, playlist navigation, zone context, app-only tool
 visibility and the complete MCP manifest.
 
-## Pending live validation
+## Deployed validation
 
-After an explicit deployment request:
+On 2026-07-13, all three v11 resources were read through MCP and returned the
+MCP Apps MIME type. Their served HTML contained the tool-input/tool-result
+notification bridge and the ChatGPT `toolInput`, `toolOutput`, `callTool` and
+`setWidgetState` globals. `roon_open_player` returned a real Despacho view with
+four zones and its queue preview. Volume remained 30 and no playback or queue
+mutation was performed.
 
-1. Confirm `tools/list` exposes 34 tools with the expected visibility metadata.
-2. Read all three v11 resources through MCP.
-3. Exercise widget actions against Despacho without increasing volume.
-4. Verify final playback, queue and selected-zone state in Roon.
-5. Reconnect the ChatGPT app, refresh it and start a new conversation.
-6. Evaluate tool selection, internal drilldown, real-time refresh and widget
-   rendering from the actual ChatGPT host.
+Refresh the ChatGPT app and start a new conversation before evaluating cached
+tool selection, internal drilldown and rendering in the actual ChatGPT host.

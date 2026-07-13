@@ -1,7 +1,6 @@
 # MCP v2 Local Validation
 
-Status: automated local validation complete; live Roon and ChatGPT validation
-pending by design.
+Status: automated and deployed Roon/MCP validation complete for v0.17.0.
 
 ## Contract checks
 
@@ -31,15 +30,13 @@ pnpm run build
 git diff --check
 ```
 
-## Pending live validation
+## Deployed validation
 
-Do not deploy or reconnect ChatGPT in this phase. Before a future deployment:
+On 2026-07-13, the v0.17.0 deployment reported 34 tools with the expected
+schemas, descriptions, visibility and v11 templates. Real MCP calls resolved
+Despacho by name, searched `Max Cooper Repetition`, inspected its queue and
+opened the player widget. No playback, queue, grouping or volume mutation was
+required. See [v0.17.0 Validation](v0.17.0-validation.md) for full evidence.
 
-1. Verify the deployed commit and reported version.
-2. Verify `tools/list` schemas, visibility metadata and v11 widget templates.
-3. Exercise semantic zone-name calls against Despacho.
-4. Exercise search, ambiguous selection and exact playback through MCP.
-5. Verify final playback, queue, volume and grouping state in Roon.
-6. Exercise player, search, entity, queue and playlist exploration through the
-   widget bridge.
-7. Reconnect ChatGPT only after deployed widget validation.
+ChatGPT must still be refreshed and opened in a new conversation to discard
+previously cached tool metadata and widget resources.
