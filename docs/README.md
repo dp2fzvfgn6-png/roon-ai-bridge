@@ -14,6 +14,7 @@ This documentation covers the current v0.17.1 repository:
 - [Widget v2 Local Validation](widget-v2-validation.md)
 - [Widget v13 Validation](widget-v13-validation.md)
 - [Widget v15 Validation](widget-v15-validation.md)
+- [Widget v16 Search and Discography Validation](widget-v16-validation.md)
 - [Deterministic Search Validation](deterministic-search-validation.md)
 - [Music UX Validation](music-ux-validation.md)
 - [Connections and OAuth](connections.md)

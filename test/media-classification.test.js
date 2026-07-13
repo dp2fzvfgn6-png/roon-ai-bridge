@@ -7,7 +7,8 @@ const {
   inferMediaSource,
   inferReleaseType,
   mediaRelevanceScore,
-  scoreSearchResult
+  scoreSearchResult,
+  splitArtistCredit
 } = require("../dist/roon/roonMediaService");
 const { enrichBrowseItem } = require("../dist/roon/roonBrowseService");
 
@@ -127,6 +128,13 @@ test("classifies albums, EPs and singles from Roon metadata before text inferenc
   assert.deepEqual(inferReleaseType({ title: "Example - Single" }), { type: "single", source: "inferred" });
   assert.deepEqual(inferReleaseType({ title: "Example - Single", release_type_context: "Single / EP" }), { type: "single", source: "inferred" });
   assert.deepEqual(inferReleaseType({ title: "Example EP", release_type_context: "Single / EP" }), { type: "ep", source: "inferred" });
+  assert.deepEqual(inferReleaseType({ title: "Example", subtitle: "1 Track", release_type_context: "Single / EP" }), { type: "single", source: "inferred" });
+  assert.deepEqual(inferReleaseType({ title: "Example", subtitle: "5 Tracks", release_type_context: "Single / EP" }), { type: "ep", source: "inferred" });
+});
+
+test("splits multi-artist credits conservatively without breaking ampersand band names", () => {
+  assert.deepEqual(splitArtistCredit("Quevedo, Sech feat. Rels B"), ["Quevedo", "Sech", "Rels B"]);
+  assert.deepEqual(splitArtistCredit("Nick Cave & The Bad Seeds"), ["Nick Cave & The Bad Seeds"]);
 });
 
 test("does not bias equivalent exact matches toward tracks", () => {

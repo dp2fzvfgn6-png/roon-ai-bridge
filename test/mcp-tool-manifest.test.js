@@ -170,7 +170,7 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v15\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v16\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else {
         assert.equal(tool._meta?.["openai/outputTemplate"], undefined);

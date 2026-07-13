@@ -59,7 +59,7 @@ function output(id, name, value, muted = false) {
 }
 
 function fixture() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v15-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v16-"));
   const config = { dataDir, publicBaseUrl: "https://example.test", enableAuth: false, apiToken: null };
   const database = createDatabase(config);
   const playlists = new PlaylistService(config, database);

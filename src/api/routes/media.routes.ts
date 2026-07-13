@@ -140,7 +140,7 @@ export function createMediaRouter(context: ApiContext): Router {
         await context.mediaService.listArtistReleases(
           req.params.result_id,
           optionalString(req.query.zone_id),
-          parseCount(req.query.count, 50, 100)
+          parseCount(req.query.count, 100, 250)
         )
       );
     } catch (error) {
@@ -154,7 +154,7 @@ export function createMediaRouter(context: ApiContext): Router {
         await context.mediaService.getArtistDetail(
           req.params.result_id,
           optionalString(req.query.zone_id),
-          parseCount(req.query.count, 50, 100)
+          parseCount(req.query.count, 100, 250)
         )
       );
     } catch (error) {

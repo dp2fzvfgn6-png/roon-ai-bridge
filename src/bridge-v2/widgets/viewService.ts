@@ -196,12 +196,18 @@ export class WidgetV2ViewService {
     const media = this.context.mediaService.get(resultId);
     if (media.media_type === "artist") {
       const detail = await this.context.mediaService.getArtistDetail(resultId, undefined, count);
+      const eps = detail.singles_eps.filter((item) => item.release_type === "ep");
+      const singles = detail.singles_eps.filter((item) => item.release_type === "single");
+      const mixedReleases = detail.singles_eps.filter((item) => !["ep", "single"].includes(item.release_type || ""));
       return {
         ...basePayload("artist", detail.artist.title),
         artist: this.mediaCard(detail.artist),
         popular_tracks: detail.popular_tracks.map((item) => this.mediaCard(item)),
         albums: detail.albums.map((item) => this.mediaCard(item)),
         singles_eps: detail.singles_eps.map((item) => this.mediaCard(item)),
+        eps: eps.map((item) => this.mediaCard(item)),
+        singles: singles.map((item) => this.mediaCard(item)),
+        mixed_releases: mixedReleases.map((item) => this.mediaCard(item)),
         warnings: detail.warnings || []
       };
     }
@@ -228,6 +234,7 @@ export class WidgetV2ViewService {
       media_type: media.media_type,
       title: media.title,
       artist: media.artist,
+      artists: media.artists,
       album: media.album,
       album_artist: media.album_artist,
       subtitle: media.subtitle,

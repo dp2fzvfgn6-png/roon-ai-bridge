@@ -98,6 +98,22 @@ test("search_media removes Roon internal link ids from visible metadata", async 
   assert.equal(result.album_artist, "Nala Sinephro");
 });
 
+test("search_media preserves each structured artist as an independent entity link", async () => {
+  const service = new RoonMediaService(createSearchClient([{
+    title: "TE FALLÉ",
+    subtitle: "Quevedo, Sech",
+    item_key: "multi-artist-track",
+    hint: "action_list",
+    media: {
+      artist: "Quevedo, Sech",
+      artists: [{ name: "Quevedo" }, { name: "Sech" }]
+    }
+  }]), "tidal");
+  const result = (await service.search({ query: "TE FALLÉ", types: ["track"], count: 5 })).results[0];
+  assert.deepEqual(result.artists.map((artist) => artist.title), ["Quevedo", "Sech"]);
+  assert.deepEqual(result.links.artists.map((artist) => artist.title), ["Quevedo", "Sech"]);
+});
+
 test("media details fail clearly for expired or unknown result ids", () => {
   const service = new RoonMediaService(createSearchClient(), "tidal");
   assert.throws(
@@ -460,6 +476,120 @@ test("album detail exposes Roon description and playable track references", asyn
   assert.equal(detail.tracks[0].album, "Kid A");
   assert.equal(detail.tracks[0].track_number, 1);
   assert.equal(detail.tracks[0].duration_seconds, 251);
+});
+
+function createPaginatedAlbumDetailClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "album-key") { stage = "album-detail"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "tracklist-key") { stage = "album-tracks"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "album-key", hint: "action_list" }] }); return; }
+      if (stage === "album-detail") { callback(false, { list: { title: "EL BAIFO", count: 1 }, items: [{ title: "1 Disc, 3 Tracks", item_key: "tracklist-key", hint: "list" }] }); return; }
+      const allTracks = [
+        { title: "Track One", subtitle: "Quevedo", item_key: "track-1", hint: "action_list", track_number: 1 },
+        { title: "Track Two", subtitle: "Quevedo", item_key: "track-2", hint: "action_list", track_number: 2 },
+        { title: "Track Three", subtitle: "Quevedo", item_key: "track-3", hint: "action_list", track_number: 3 }
+      ];
+      const offset = opts.offset || 0;
+      callback(false, { list: { title: "Tracks", count: allTracks.length }, items: offset === 0 ? allTracks.slice(0, 1) : allTracks.slice(offset, offset + opts.count) });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail follows counted track sections and loads every page", async () => {
+  const service = new RoonMediaService(createPaginatedAlbumDetailClient(), "tidal");
+  const search = await service.search({ query: "EL BAIFO Quevedo", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Track One", "Track Two", "Track Three"]);
+});
+
+function createMultiDiscAlbumDetailClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "album-key") { stage = "album-detail"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "tracklist-key") { stage = "album-tracks"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "disc-1") { stage = "disc-1"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "disc-2") { stage = "disc-2"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Double Album", subtitle: "Example Artist", item_key: "album-key", hint: "action_list" }] }); return; }
+      if (stage === "album-detail") { callback(false, { list: { title: "Double Album", count: 1 }, items: [{ title: "2 Discs, 4 Tracks", item_key: "tracklist-key", hint: "list" }] }); return; }
+      if (stage === "album-tracks") { callback(false, { list: { title: "Tracks", count: 2 }, items: [{ title: "Disc 1", item_key: "disc-1", hint: "list" }, { title: "Disc 2", item_key: "disc-2", hint: "list" }] }); return; }
+      const discNumber = stage === "disc-1" ? 1 : 2;
+      const titles = discNumber === 1 ? ["Opening", "Interlude"] : ["Finale", "Epilogue"];
+      callback(false, {
+        list: { title: `Disc ${discNumber}`, count: 2 },
+        items: titles.map((title, index) => ({
+          title,
+          subtitle: "Example Artist",
+          item_key: `disc-${discNumber}-track-${index + 1}`,
+          hint: "action_list",
+          disc_number: discNumber,
+          track_number: index + 1
+        }))
+      });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail combines every disc instead of returning only the first track list", async () => {
+  const service = new RoonMediaService(createMultiDiscAlbumDetailClient(), "tidal");
+  const search = await service.search({ query: "Double Album Example Artist", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+  assert.deepEqual(detail.tracks.map((track) => track.title), [
+    "Opening",
+    "Interlude",
+    "Finale",
+    "Epilogue"
+  ]);
+});
+
+function createNestedArtistDiscographyClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artists-category") { stage = "artists"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artist-key") { stage = "artist-detail"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "discography-key") { stage = "discography"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "main-albums-key") { stage = "main-albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "singles-eps-key") { stage = "singles-eps"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
+      if (stage === "artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }] }); return; }
+      if (stage === "artist-detail") { callback(false, { list: { title: "Quevedo", count: 1 }, items: [{ title: "Discography (4)", item_key: "discography-key", hint: "list" }] }); return; }
+      if (stage === "discography") { callback(false, { list: { title: "Discography", count: 2 }, items: [{ title: "Main Albums (2)", item_key: "main-albums-key", hint: "list" }, { title: "Singles & EPs (2)", item_key: "singles-eps-key", hint: "list" }] }); return; }
+      if (stage === "main-albums") { callback(false, { list: { title: "Main Albums", count: 2 }, items: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "baifo", hint: "action_list", media: { artist: "Quevedo" } }, { title: "Acoustic Covers", subtitle: "Gabriella Quevedo", item_key: "wrong", hint: "action_list", media: { artist: "Gabriella Quevedo" } }] }); return; }
+      callback(false, { list: { title: "Singles & EPs", count: 2 }, items: [{ title: "One Song", subtitle: "Quevedo · 1 Track", item_key: "single", hint: "action_list", media: { artist: "Quevedo", track_count: 1 } }, { title: "Short Release", subtitle: "Quevedo · 5 Tracks", item_key: "ep", hint: "action_list", media: { artist: "Quevedo", track_count: 5 } }] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("artist discography follows nested Roon sections, separates releases and rejects surname matches", async () => {
+  const service = new RoonMediaService(createNestedArtistDiscographyClient(), "tidal");
+  const search = await service.search({ query: "Quevedo", types: ["artist"], count: 5 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 100);
+  assert.deepEqual(detail.releases.map((release) => release.title).sort(), ["EL BAIFO", "One Song", "Short Release"]);
+  assert.equal(detail.releases.find((release) => release.title === "One Song").release_type, "single");
+  assert.equal(detail.releases.find((release) => release.title === "Short Release").release_type, "ep");
+  assert.equal(detail.releases.some((release) => release.artist === "Gabriella Quevedo"), false);
 });
 
 function createArtistSearchClient(items = [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]) {

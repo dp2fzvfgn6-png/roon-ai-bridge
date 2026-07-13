@@ -10,7 +10,7 @@ This change aligns the HTTP portal, MCP search tool and compact media widget aro
 - artist candidates are not removed when Roon reports `0 Albums`.
 - artist and album metadata is exposed as navigable entity links.
 
-No package version is changed by this work. The widget resource URI is moved to `ui://roon-ai-bridge/v15/*` because its rendered search behavior changed.
+No package version is changed by this work. The widget resource URI is moved to `ui://roon-ai-bridge/v16/*` because its rendered search and artist-detail behavior changed.
 
 ## Ranking contract
 
@@ -38,7 +38,7 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
 
 ## Post-deployment validation
 
-After an explicit deployment, refresh the ChatGPT app and start a new conversation so it loads the v15 widget and changed tool metadata. Then validate through both `/api/roon/media/search` and `roon_search_media`:
+After an explicit deployment, refresh the ChatGPT app and start a new conversation so it loads the v16 widget and changed tool metadata. Then validate through both `/api/roon/media/search` and `roon_search_media`:
 
 1. Run the three acceptance queries above and inspect `best_match`, `groups` and the displayed order.
 2. Open artist and album names from search rows, track lists and entity details.

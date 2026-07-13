@@ -5,7 +5,7 @@ const {
   WIDGET_V2_URIS
 } = require("../dist/bridge-v2/widgets/resources");
 
-test("serves three minimal read-only v15 widget resources", async () => {
+test("serves three minimal read-only v16 widget resources", async () => {
   const resources = new Map();
   const server = {
     registerResource(name, uri, options, handler) {
@@ -15,9 +15,9 @@ test("serves three minimal read-only v15 widget resources", async () => {
 
   registerWidgetV2Resources(server);
   assert.deepEqual([...resources.keys()].sort(), Object.values(WIDGET_V2_URIS).sort());
-  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v15\/now-playing\.html$/);
-  assert.match(WIDGET_V2_URIS.media, /\/v15\/media\.html$/);
-  assert.match(WIDGET_V2_URIS.playlist, /\/v15\/playlist\.html$/);
+  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v16\/now-playing\.html$/);
+  assert.match(WIDGET_V2_URIS.media, /\/v16\/media\.html$/);
+  assert.match(WIDGET_V2_URIS.playlist, /\/v16\/playlist\.html$/);
 
   for (const uri of Object.values(WIDGET_V2_URIS)) {
     const response = await resources.get(uri).handler();
@@ -31,7 +31,9 @@ test("serves three minimal read-only v15 widget resources", async () => {
     assert.match(resource.text, /#678475/);
     assert.match(resource.text, /#c16048/i);
     assert.match(resource.text, /Canciones populares/);
-    assert.match(resource.text, /EPs y singles/);
+    assert.match(resource.text, /section\("EPs",data\.eps/);
+    assert.match(resource.text, /section\("Singles",data\.singles/);
+    assert.match(resource.text, /function placeholder/);
     assert.match(resource.text, /output\.volume/);
     assert.match(resource.text, /loading="lazy"/);
 

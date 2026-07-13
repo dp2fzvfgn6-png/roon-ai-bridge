@@ -203,6 +203,7 @@ export function enrichBrowseItem(item: BrowseItem): BrowseItem {
   const title = cleanRoonDisplayText(pickString(raw, ["title"]));
   const subtitle = cleanRoonDisplayText(pickString(raw, ["subtitle"]));
   const media = {
+    ...rawMedia,
     title,
     subtitle,
     artist: cleanRoonDisplayText(pickString(rawMedia, ["artist", "artist_name"]) || pickString(raw, ["artist", "artist_name"])),

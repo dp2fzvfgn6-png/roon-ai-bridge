@@ -85,8 +85,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.7"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.7"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260713\.8"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260713\.8"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
@@ -110,6 +110,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.playlist-collage > img \{[^}]*min-width: 0;[^}]*object-fit: cover;[^}]*object-position: center;/);
     assert.match(portalStylesText, /\.playlist-card p \{[^}]*-webkit-line-clamp:4;/);
     assert.match(portalStylesText, /\.library-destination-grid/);
+    assert.match(portalStylesText, /\.best-search-result\{width:min\(100%,590px\)/);
+    assert.match(portalStylesText, /\.cover-fallback\.artist/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -125,7 +127,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /entityByline\(np\.line2,np\.line3/);
     assert.match(portalScriptText, /entityByline\(item\.artist,null,item\.subtitle\|\|""\)/);
-    assert.match(portalScriptText, /entityLink\("album",item\.album,item\.artist\|\|null\)/);
+    assert.match(portalScriptText, /entityLink\("album",item\.album,item\.artist\|\|null/);
+    assert.match(portalScriptText, /function splitArtistNames/);
+    assert.match(portalScriptText, /data-entity-result-id/);
+    assert.match(portalScriptText, /const selected=exact\|\|bestExact/);
+    assert.doesNotMatch(portalScriptText, /exact\|\|bestExact\|\|candidates\[0\]/);
     assert.match(portalScriptText, /data-entity-link="\$\{esc\(type\)\}"/);
     assert.match(portalScriptText, /playlist-collage/);
     assert.match(portalScriptText, /keys\.length<=4\?2:keys\.length<=9\?3:4/);

@@ -96,7 +96,9 @@ remain available for callers deciding whether an automatic playback action is
 safe. Each result exposes `match_score`, `confidence`, `match_reasons`,
 `match_penalties`, `version_hint`, `source`, `quality`, `is_library`, native
 `roon_rank`, `direct_match`, `direct_match_score` and navigable artist/album
-`links`.
+`links`. Multi-artist credits are also exposed as an `artists` array and as
+`links.artists`; each entry has its own title and reusable `result_id` when the
+same search returned that artist.
 
 Album-like results additionally expose `release_type` (`album`, `ep`, `single`,
 `single_ep`, `compilation`, `live`, `remix` or `unknown`) and
@@ -105,6 +107,11 @@ The Roon search-root result is used as the principal relevance/popularity signal
 native category order breaks ties when Roon exposes no direct match.
 Unknown Roon metadata is returned as `unknown`, `low`, `null`, or omitted
 rather than guessed.
+
+Artist detail follows the native Discography, Albums, EPs and Singles sections
+instead of accepting surname/substring search matches. Album detail follows
+counted track-list and disc levels and paginates until the requested limit, so
+the `tracks` array represents the complete Roon list rather than its first page.
 
 Broaden a search when the right candidate is missing:
 

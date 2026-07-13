@@ -66,7 +66,7 @@ function fixture(view) {
 }
 
 function wrapper(initialView) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>RoonIA Widget v15 Preview</title><style>html,body{margin:0;padding:24px;background:#e9ecea}iframe{display:block;width:min(920px,100%);height:760px;margin:auto;border:0}</style></head><body><iframe id="widget" src="/widget"></iframe><script>const frame=document.getElementById("widget");const initial=${JSON.stringify(fixture(initialView))};frame.addEventListener("load",()=>frame.contentWindow.postMessage({jsonrpc:"2.0",method:"ui/notifications/tool-result",params:{_meta:{widget:initial}}},"*"));</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>RoonIA Widget v16 Preview</title><style>html,body{margin:0;padding:24px;background:#e9ecea}iframe{display:block;width:min(920px,100%);height:760px;margin:auto;border:0}</style></head><body><iframe id="widget" src="/widget"></iframe><script>const frame=document.getElementById("widget");const initial=${JSON.stringify(fixture(initialView))};frame.addEventListener("load",()=>frame.contentWindow.postMessage({jsonrpc:"2.0",method:"ui/notifications/tool-result",params:{_meta:{widget:initial}}},"*"));</script></body></html>`;
 }
 
 const server = http.createServer((req, res) => {
@@ -77,6 +77,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(3102, "127.0.0.1", () => {
-  console.log("RoonIA widget v15 preview http://127.0.0.1:3102/?view=now_playing");
+  console.log("RoonIA widget v16 preview http://127.0.0.1:3102/?view=now_playing");
   console.log("Other views: media, album, playlist");
 });

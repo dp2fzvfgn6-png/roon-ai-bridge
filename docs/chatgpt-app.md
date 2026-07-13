@@ -1,6 +1,6 @@
 # ChatGPT App
 
-> Current status: MCP v2 and widget v15 are available for ChatGPT connection.
+> Current status: MCP v2 and widget v16 are available for ChatGPT connection.
 > Use `Settings -> Connections` in the portal as the authoritative setup and
 > OAuth administration surface.
 
@@ -57,12 +57,12 @@ The MCP server exposes tools for:
 The server registers three focused Apps SDK widget resources under:
 
 ```text
-ui://roon-ai-bridge/v15/
+ui://roon-ai-bridge/v16/
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
-metadata cached even after the backend deploy succeeds; the versioned v15
+metadata cached even after the backend deploy succeeds; the versioned v16
 resource URIs invalidate the widget cache.
 
 ## ChatGPT Developer Setup (public URL mode)
