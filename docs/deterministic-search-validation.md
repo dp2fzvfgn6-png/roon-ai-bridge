@@ -44,6 +44,7 @@ After an explicit deployment, refresh the ChatGPT app and start a new conversati
 2. Open artist and album names from search rows, track lists and entity details.
 3. Open an artist with albums, EPs and singles and compare section classification with Roon.
 4. Search a duplicate song title and confirm the same candidate Roon places at the search root is selected.
-5. Verify playback only after selecting the returned `result_id`; no automatic audible test is required for search validation.
+5. Open `EL BAIFO` and confirm its complete ordered track list is recovered even when Roon exposes the album result as an `action_list`.
+6. Verify playback only after selecting the returned `result_id`; no automatic audible test is required for search validation.
 
 Live classification can vary with the Roon Core catalog and streaming services. Any mismatch should be captured with the root Browse items and typed category items so the fingerprint rules can be refined without introducing query-specific exceptions.

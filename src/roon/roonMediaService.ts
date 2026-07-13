@@ -1380,18 +1380,13 @@ export class RoonMediaService {
       warnings.push(`album_browse: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    if (tracks.length === 0) {
+    if (tracks.length <= 1) {
       try {
-        const fallback = await this.search({
-          query: [album.title, album.artist || album.subtitle].filter(Boolean).join(" "),
-          types: ["track"],
-          zoneId,
-          count: Math.min(25, count),
-          sourcePreference: "library_first"
-        });
-        const albumName = normalize(album.title);
-        const matching = fallback.results.filter((result) => normalize(result.album || "") === albumName);
-        tracks = matching.slice(0, count);
+        const discovered = await this.readAlbumTracksFromSearch(album, zoneId, count);
+        if (discovered.length > tracks.length) {
+          tracks = discovered;
+          warnings.push("tracklist_recovered_from_roon_album_search");
+        }
       } catch (error) {
         warnings.push(`track_search: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -1871,6 +1866,78 @@ export class RoonMediaService {
       description: descriptiveText(...overviewSources),
       tracks
     };
+  }
+
+  private async readAlbumTracksFromSearch(
+    album: MediaReference,
+    zoneId: string | undefined,
+    count: number
+  ): Promise<MediaResult[]> {
+    const requested = Math.max(1, Math.min(count, 200));
+    const search = await this.searchGlobalCategory(
+      album.title,
+      "track",
+      zoneId,
+      requested
+    );
+    const candidates = search.items;
+    if (!candidates.length) return [];
+
+    const albumArtist = album.album_artist || album.artist || album.subtitle;
+    const albumArtists = splitArtistCredit(albumArtist);
+    const belongsToArtist = (item: BrowseItem): boolean => {
+      if (!albumArtists.length) return true;
+      const itemArtists = artistNamesForItem(
+        item,
+        pickNestedString(item, ["artist", "artist_name"]) ||
+          (typeof item.subtitle === "string" ? item.subtitle : null)
+      );
+      return itemArtists.some((artist) =>
+        albumArtists.some((albumArtistName) =>
+          artistCreditIncludes(artist, albumArtistName) ||
+          artistCreditIncludes(albumArtistName, artist)
+        )
+      );
+    };
+    const exactAlbum = candidates.filter((item) =>
+      belongsToArtist(item) &&
+      normalize(pickNestedString(item, ["album", "album_name"]) || "") === normalize(album.title)
+    );
+    const albumImage = album.image_key;
+    const anchor = candidates.find((item) =>
+      belongsToArtist(item) &&
+      normalize(String(item.title || "")) === normalize(album.title)
+    ) || candidates.find(belongsToArtist);
+    const coverKey = albumImage || anchor?.image_key || null;
+    const matching = exactAlbum.length
+      ? exactAlbum
+      : coverKey
+        ? candidates.filter((item) => item.image_key === coverKey && belongsToArtist(item))
+        : [];
+    if (!matching.length) return [];
+
+    return matching.slice(0, requested).map((item, ordinal) => {
+      const rawMedia = objectValue(item.media) || {};
+      return this.registerReference(
+        [album.title, albumArtist].filter(Boolean).join(" "),
+        "track",
+        {
+          ...item,
+          media: {
+            ...rawMedia,
+            album: album.title,
+            album_artist: albumArtist,
+            artist:
+              pickString(rawMedia, ["artist", "artist_name"]) ||
+              (typeof item.subtitle === "string" ? item.subtitle : albumArtist),
+            source: pickString(rawMedia, ["source", "provider", "service"]) || album.source,
+            track_number:
+              pickNumber(rawMedia, ["track_number", "track"]) || ordinal + 1
+          }
+        },
+        ordinal
+      );
+    });
   }
 
   private async readAlbumDiscItems(

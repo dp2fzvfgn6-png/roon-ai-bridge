@@ -12,7 +12,8 @@ media-search and artist-detail contracts.
 - albums, EPs and singles are returned separately; a mixed Single/EP section
   uses explicit metadata first and track count only as a deterministic fallback.
 - album detail follows counted track-list and disc levels and loads every page
-  up to the requested limit.
+  up to the requested limit; streaming `action_list` results use Roon's shared
+  cover and artist fingerprint to recover the full ordered Tracks category.
 - missing artwork uses a neutral media-type icon.
 - the best-result presentation is compact instead of spanning the full widget.
 

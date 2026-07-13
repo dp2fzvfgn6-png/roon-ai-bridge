@@ -112,6 +112,9 @@ Artist detail follows the native Discography, Albums, EPs and Singles sections
 instead of accepting surname/substring search matches. Album detail follows
 counted track-list and disc levels and paginates until the requested limit, so
 the `tracks` array represents the complete Roon list rather than its first page.
+When a streaming album opens as a Roon `action_list` instead of a navigable
+track list, the service recovers the ordered tracks from Roon's Tracks category
+using the exact album title, artist ownership and shared cover fingerprint.
 
 Broaden a search when the right candidate is missing:
 

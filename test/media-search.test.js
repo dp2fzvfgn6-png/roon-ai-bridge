@@ -511,6 +511,68 @@ test("album detail follows counted track sections and loads every page", async (
   assert.deepEqual(detail.tracks.map((track) => track.title), ["Track One", "Track Two", "Track Three"]);
 });
 
+function createRoonAlbumSearchTracklistClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "tracks-category") { stage = "tracks"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "album-key") { stage = "album-action-list"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") {
+        callback(false, {
+          list: { title: "Search", count: 3 },
+          items: [
+            { title: "EL BAIFO", subtitle: "Quevedo", item_key: "direct", hint: "action_list", image_key: "baifo-cover" },
+            { title: "Albums", subtitle: "2 Results", item_key: "albums-category", hint: "list" },
+            { title: "Tracks", subtitle: "4 Results", item_key: "tracks-category", hint: "list" }
+          ]
+        });
+        return;
+      }
+      if (stage === "albums") {
+        callback(false, {
+          list: { title: "Albums", count: 1 },
+          items: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "album-key", hint: "action_list", image_key: "baifo-cover", media: { source: "tidal" } }]
+        });
+        return;
+      }
+      if (stage === "album-action-list") {
+        callback(false, {
+          list: { title: "EL BAIFO", count: 1 },
+          items: [{ title: "EL BAIFO", subtitle: "Quevedo", item_key: "same-title-track", hint: "action_list", image_key: "baifo-cover" }]
+        });
+        return;
+      }
+      callback(false, {
+        list: { title: "Tracks", count: 4 },
+        items: [
+          { title: "EL BAIFO", subtitle: "Quevedo", item_key: "track-1", hint: "action_list", image_key: "baifo-cover" },
+          { title: "AL GOLPITO", subtitle: "Quevedo, Nueva Línea", item_key: "track-2", hint: "action_list", image_key: "baifo-cover" },
+          { title: "NI BORRACHO", subtitle: "Quevedo, KIDDO", item_key: "track-3", hint: "action_list", image_key: "baifo-cover" },
+          { title: "Se Me Fue el Baifo", subtitle: "Juan Mesa", item_key: "unrelated", hint: "action_list", image_key: "other-cover" }
+        ]
+      });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail recovers Roon's full streaming tracklist from the shared album cover", async () => {
+  const service = new RoonMediaService(createRoonAlbumSearchTracklistClient(), "tidal");
+  const search = await service.search({ query: "EL BAIFO", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["EL BAIFO", "AL GOLPITO", "NI BORRACHO"]);
+  assert.deepEqual(detail.tracks.map((track) => track.track_number), [1, 2, 3]);
+  assert.equal(detail.tracks.every((track) => track.album === "EL BAIFO"), true);
+  assert.equal(detail.tracks.every((track) => track.source === "tidal"), true);
+  assert.deepEqual(detail.warnings, ["tracklist_recovered_from_roon_album_search"]);
+});
+
 function createMultiDiscAlbumDetailClient() {
   let stage = "root";
   const browse = {
