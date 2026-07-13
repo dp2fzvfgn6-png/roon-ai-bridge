@@ -74,7 +74,7 @@ v0.17.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Check GitHub versions and request a host-supervised update.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register focused interactive Apps SDK widget resources under `ui://roon-ai-bridge/v12/`.
+- Register focused interactive Apps SDK widget resources under `ui://roon-ai-bridge/v13/`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -520,7 +520,7 @@ virtual playlists, volume policies, zone presets and diagnostics. See
 [MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
 
 Player, media explorer and library widgets are published under the cache-busted
-`ui://roon-ai-bridge/v12/` namespace. They use app-only navigation and action
+`ui://roon-ai-bridge/v13/` namespace. They use app-only navigation and action
 adapters backed by the canonical intent gateway. ChatGPT connections are managed from the
 portal under `Settings -> Connections`, together with OAuth
 clients, approval PIN rotation and generic MCP client profiles.

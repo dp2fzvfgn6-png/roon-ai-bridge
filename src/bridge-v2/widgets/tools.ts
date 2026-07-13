@@ -84,7 +84,7 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
   if (allowed("roon_open_player")) {
     server.registerTool("roon_open_player", {
       title: "Open RoonIA Player",
-      description: "Use this when the user wants an interactive now-playing view with live zone, queue, transport and safe volume controls.",
+      description: "Use this when the user asks what is playing, what is currently playing, for now-playing status, or wants an interactive player with live zone, artwork, queue and controls. Do not use roon_get_state for a user-facing now-playing request.",
       inputSchema: { zone: targetSchema.optional() },
       outputSchema: {
         status: z.literal("completed"), operation: z.string(), summary: z.string(),
@@ -181,7 +181,11 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
         widget: z.record(z.string(), z.unknown())
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
-      _meta: { ui: { visibility: ["app"] } }
+      _meta: {
+        ui: { visibility: ["app"] },
+        "openai/widgetAccessible": true,
+        "openai/visibility": "private"
+      }
     } as any, async (input: any) => {
       try {
         const effective = input.view === "queue"

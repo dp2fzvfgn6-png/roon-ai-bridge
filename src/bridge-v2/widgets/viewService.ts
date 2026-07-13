@@ -4,6 +4,7 @@ import { TargetResolver } from "../targetResolver";
 import { formatZone } from "../../roon/roonZoneService";
 import type { MediaResult, MediaType, SourcePreference } from "../../roon/roonMediaService";
 import { getQueueSnapshot } from "../../roon/roonQueueService";
+import { createWidgetAssetUrl } from "../../services/widgetAssetService";
 
 export type WidgetView =
   | "player"
@@ -27,12 +28,11 @@ export type WidgetPayload = {
   [key: string]: unknown;
 };
 
-function imageUrl(baseUrl: string | null | undefined, imageKey: unknown): string | null {
+function imageUrl(config: BridgeV2Context["config"], imageKey: unknown): string | null {
   if (typeof imageKey !== "string" || !imageKey) return null;
-  const path = imageKey.startsWith("custom:")
-    ? `/playlists/covers/${encodeURIComponent(imageKey.slice("custom:".length))}`
-    : `/roon/images/${encodeURIComponent(imageKey)}`;
-  return baseUrl ? `${baseUrl.replace(/\/+$/, "")}${path}` : path;
+  return imageKey.startsWith("custom:")
+    ? createWidgetAssetUrl(config, "playlist-cover", imageKey.slice("custom:".length))
+    : createWidgetAssetUrl(config, "roon-image", imageKey);
 }
 
 function basePayload(
@@ -79,7 +79,7 @@ export class WidgetV2ViewService {
           title: item.title || item.three_line?.line1 || null,
           artist: item.artist || item.three_line?.line2 || null,
           album: item.album || item.three_line?.line3 || null,
-          image_url: imageUrl(this.context.config.publicBaseUrl, item.image_key)
+          image_url: imageUrl(this.context.config, item.image_key)
         }));
       } catch (error) {
         queueWarning = error instanceof Error ? error.message : String(error);
@@ -104,7 +104,7 @@ export class WidgetV2ViewService {
             artist: zone.now_playing.line2,
             album: zone.now_playing.line3,
             image_key: zone.now_playing.image_key,
-            image_url: imageUrl(this.context.config.publicBaseUrl, zone.now_playing.image_key),
+            image_url: imageUrl(this.context.config, zone.now_playing.image_key),
             position_seconds: zone.now_playing.seek_position,
             duration_seconds: zone.now_playing.length
           },
@@ -226,7 +226,7 @@ export class WidgetV2ViewService {
         title: item.title || item.three_line?.line1 || null,
         artist: item.artist || item.three_line?.line2 || null,
         album: item.album || item.three_line?.line3 || null,
-        image_url: imageUrl(this.context.config.publicBaseUrl, item.image_key)
+        image_url: imageUrl(this.context.config, item.image_key)
       }))
     };
   }
@@ -252,7 +252,7 @@ export class WidgetV2ViewService {
           track_count: playlist.track_count,
           updated_at: playlist.updated_at,
           image_key: coverKey,
-          image_url: imageUrl(this.context.config.publicBaseUrl, coverKey)
+          image_url: imageUrl(this.context.config, coverKey)
         };
       }),
       pagination: {
@@ -280,7 +280,7 @@ export class WidgetV2ViewService {
         description: playlist.description,
         track_count: playlist.track_count,
         image_key: playlist.cover_image_key,
-        image_url: imageUrl(this.context.config.publicBaseUrl, playlist.cover_image_key)
+        image_url: imageUrl(this.context.config, playlist.cover_image_key)
       },
       tracks: (playlist.tracks || []).map((track) => ({
         playlist_id: playlist.playlist_id,
@@ -291,7 +291,7 @@ export class WidgetV2ViewService {
         album: track.audio_metadata?.album || track.album,
         duration_seconds: track.audio_metadata?.duration_seconds ?? null,
         image_key: track.image_key,
-        image_url: imageUrl(this.context.config.publicBaseUrl, track.image_key),
+        image_url: imageUrl(this.context.config, track.image_key),
         resolution_status: track.resolution?.status || "missing",
         roon_binding_status: track.roon_binding.state
       })),
@@ -355,7 +355,7 @@ export class WidgetV2ViewService {
       confidence: media.confidence,
       playable: media.playable,
       image_key: media.image_key,
-      image_url: imageUrl(this.context.config.publicBaseUrl, media.image_key)
+      image_url: imageUrl(this.context.config, media.image_key)
     };
   }
 

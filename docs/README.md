@@ -12,6 +12,7 @@ This documentation covers the current v0.17.0 repository:
 - [MCP v2 Architecture](mcp-v2-architecture.md)
 - [MCP v2 Local Validation](mcp-v2-validation.md)
 - [Widget v2 Local Validation](widget-v2-validation.md)
+- [Widget v13 Validation](widget-v13-validation.md)
 - [Connections and OAuth](connections.md)
 - [v0.17.0 Release Notes](v0.17.0-release-notes.md)
 - [v0.17.0 Validation](v0.17.0-validation.md)

@@ -11,7 +11,7 @@ export function createBridgeV2McpServer(context: BridgeV2Context): McpServer {
     { name: "roon-ai-bridge", version: APP_VERSION },
     {
       instructions:
-        "Use one intent tool per user request. Zone and output tools accept exact names, so never call roon_get_state only to obtain IDs. roon_play_media, roon_enqueue_media and roon_start_radio accept either a query or a prior result_id and resolve searches internally. If status=ambiguous, ask the user to choose a returned candidate. Only claim a mutation succeeded when status=completed; report verified separately. Use roon_transfer_playback to move the current queue and roon_set_grouping only for synchronized playback."
+        "For any user-facing request asking what is playing, what is currently playing or for now-playing status, call roon_open_player so the interactive widget is shown; do not call roon_get_state for that request. Use one intent tool per user request. Zone and output tools accept exact names, so never call roon_get_state only to obtain IDs. roon_play_media, roon_enqueue_media and roon_start_radio accept either a query or a prior result_id and resolve searches internally. If status=ambiguous, ask the user to choose a returned candidate. Only claim a mutation succeeded when status=completed; report verified separately. Use roon_transfer_playback to move the current queue and roon_set_grouping only for synchronized playback."
     }
   );
   registerWidgetV2Resources(server);

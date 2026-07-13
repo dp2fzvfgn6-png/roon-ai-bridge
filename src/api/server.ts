@@ -31,7 +31,7 @@ import { createAdvancedRouter } from "./routes/advanced.routes";
 import { createSafetyRouter } from "./routes/safety.routes";
 import { createZonePresetsRouter } from "./routes/zonePresets.routes";
 import { createVolumeLimitsRouter } from "./routes/volumeLimits.routes";
-import { createWidgetsRouter } from "./routes/widgets.routes";
+import { createWidgetAssetsRouter, createWidgetsRouter } from "./routes/widgets.routes";
 import { createActionAuditMiddleware, createObservabilityRouter } from "./routes/observability.routes";
 import { ActionLogService } from "../services/actionLogService";
 import { TechnicalLogService } from "../services/technicalLogService";
@@ -65,6 +65,7 @@ export function createServer(context: ApiContext): express.Express {
   app.use(express.json({ limit: "8mb" }));
   app.use(createHealthRouter(context));
   app.use(createOAuthRouter(context));
+  app.use(createWidgetAssetsRouter(context));
   app.get("/privacy", (req, res) => {
     res
       .type("text/plain")

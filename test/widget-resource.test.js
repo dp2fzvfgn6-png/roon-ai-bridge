@@ -5,7 +5,7 @@ const {
   WIDGET_V2_URIS
 } = require("../dist/bridge-v2/widgets/resources");
 
-test("serves three focused v12 MCP Apps widget resources", async () => {
+test("serves three focused v13 MCP Apps widget resources", async () => {
   const resources = new Map();
   const server = {
     registerResource(name, uri, options, handler) {
@@ -25,6 +25,8 @@ test("serves three focused v12 MCP Apps widget resources", async () => {
     assert.match(resource.text, /ui\/notifications\/tool-input/);
     assert.match(resource.text, /ui\/notifications\/tool-result/);
     assert.match(resource.text, /ui\/update-model-context/);
+    assert.match(resource.text, /rpc\("tools\/call"/);
+    assert.match(resource.text, /window\.openai\.callTool/);
     assert.match(resource.text, /roon_ui_navigate/);
     assert.match(resource.text, /roon_ui_action/);
     assert.match(resource.text, /setWidgetState/);

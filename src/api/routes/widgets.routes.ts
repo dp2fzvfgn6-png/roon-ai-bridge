@@ -2,6 +2,8 @@ import { Router } from "express";
 import { ApiContext } from "../server";
 import { MediaType } from "../../roon/roonMediaService";
 import { WidgetService } from "../../services/widgetService";
+import { verifyWidgetAssetSignature, WidgetAssetKind } from "../../services/widgetAssetService";
+import { ApiError } from "../../utils/errors";
 
 function parseNumber(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? fallback), 10);
@@ -131,6 +133,62 @@ export function createWidgetsRouter(context: ApiContext): Router {
       });
       res.setHeader("Cache-Control", "private, max-age=3600");
       res.type(image.contentType).send(image.bytes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  return router;
+}
+
+function requireWidgetAssetSignature(
+  context: ApiContext,
+  kind: WidgetAssetKind,
+  assetId: string,
+  expires: unknown,
+  signature: unknown
+): void {
+  if (!verifyWidgetAssetSignature(context.config, kind, assetId, expires, signature)) {
+    throw new ApiError("AUTH_INVALID", "Invalid or expired widget asset URL", {}, 403);
+  }
+}
+
+export function createWidgetAssetsRouter(context: ApiContext): Router {
+  const router = Router();
+
+  router.get("/widget-assets/roon-images/:image_key", async (req, res, next) => {
+    try {
+      requireWidgetAssetSignature(
+        context,
+        "roon-image",
+        req.params.image_key,
+        req.query.expires,
+        req.query.signature
+      );
+      const image = await widgetService(context).getImage(req.params.image_key, {
+        width: parseNumber(req.query.width, 640),
+        height: parseNumber(req.query.height, 640)
+      });
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.type(image.contentType).send(image.bytes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/widget-assets/playlist-covers/:cover_id", (req, res, next) => {
+    try {
+      requireWidgetAssetSignature(
+        context,
+        "playlist-cover",
+        req.params.cover_id,
+        req.query.expires,
+        req.query.signature
+      );
+      const cover = context.playlistService.getCustomCover(req.params.cover_id);
+      res.setHeader("Content-Type", cover.content_type);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(cover.bytes);
     } catch (error) {
       next(error);
     }

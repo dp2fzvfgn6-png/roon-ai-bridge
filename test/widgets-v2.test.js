@@ -95,6 +95,20 @@ test("v2 player view returns live zone state, artwork URL and controls data", as
   } finally { database.close(); }
 });
 
+test("v2 player uses signed artwork URLs when API authentication is enabled", async () => {
+  const { database, context } = fixture();
+  context.config.enableAuth = true;
+  context.config.apiToken = "private-test-token";
+  try {
+    const view = await new WidgetV2ViewService(context).player();
+    const artwork = new URL(view.zones[0].now_playing.image_url);
+    assert.equal(artwork.pathname, "/widget-assets/roon-images/now-1");
+    assert.ok(artwork.searchParams.get("expires"));
+    assert.ok(artwork.searchParams.get("signature"));
+    assert.equal(view.zones[0].now_playing.image_url.includes("private-test-token"), false);
+  } finally { database.close(); }
+});
+
 test("v2 media explorer exposes rich artist and album drill-down data", async () => {
   const { database, context } = fixture();
   try {

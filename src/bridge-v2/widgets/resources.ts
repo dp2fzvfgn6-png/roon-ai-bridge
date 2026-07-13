@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-export const WIDGET_V2_VERSION = "v12";
+export const WIDGET_V2_VERSION = "v13";
 export const WIDGET_V2_URIS = {
   player: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/player.html`,
   media: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/media-explorer.html`,
@@ -101,7 +101,7 @@ export const widgetV2Html = `
   function persist(){window.openai?.setWidgetState?.(state)}
   function notify(message,kind){toast.textContent=message;toast.className="toast"+(kind==="error"?" error":"");toast.hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(function(){toast.hidden=true},3000)}
   function rpc(method,params){return new Promise(function(resolve,reject){const id=requestId++;pending.set(id,{resolve:resolve,reject:reject});window.parent.postMessage({jsonrpc:"2.0",id:id,method:method,params:params},"*");setTimeout(function(){if(pending.has(id)){pending.delete(id);reject(new Error("La aplicación no respondió a tiempo"))}},15000)})}
-  async function callHostTool(name,args){if(window.openai&&typeof window.openai.callTool==="function")return window.openai.callTool(name,args);return rpc("tools/call",{name:name,arguments:args})}
+  async function callHostTool(name,args){try{return await rpc("tools/call",{name:name,arguments:args})}catch(error){if(window.openai&&typeof window.openai.callTool==="function")return window.openai.callTool(name,args);throw error}}
   function resultData(result){return result?.structuredContent||result?.mcp_tool_result?.structuredContent||result?.call_tool_result?.structuredContent||result}
   function widgetFromResult(result){if(!result)return null;const candidates=[result,result._meta,result.structuredContent,result.mcp_tool_result,result.call_tool_result,result._meta?.mcp_tool_result,result._meta?.call_tool_result,result.mcp_tool_result?._meta,result.call_tool_result?._meta];for(const item of candidates){if(item?.widget)return item.widget;if(item?.structuredContent?.widget)return item.structuredContent.widget;if(item?._meta?.widget)return item._meta.widget}return null}
   async function updateModelContext(text){try{await rpc("ui/update-model-context",{content:[{type:"text",text:text}]})}catch{}}

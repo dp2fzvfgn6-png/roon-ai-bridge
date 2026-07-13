@@ -102,7 +102,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_get_state", {
     title: "Get Roon State",
-    description: "Use this when current Roon system, zone, now-playing or output state is needed. It accepts a zone name directly, so do not list zones first.",
+    description: "Use this when programmatic Roon system, zone or output state is needed for diagnostics or follow-up reasoning. For a user-facing request asking what is playing or for now-playing status, use roon_open_player instead so the interactive widget is shown. It accepts a zone name directly, so do not list zones first.",
     annotations: readOnly,
     inputSchema: {
       scope: z.enum(["system", "zones", "zone", "outputs"]).default("system"),

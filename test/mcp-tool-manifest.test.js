@@ -167,7 +167,7 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     const renderTools = ["roon_open_player", "roon_open_media_explorer", "roon_open_library"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v12\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v13\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else if (name === "roon_ui_navigate" || name === "roon_ui_action") {
         assert.equal(tool._meta["openai/outputTemplate"], undefined);
@@ -179,6 +179,7 @@ test("HTTP MCP tools/list exposes v2 intents plus focused render and app-only to
     }
     assert.equal(tools.has("roon_status"), false);
     assert.equal(tools.has("roon_get_media_search_widget"), false);
+    assert.equal(tools.get("roon_ui_navigate")._meta["openai/widgetAccessible"], true);
     assert.equal(tools.get("roon_ui_action")._meta["openai/widgetAccessible"], true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
