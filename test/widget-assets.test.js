@@ -22,10 +22,13 @@ test("creates stable signed artwork URLs without exposing the API token", () => 
   const second = createWidgetAssetUrl(config(), "roon-image", "image/key 1", now + 60_000);
 
   assert.equal(first, second);
-  assert.match(first, /^https:\/\/example\.test\/widget-assets\/roon-images\//);
+  assert.match(first, /^https:\/\/example\.test\/mcp\?/);
   assert.equal(first.includes("private-test-token"), false);
 
   const parsed = new URL(first);
+  assert.equal(parsed.pathname, "/mcp");
+  assert.equal(parsed.searchParams.get("widget_asset"), "roon-image");
+  assert.equal(parsed.searchParams.get("asset_id"), "image/key 1");
   assert.equal(
     verifyWidgetAssetSignature(
       config(),
@@ -55,11 +58,14 @@ test("rejects tampered and expired widget artwork signatures", () => {
   );
 });
 
-test("keeps legacy asset routes when HTTP authentication is disabled", () => {
-  assert.equal(
-    createWidgetAssetUrl(config({ enableAuth: false, apiToken: null }), "roon-image", "image-1"),
-    "https://example.test/roon/images/image-1"
+test("uses the public MCP route without a signature when HTTP authentication is disabled", () => {
+  const parsed = new URL(
+    createWidgetAssetUrl(config({ enableAuth: false, apiToken: null }), "roon-image", "image-1")
   );
+  assert.equal(parsed.pathname, "/mcp");
+  assert.equal(parsed.searchParams.get("widget_asset"), "roon-image");
+  assert.equal(parsed.searchParams.get("asset_id"), "image-1");
+  assert.equal(parsed.searchParams.has("signature"), false);
 });
 
 test("serves a signed artwork request before bearer authentication", async () => {
@@ -119,7 +125,8 @@ test("serves a signed artwork request before bearer authentication", async () =>
     assert.equal(response.headers.get("content-type"), "image/jpeg");
     assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "jpeg-bytes");
 
-    const rejected = await fetch(`${baseUrl}${signed.pathname}`);
+    signed.searchParams.delete("signature");
+    const rejected = await fetch(`${baseUrl}${signed.pathname}${signed.search}`);
     assert.equal(rejected.status, 403);
   } finally {
     await new Promise((resolve) => server.close(resolve));

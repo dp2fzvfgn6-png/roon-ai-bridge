@@ -59,7 +59,7 @@ function output(id, name, value, muted = false) {
 }
 
 function fixture() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v16-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v17-"));
   const config = { dataDir, publicBaseUrl: "https://example.test", enableAuth: false, apiToken: null };
   const database = createDatabase(config);
   const playlists = new PlaylistService(config, database);
@@ -67,7 +67,7 @@ function fixture() {
     playlist_id: "focus",
     name: "Focus",
     description: "Concentración sin distracciones.",
-    cover_image_key: "custom-cover",
+    cover_image_key: "custom:custom-cover",
     tracks: [{
       track_id: "t1",
       query: "Everything",
@@ -142,7 +142,10 @@ test("now-playing shows only active zones and every grouped output volume", () =
     assert.equal(view.view, "now_playing");
     assert.deepEqual(view.zones.map((item) => item.name), ["Despacho", "Cocina"]);
     assert.equal(view.zones[0].media.title, "Everything In Its Right Place");
-    assert.equal(view.zones[0].media.image_url, "https://example.test/roon/images/now-zone-office");
+    const artwork = new URL(view.zones[0].media.image_url);
+    assert.equal(artwork.pathname, "/mcp");
+    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
+    assert.equal(artwork.searchParams.get("asset_id"), "now-zone-office");
     assert.deepEqual(view.zones[0].outputs.map((item) => [item.name, item.volume.value, item.volume.muted]), [
       ["Despacho izquierdo", 18, false],
       ["Despacho derecho", 21, true]
@@ -169,7 +172,9 @@ test("now-playing uses signed artwork URLs without exposing the API token", () =
   try {
     const view = new WidgetV2ViewService(context).nowPlaying({ zone: { id: "zone-office" } });
     const artwork = new URL(view.zones[0].media.image_url);
-    assert.equal(artwork.pathname, "/widget-assets/roon-images/now-zone-office");
+    assert.equal(artwork.pathname, "/mcp");
+    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
+    assert.equal(artwork.searchParams.get("asset_id"), "now-zone-office");
     assert.ok(artwork.searchParams.get("expires"));
     assert.ok(artwork.searchParams.get("signature"));
     assert.equal(artwork.href.includes("private-test-token"), false);
@@ -228,8 +233,23 @@ test("playlist view contains cover, description and lightweight track rows", () 
     assert.equal(view.view, "playlist");
     assert.equal(view.playlist.name, "Focus");
     assert.equal(view.playlist.description, "Concentración sin distracciones.");
-    assert.equal(view.playlist.image_url, "https://example.test/playlists/covers/custom-cover");
+    const playlistArtwork = new URL(view.playlist.image_url);
+    assert.equal(playlistArtwork.searchParams.get("widget_asset"), "playlist-cover");
+    assert.equal(playlistArtwork.searchParams.get("asset_id"), "custom-cover");
     assert.equal(view.tracks[0].title, "Everything In Its Right Place");
-    assert.equal(view.tracks[0].image_url, "https://example.test/roon/images/cover-1");
+    const trackArtwork = new URL(view.tracks[0].image_url);
+    assert.equal(trackArtwork.searchParams.get("widget_asset"), "roon-image");
+    assert.equal(trackArtwork.searchParams.get("asset_id"), "cover-1");
+  } finally { database.close(); }
+});
+
+test("playlist view uses Roon artwork when the playlist has no custom cover", () => {
+  const { database, context } = fixture();
+  try {
+    context.playlistService.updatePlaylist("focus", { cover_image_key: null });
+    const view = new WidgetV2ViewService(context).playlist({ playlist: { id: "focus" } });
+    const artwork = new URL(view.playlist.image_url);
+    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
+    assert.equal(artwork.searchParams.get("asset_id"), "cover-1");
   } finally { database.close(); }
 });

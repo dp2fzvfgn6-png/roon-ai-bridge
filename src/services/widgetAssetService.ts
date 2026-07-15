@@ -7,17 +7,6 @@ const SIGNATURE_TTL_SECONDS = 2 * 60 * 60;
 const SIGNATURE_BUCKET_SECONDS = 15 * 60;
 const MAX_FUTURE_SECONDS = SIGNATURE_TTL_SECONDS + SIGNATURE_BUCKET_SECONDS;
 
-function assetPath(kind: WidgetAssetKind, assetId: string): string {
-  const segment = kind === "roon-image" ? "roon-images" : "playlist-covers";
-  return `/widget-assets/${segment}/${encodeURIComponent(assetId)}`;
-}
-
-function legacyPath(kind: WidgetAssetKind, assetId: string): string {
-  return kind === "roon-image"
-    ? `/roon/images/${encodeURIComponent(assetId)}`
-    : `/playlists/covers/${encodeURIComponent(assetId)}`;
-}
-
 function signaturePayload(kind: WidgetAssetKind, assetId: string, expires: number): string {
   return `${kind}\n${assetId}\n${expires}`;
 }
@@ -36,17 +25,24 @@ export function createWidgetAssetUrl(
   now = Date.now()
 ): string {
   const baseUrl = config.publicBaseUrl?.replace(/\/+$/, "") || "";
-  if (!config.enableAuth || !config.apiToken) {
-    return `${baseUrl}${legacyPath(kind, assetId)}`;
+  const query = new URLSearchParams({
+    widget_asset: kind,
+    asset_id: assetId
+  });
+
+  if (config.enableAuth && config.apiToken) {
+    const nowSeconds = Math.floor(now / 1000);
+    const expires =
+      Math.floor(nowSeconds / SIGNATURE_BUCKET_SECONDS) * SIGNATURE_BUCKET_SECONDS +
+      SIGNATURE_TTL_SECONDS +
+      SIGNATURE_BUCKET_SECONDS;
+    query.set("expires", String(expires));
+    query.set("signature", sign(config.apiToken, kind, assetId, expires));
   }
 
-  const nowSeconds = Math.floor(now / 1000);
-  const expires =
-    Math.floor(nowSeconds / SIGNATURE_BUCKET_SECONDS) * SIGNATURE_BUCKET_SECONDS +
-    SIGNATURE_TTL_SECONDS +
-    SIGNATURE_BUCKET_SECONDS;
-  const signature = sign(config.apiToken, kind, assetId, expires);
-  return `${baseUrl}${assetPath(kind, assetId)}?expires=${expires}&signature=${encodeURIComponent(signature)}`;
+  // The public reverse proxy guarantees that /mcp reaches the API. Other root
+  // paths can be served by the administration portal instead of this process.
+  return `${baseUrl}/mcp?${query.toString()}`;
 }
 
 export function verifyWidgetAssetSignature(

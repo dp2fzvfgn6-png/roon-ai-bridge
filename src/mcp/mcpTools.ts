@@ -1256,20 +1256,20 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
     "roon_set_virtual_playlist_cover_image",
     {
       title: "Set Virtual Playlist Cover Image",
-      description: "Use this when an image created or supplied by the user should become the custom cover of one RoonIA virtual playlist. Send either a JPEG, PNG or WebP data URL, or base64 bytes with content_type; do not use this to select one track artwork because playlists generate an animated collage automatically when no custom cover exists.",
+      description: "Use this when an image created or supplied by the user should become the custom cover of one RoonIA virtual playlist. When creating artwork, target a 768x768 square sRGB WebP under 750 KB and keep important subjects or text centered, away from the edges. JPEG and PNG are also accepted. RoonIA auto-rotates, square-crops, strips metadata, resizes and compresses every upload to a lightweight WebP. Do not use this to select one track artwork because playlists generate an animated collage automatically when no custom cover exists.",
       ...structuredOutputSchema,
       annotations: writeAnnotations,
       _meta: widgetMeta,
       inputSchema: {
         playlist_id: z.string().min(1),
-        image_data_url: z.string().min(1).max(8_000_000).optional(),
-        image_base64: z.string().min(1).max(8_000_000).optional(),
-        content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional(),
+        image_data_url: z.string().min(1).max(8_000_000).optional().describe("Base64 data URL. Optimal generated artwork is a 768x768 square sRGB WebP under 750 KB."),
+        image_base64: z.string().min(1).max(8_000_000).optional().describe("Raw base64 image bytes. For generated artwork prefer a 768x768 square WebP under 750 KB."),
+        content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional().describe("Required with image_base64; prefer image/webp for generated artwork."),
         dry_run: dryRunSchema
       }
     },
     async ({ playlist_id, image_data_url, image_base64, content_type, dry_run }) =>
-      runTool(context, "roon_set_virtual_playlist_cover_image", () => {
+      runTool(context, "roon_set_virtual_playlist_cover_image", async () => {
         const before = context.playlistService.getPlaylist(playlist_id);
         const beforeSummary = {
           playlist_id: before.playlist_id,
@@ -1289,7 +1289,7 @@ export function registerRoonMcpTools(server: McpServer, context: McpContext): vo
             warnings: ["Image bytes are validated and persisted only during execution."]
           });
         }
-        const result = context.playlistService.setCustomCover(playlist_id, {
+        const result = await context.playlistService.setCustomCover(playlist_id, {
           data_url: image_data_url,
           image_base64,
           content_type

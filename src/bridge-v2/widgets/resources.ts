@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-export const WIDGET_V2_VERSION = "v16";
+export const WIDGET_V2_VERSION = "v17";
 export const WIDGET_V2_URIS = {
   nowPlaying: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/now-playing.html`,
   media: `ui://roon-ai-bridge/${WIDGET_V2_VERSION}/media.html`,

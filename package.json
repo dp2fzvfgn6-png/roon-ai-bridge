@@ -27,6 +27,7 @@
     "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
     "node-roon-api-status": "github:roonlabs/node-roon-api-status",
     "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
+    "sharp": "^0.35.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

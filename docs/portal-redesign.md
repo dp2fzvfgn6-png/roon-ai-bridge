@@ -48,9 +48,11 @@ sus canciones. La cuadrícula usa 4, 9 o 16 celdas cuadradas pegadas de borde a
 borde. Cada carátula se centra y recorta para llenar su celda sin franjas y las
 casillas intercambian imágenes con una transición suave. Las dimensiones 2×2,
 3×3 y 4×4 se definen mediante clases CSS compatibles con la CSP del portal, sin
-estilos inline. Desde la edición se puede subir una imagen JPEG, PNG o WebP de hasta
-5 MB; la tool `roon_set_virtual_playlist_cover_image` ofrece la misma operación
-a ChatGPT u otro cliente MCP.
+estilos inline. Desde la edición se puede subir una imagen JPEG, PNG o WebP de
+hasta 5 MB y 40 megapíxeles. El servidor corrige la orientación, la recorta a
+cuadrado, la limita a 768×768, elimina los metadatos y la guarda como WebP de
+como máximo 750 KB. La tool `roon_set_virtual_playlist_cover_image` ofrece la
+misma operación a ChatGPT u otro cliente MCP.
 
 ## Control de acceso MCP
 

@@ -62,6 +62,9 @@ v0.17.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Serve an independent administration portal on port `3001`.
 - Control playback, volume, queues and synchronized zone groups from the portal.
 - Create, edit, reorder, play and delete virtual playlists from the portal.
+- Resolve playlist tracks through strict recording identity matching, preferring
+  equivalent TIDAL lossless candidates without allowing source quality to hide
+  artist or version mismatches.
 - Create and revoke hashed, role-based API keys (`read`, `control`, `admin`).
 - Configure API/portal ports and operations from Roon extension settings.
 - Publish extension status and addresses inside Roon.

@@ -109,6 +109,7 @@ test("registers the compact MCP v2 intent catalog", () => {
   ]) assert.ok(tools.has(name), `${name} should be exposed`);
   assert.equal(tools.get("roon_edit_playlist_tracks").options.annotations.destructiveHint, true);
   assert.equal(tools.get("roon_import_playlist").options.annotations.destructiveHint, true);
+  assert.match(tools.get("roon_set_playlist_cover").options.description, /768x768 square sRGB WebP under 750 KB/);
 
   for (const legacy of ["roon_status", "roon_list_zones", "roon_play_by_query", "roon_get_now_playing_widget"])
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
@@ -169,10 +170,12 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
     assert.ok(tools.get("roon_set_playlist_cover").inputSchema.properties.image_base64);
+    assert.match(tools.get("roon_set_playlist_cover").description, /768x768 square sRGB WebP under 750 KB/);
+    assert.match(tools.get("roon_set_playlist_cover").inputSchema.properties.content_type.description, /prefer image\/webp/);
     const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v16\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v17\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else {
         assert.equal(tool._meta?.["openai/outputTemplate"], undefined);

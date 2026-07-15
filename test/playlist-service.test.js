@@ -1,4 +1,5 @@
 const test = require("node:test");
+const sharp = require("sharp");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -185,20 +186,22 @@ test("enriches library items without exposing Roon internal link ids", () => {
   assert.equal(enriched.media.album, "Space 1.8");
 });
 
-test("stores, serves and clears a validated custom playlist cover", () => {
+test("normalizes, serves and clears a validated custom playlist cover", async () => {
   const config = tempConfig();
   const service = new PlaylistService(config);
   const playlist = service.createPlaylist({ name: "Custom artwork" });
   const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
-  const updated = service.setCustomCover(playlist.playlist_id, {
+  const updated = await service.setCustomCover(playlist.playlist_id, {
     image_base64: png,
     content_type: "image/png"
   });
-  assert.match(updated.cover_image_key, /^custom:.+\.png$/);
+  assert.match(updated.cover_image_key, /^custom:.+\.webp$/);
   const stored = service.getCustomCover(updated.cover_image_key.slice("custom:".length));
-  assert.equal(stored.content_type, "image/png");
+  assert.equal(stored.content_type, "image/webp");
   assert.ok(stored.bytes.length > 20);
+  assert.ok(stored.bytes.length <= 750 * 1024);
+  assert.equal((await sharp(stored.bytes).metadata()).format, "webp");
 
   const cleared = service.clearCustomCover(playlist.playlist_id);
   assert.equal(cleared.cover_image_key, null);
@@ -206,6 +209,27 @@ test("stores, serves and clears a validated custom playlist cover", () => {
     () => service.getCustomCover(stored.cover_image_key.slice("custom:".length)),
     (error) => error.code === "PLAYLIST_COVER_NOT_FOUND"
   );
+});
+
+test("crops large playlist artwork to a manageable square WebP", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({ name: "Large artwork" });
+  const source = await sharp({
+    create: { width: 1600, height: 900, channels: 3, background: { r: 31, g: 73, b: 122 } }
+  }).png().toBuffer();
+
+  const updated = await service.setCustomCover(playlist.playlist_id, {
+    image_base64: source.toString("base64"),
+    content_type: "image/png"
+  });
+  const stored = service.getCustomCover(updated.cover_image_key.slice("custom:".length));
+  const metadata = await sharp(stored.bytes).metadata();
+
+  assert.equal(metadata.width, 768);
+  assert.equal(metadata.height, 768);
+  assert.equal(metadata.format, "webp");
+  assert.ok(stored.bytes.length <= 750 * 1024);
 });
 
 test("lists virtual playlists without tracks by default and paginates tracks explicitly", () => {
@@ -461,7 +485,8 @@ test("marks missing virtual playlist identities explicitly", async () => {
   const mediaService = {
     async search(request) {
       assert.equal(request.query, "Imaginary Song Imaginary Artist");
-      assert.equal(request.types, undefined);
+      assert.deepEqual(request.types, ["track"]);
+      assert.equal(request.sourcePreference, "streaming_first");
       return {
         query: request.query,
         source_preference: request.sourcePreference || "highest_quality",
@@ -490,7 +515,7 @@ test("marks missing virtual playlist identities explicitly", async () => {
   assert.equal(playlist.tracks[0].metadata.resolution.status, "missing");
   assert.match(
     playlist.tracks[0].metadata.resolution.reason,
-    /no results/i
+    /no_results/i
   );
 });
 
@@ -499,8 +524,9 @@ test("resolves virtual playlist entries with the best playable track", async () 
   const service = new PlaylistService(config);
   const mediaService = {
     async search(request) {
-      assert.equal(request.query, "Red Right Hand Nick Cave Bad Seeds");
-      assert.equal(request.types, undefined);
+      assert.equal(request.query, "Red Right Hand Nick Cave & the Bad Seeds");
+      assert.deepEqual(request.types, ["track"]);
+      assert.equal(request.sourcePreference, "streaming_first");
       return {
         query: request.query,
         source_preference: request.sourcePreference || "highest_quality",
@@ -1209,7 +1235,7 @@ test("production playlist playback reconstructs fresh media references from pers
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(searches.map((request) => request.query), ["Artist One Album", "Artist Two Album"]);
+  assert.deepEqual(searches.map((request) => request.query), ["One Artist", "Two Artist"]);
   assert.deepEqual(plays.map((call) => call.mode), ["replace_queue", "append"]);
   assert.deepEqual(plays.map((call) => call.resultId), ["fresh:One", "fresh:Two"]);
   assert.equal(controlCalls, 1);

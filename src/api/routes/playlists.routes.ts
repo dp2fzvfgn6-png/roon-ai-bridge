@@ -65,13 +65,13 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
-  router.post("/playlists/:playlist_id/cover", (req, res, next) => {
+  router.post("/playlists/:playlist_id/cover", async (req, res, next) => {
     try {
       context.logger.info("Virtual playlist custom cover upload received", {
         playlistId: req.params.playlist_id,
         contentType: req.body?.content_type || String(req.body?.data_url || "").slice(5, 30)
       });
-      res.json(context.playlistService.setCustomCover(req.params.playlist_id, req.body || {}));
+      res.json(await context.playlistService.setCustomCover(req.params.playlist_id, req.body || {}));
     } catch (error) {
       next(error);
     }

@@ -25,7 +25,8 @@ playlist additions below have automated local validation only.
 - Selected playlist tracks and full playlists can be re-resolved, and an exact
   `result_id` can repair one incorrect track association.
 - Custom JPEG, PNG and WebP playlist covers are exposed to ChatGPT through
-  `roon_set_playlist_cover`.
+  `roon_set_playlist_cover` and normalized to square WebP files no larger than
+  768×768 or 750 KB.
 - Existing HTTP, OAuth, portal, playlist, media, safety, grouping and transfer
   regression tests continue to pass.
 

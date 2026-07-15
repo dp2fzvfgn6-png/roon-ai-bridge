@@ -34,6 +34,24 @@ The widget layer contains no mutations, controls or polling. `roon_show_now_play
 Full presentation payloads live in result `_meta`; model-visible
 `structuredContent` stays concise.
 
+### Search and resolution boundary
+
+Roon Browse access and media normalization remain shared, but discovery and
+automatic association use different application policies:
+
+```text
+RoonMediaService (catalog and temporary references)
+  -> discovery search (HTTP portal, widgets and roon_search_media)
+  -> TrackResolutionService (playlist association and playback reconstruction)
+```
+
+Discovery search preserves broad categorized results for a person or model to
+inspect. `TrackResolutionService` requests tracks only, requires a sufficiently
+strong title/artist/version identity, and treats source and quality as a second
+selection stage. It may prefer TIDAL over a local copy only when the candidates
+represent the same recording; a higher-quality cover, live version or wrong
+artist can never outrank the correct recording.
+
 ## Efficient flows
 
 ### Direct transport
@@ -66,8 +84,15 @@ text against Roon before returning. A playable `result_id` from
 `roon_search_media` is preferred because it records the exact selected track;
 an update with `changes.result_id` repairs one incorrect association manually.
 `roon_resolve_playlist` can retry unresolved entries, selected `track_ids` or
-the complete playlist. `roon_set_playlist_cover` stores a supplied or generated
-JPEG, PNG or WebP image as the custom playlist cover.
+the complete playlist. Playlist mutations include `resolution_summary` and are
+only returned with `verified: true` when every track is resolved or explicitly
+selected. Explicit model selections record `selection_origin: "model"`; the
+legacy `manual` status alone must not be described as human verification.
+`roon_set_playlist_cover` accepts a supplied or generated
+JPEG, PNG or WebP image and normalizes it to a square, metadata-free WebP of at
+most 768×768 and 750 KB before storing it. Its model-facing description asks
+image generation to start from a 768×768 square sRGB WebP, keep important
+content centered and target less than 750 KB.
 
 ### Lightweight visual responses
 

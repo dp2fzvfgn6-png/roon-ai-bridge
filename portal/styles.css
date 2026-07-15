@@ -422,6 +422,15 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .context-dialog { width: min(1080px, calc(100vw - 30px)); }
 .context-dialog::backdrop { background: rgba(0,0,0,.58); backdrop-filter: blur(2px); }
 .compact-dialog { width: min(590px, calc(100vw - 30px)); padding: 28px; }
+.confirm-dialog { width: min(480px, calc(100vw - 30px)); }
+#confirm-dialog-content { padding: 28px; }
+.confirm-layout { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 17px; align-items: start; }
+.confirm-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(227,111,99,.28); color: #ff9a90; background: rgba(227,111,99,.08); }
+.confirm-icon .material-symbols-rounded { font-size: 22px; }
+.confirm-layout .modal-head { margin-bottom: 14px; }
+.confirm-layout .modal-head h2 { font-size: 23px; }
+.confirm-layout .confirm-copy { margin: 0; }
+.confirm-layout .modal-actions { grid-column: 1/-1; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .modal-head h2 { margin: 7px 0 0; font-size: 27px; }
 .entity-head-nav { display: flex; align-items: flex-start; gap: 12px; }

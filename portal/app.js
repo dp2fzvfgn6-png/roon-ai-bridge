@@ -72,7 +72,7 @@ const portalObserver = new MutationObserver((records) => {
   roots.forEach((root) => { hydrateImages(root); enhancePlaylistTrackActions(root); });
 });
 portalObserver.observe(document.documentElement,{childList:true,subtree:true});
-$$('dialog').forEach((dialog)=>dialog.addEventListener('click',(event)=>{if(event.target!==dialog)return;if(dialog.id==='context-modal')closeContextModal();else if(dialog.id==='modal')closeModal();else dialog.close();}));
+$$('dialog').forEach((dialog)=>dialog.addEventListener('click',(event)=>{if(event.target!==dialog)return;if(dialog.id==='context-modal')closeContextModal();else if(dialog.id==='modal')closeModal();else if(dialog.id==='confirm-dialog')closePortalConfirm(false);else dialog.close();}));
 
 async function api(path, options = {}) {
   if (path.endsWith("/zones/group") && options.body) {
@@ -107,13 +107,27 @@ function closeContextModal() { if ($("#context-modal").open) $("#context-modal")
 function closeModal() { closeContextModal(); if ($("#modal").open) $("#modal").close(); $("#modal-content").innerHTML = ""; state.modalSearch = null; }
 function modalHead(overline, title) { return `<div class="modal-head"><div><span class="overline">${esc(overline)}</span><h2>${esc(title)}</h2></div><button class="icon-btn" data-close>${icon("close")}</button></div>`; }
 function commandStatus(message = "") { $("#command-status").textContent = message; }
+let portalConfirmResolve = null;
+function closePortalConfirm(result = false) {
+  const dialog = $("#confirm-dialog");
+  if (dialog.open) dialog.close();
+  $("#confirm-dialog-content").innerHTML = "";
+  const resolve = portalConfirmResolve;
+  portalConfirmResolve = null;
+  resolve?.(result);
+}
 function confirmPortal({ overline="Confirmación", title, message, action="Continuar", danger=false }) {
   return new Promise((resolve) => {
-    openModal(`<div class="modal-head"><div><span class="overline">${esc(overline)}</span><h2>${esc(title)}</h2></div></div><p class="confirm-copy">${esc(message)}</p><div class="modal-actions"><button class="btn secondary" id="confirm-cancel">Cancelar</button><button class="btn ${danger?'danger':'primary'}" id="confirm-action">${esc(action)}</button></div>`);
-    $("#confirm-cancel").addEventListener("click",()=>{closeModal();resolve(false)},{once:true});
-    $("#confirm-action").addEventListener("click",()=>{closeModal();resolve(true)},{once:true});
+    if (portalConfirmResolve) closePortalConfirm(false);
+    portalConfirmResolve = resolve;
+    $("#confirm-dialog-content").innerHTML = `<div class="confirm-layout"><div class="confirm-icon" aria-hidden="true">${icon(danger?"delete_forever":"help")}</div><div><div class="modal-head"><div><span class="overline">${esc(overline)}</span><h2>${esc(title)}</h2></div></div><p class="confirm-copy">${esc(message)}</p></div><div class="modal-actions"><button class="btn secondary" id="confirm-cancel">Cancelar</button><button class="btn ${danger?'danger':'primary'}" id="confirm-action">${esc(action)}</button></div></div>`;
+    $("#confirm-cancel").addEventListener("click",()=>closePortalConfirm(false),{once:true});
+    $("#confirm-action").addEventListener("click",()=>closePortalConfirm(true),{once:true});
+    $("#confirm-dialog").showModal();
+    $("#confirm-cancel").focus();
   });
 }
+$("#confirm-dialog").addEventListener("cancel",(event)=>{event.preventDefault();closePortalConfirm(false);});
 function formDataObject(form) { const out = {}; new FormData(form).forEach((value, key) => { if (out[key] !== undefined) out[key] = [].concat(out[key], value); else out[key] = value; }); return out; }
 
 function showAuth(message = "") { $("#app").hidden = true; $("#auth-screen").hidden = false; if (message) $("#login-error").textContent = message; }
@@ -270,7 +284,7 @@ async function executePlaybackAction(button) {
   if (!resultId && button.dataset.trackId) {
     const track = state.selectedPlaylist?.tracks?.find((item) => item.track_id === button.dataset.trackId);
     if (!track) throw new Error("No se encontró la canción de la playlist");
-    const search = await api("/api/roon/media/search", { method:"POST", body:JSON.stringify({ query:track.query || [track.title,track.artist].filter(Boolean).join(" "), types:["track"], count:10, zone_id:zone.zone_id, source_preference:"library_first" }) });
+    const search = await api("/api/roon/media/search", { method:"POST", body:JSON.stringify({ query:track.query || [track.title,track.artist].filter(Boolean).join(" "), types:["track"], count:25, zone_id:zone.zone_id, source_preference:"streaming_first" }) });
     resultId = search.recommended_result_id || search.results?.[0]?.result_id;
     if (!resultId) throw new Error("Roon no encontró una coincidencia reproducible");
   }
@@ -452,7 +466,7 @@ document.addEventListener('click',(e)=>{if(e.target.closest('[data-close-context
 $("#modal-content").addEventListener('click',(e)=>{
   if(!state.selectedPlaylist)return;
   if(e.target.closest('[data-edit-playlist]'))playlistForm(state.selectedPlaylist);
-  if(e.target.closest('[data-delete-playlist]')&&confirm('Esta acción eliminará la playlist. ¿Continuar?'))api(`/api/playlists/${encodeURIComponent(state.selectedPlaylist.playlist_id)}?confirm=true`,{method:'DELETE',body:JSON.stringify({confirm:true})}).then(()=>{closeModal();toast('Playlist eliminada');loadPlaylists()}).catch(err=>toast(err.message,'error'));
+  if(e.target.closest('[data-delete-playlist]')){const playlist=state.selectedPlaylist;if(!playlist)return;confirmPortal({overline:'Acción irreversible',title:'Eliminar playlist',message:`Se eliminará definitivamente “${playlist.name}” y todas las canciones guardadas en ella. Esta acción no se puede deshacer.`,action:'Eliminar playlist',danger:true}).then((confirmed)=>{if(!confirmed)return null;return api(`/api/playlists/${encodeURIComponent(playlist.playlist_id)}?confirm=true`,{method:'DELETE',body:JSON.stringify({confirm:true})}).then(()=>{closeModal();toast('Playlist eliminada');return loadPlaylists()})}).catch(err=>toast(err.message,'error'));}
   if(e.target.closest('[data-add-track]'))openPlaylistTrackSearch(state.selectedPlaylist.playlist_id);
   const row=e.target.closest('[data-track]');
   if(row&&e.target.closest('[data-remove-track]')&&confirm('¿Quitar esta canción?'))api(`/api/playlists/${encodeURIComponent(state.selectedPlaylist.playlist_id)}/tracks/${encodeURIComponent(row.dataset.track)}?confirm=true`,{method:'DELETE',body:JSON.stringify({confirm:true})}).then(()=>openPlaylist(state.selectedPlaylist.playlist_id)).catch(err=>toast(err.message,'error'));

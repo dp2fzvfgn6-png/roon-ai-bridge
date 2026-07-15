@@ -185,6 +185,32 @@ test("v2 playlist creation materializes a playable search result identity", asyn
   assert.equal(track.roon_item_key, "roon:teardrop");
   assert.equal(track.resolution.status, "manual");
   assert.equal(track.resolution.selected_result_id, "result:teardrop");
+  assert.equal(track.resolution.selection_origin, "model");
+});
+
+test("v2 playlist save reports unresolved associations without claiming verification", async () => {
+  const context = gatewayContext(roonClient(), {});
+  context.playlistService = {
+    createPlaylistResolved: async () => ({
+      playlist_id: "p1",
+      tracks: [{ track_id: "t1", resolution: { status: "ambiguous" } }]
+    }),
+    validatePlaylist: () => ({
+      summary: { ready: 0, resolved: 0, manual: 0, unresolved: 1, ambiguous: 1, missing: 0, error: 0 },
+      issues: [{ track_id: "t1", type: "ambiguous" }]
+    })
+  };
+
+  const result = await new IntentGateway(context).savePlaylist({
+    name: "Needs review",
+    tracks: [{ title: "Angel" }]
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.verified, false);
+  assert.equal(result.data.resolution_summary.unresolved, 1);
+  assert.match(result.summary, /1 still require/i);
+  assert.equal(result.warnings.length, 1);
 });
 
 test("v2 playlist repair forwards selected tracks and force mode", async () => {
@@ -243,7 +269,7 @@ test("v2 playlist update can repair one track with an exact search result", asyn
   assert.equal(automaticResolutions, 0);
 });
 
-test("v2 exposes custom playlist cover storage through the gateway", () => {
+test("v2 exposes custom playlist cover storage through the gateway", async () => {
   const context = gatewayContext(roonClient(), {});
   let stored;
   context.playlistService = {
@@ -254,7 +280,7 @@ test("v2 exposes custom playlist cover storage through the gateway", () => {
   };
   const gateway = new IntentGateway(context);
 
-  const result = gateway.setPlaylistCover({
+  const result = await gateway.setPlaylistCover({
     playlist_id: "p1",
     image_base64: "aW1hZ2U=",
     content_type: "image/png"

@@ -136,6 +136,7 @@ type MediaReference = MediaResult & {
   query: string;
   ordinal: number;
   hierarchy: "search" | "playlists";
+  sourcePreference: SourcePreference;
 };
 
 export type SearchMediaRequest = {
@@ -896,7 +897,7 @@ export function scoreSearchResult(
 
   const source = sourceScore(result.source, preference);
   if (source > 0) {
-    score += Math.min(5, source);
+    score += Math.min(5, Math.max(1, Math.round(source / 6)));
     reasons.push(`${result.source}_source`);
   }
 
@@ -1070,7 +1071,8 @@ export class RoonMediaService {
               type,
               item,
               ordinal,
-              item.result_hierarchy === "playlists" ? "playlists" : "search"
+              item.result_hierarchy === "playlists" ? "playlists" : "search",
+              preference
             )
           );
         }
@@ -1650,7 +1652,8 @@ export class RoonMediaService {
     type: MediaType,
     item: BrowseItem,
     ordinal: number,
-    hierarchy: "search" | "playlists" = "search"
+    hierarchy: "search" | "playlists" = "search",
+    sourcePreference: SourcePreference = "highest_quality"
   ): MediaResult {
     const resultId = `media_${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + REFERENCE_TTL_MS).toISOString();
@@ -1709,7 +1712,8 @@ export class RoonMediaService {
       links: { artist: null, artists: [], album: null },
       query,
       ordinal,
-      hierarchy
+      hierarchy,
+      sourcePreference
     };
     this.references.set(resultId, reference);
     return this.publicReference(reference);
@@ -1768,11 +1772,12 @@ export class RoonMediaService {
       query,
       ordinal: _ordinal,
       hierarchy: _hierarchy,
+      sourcePreference,
       ...result
     } = reference;
     return this.withMatchScoring(result, {
       query,
-      sourcePreference: "highest_quality"
+      sourcePreference
     });
   }
 

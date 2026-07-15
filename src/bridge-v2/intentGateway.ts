@@ -221,7 +221,7 @@ export class IntentGateway {
       query: input.query,
       types: input.types,
       count: input.count || 10,
-      sourcePreference: input.source_preference || "highest_quality"
+      sourcePreference: input.source_preference || "streaming_first"
     });
     return completed("roon_search_media", `Found ${result.results.length} media results.`, result, {
       references: { recommended_result_id: result.recommended_result_id }
@@ -248,7 +248,7 @@ export class IntentGateway {
       query: selector.query,
       types: selector.type ? [selector.type] : undefined,
       count: 10,
-      sourcePreference: selector.source_preference || "highest_quality"
+      sourcePreference: selector.source_preference || "streaming_first"
     });
     if (!search.recommended_result_id || search.selection_required) {
       return ambiguous(operation, "Several media results require selection.", {
@@ -325,6 +325,32 @@ export class IntentGateway {
     return completed("roon_get_playlist", "Virtual playlist returned.", data, { verified: true });
   }
 
+  private playlistMutationResult(operation: string, action: string, playlist: Record<string, any>): OperationResult {
+    const validation = typeof (this.context.playlistService as any).validatePlaylist === "function"
+      ? this.context.playlistService.validatePlaylist(playlist.playlist_id) as Record<string, any>
+      : {
+          summary: {
+            ready: Array.isArray(playlist.tracks) ? playlist.tracks.filter((track: any) => ["resolved", "manual"].includes(track.resolution?.status)).length : 0,
+            unresolved: Array.isArray(playlist.tracks) ? playlist.tracks.filter((track: any) => !["resolved", "manual"].includes(track.resolution?.status)).length : 0
+          },
+          issues: []
+        };
+    const resolutionSummary = validation.summary || {};
+    const unresolved = Number(resolutionSummary.unresolved || 0);
+    const ready = unresolved === 0;
+    const summary = ready
+      ? `${action} ${Number(resolutionSummary.ready || 0)} tracks are associated with playable Roon recordings.`
+      : `${action} ${Number(resolutionSummary.ready || 0)} tracks are ready and ${unresolved} still require resolution or explicit selection.`;
+    return completed(operation, summary, {
+      ...playlist,
+      resolution_summary: resolutionSummary,
+      resolution_issues: validation.issues || []
+    }, {
+      verified: ready,
+      warnings: ready ? [] : ["The playlist was saved, but its recording associations are not fully verified."]
+    });
+  }
+
   async savePlaylist(input: {
     playlist_id?: string;
     name?: string;
@@ -347,7 +373,11 @@ export class IntentGateway {
         logger: this.context.logger
       });
     }
-    return completed("roon_save_playlist", input.playlist_id ? "Playlist updated." : "Playlist created.", data, { verified: true });
+    return this.playlistMutationResult(
+      "roon_save_playlist",
+      input.playlist_id ? "Playlist updated." : "Playlist created.",
+      data
+    );
   }
 
   async editPlaylistTracks(input: {
@@ -392,7 +422,11 @@ export class IntentGateway {
             input.playlist_id,
             operation.track_id,
             result_id,
-            { mediaService: this.context.mediaService, selectionReason: "selected_search_result" }
+            {
+              mediaService: this.context.mediaService,
+              selectionReason: "selected_search_result",
+              selectionOrigin: "model"
+            }
           );
         } else {
           this.context.playlistService.updateTrack(input.playlist_id, operation.track_id, changes);
@@ -415,16 +449,20 @@ export class IntentGateway {
       }
       else throw new ApiError("INVALID_PLAYLIST_TRACK", "Unsupported playlist track operation", { type: operation.type });
     }
-    return completed("roon_edit_playlist_tracks", "Playlist track operations completed.", this.context.playlistService.getPlaylist(input.playlist_id), { verified: true });
+    return this.playlistMutationResult(
+      "roon_edit_playlist_tracks",
+      "Playlist track operations completed.",
+      this.context.playlistService.getPlaylist(input.playlist_id)
+    );
   }
 
-  setPlaylistCover(input: {
+  async setPlaylistCover(input: {
     playlist_id: string;
     image_data_url?: string;
     image_base64?: string;
     content_type?: "image/jpeg" | "image/png" | "image/webp";
-  }): OperationResult {
-    const data = this.context.playlistService.setCustomCover(input.playlist_id, {
+  }): Promise<OperationResult> {
+    const data = await this.context.playlistService.setCustomCover(input.playlist_id, {
       data_url: input.image_data_url,
       image_base64: input.image_base64,
       content_type: input.content_type
@@ -458,7 +496,7 @@ export class IntentGateway {
       this.context.roonClient,
       input.playlist_id,
       { zone_id: zone.zone_id, mode: input.mode || "play_now", limit: input.limit },
-      { mediaService: this.context.mediaService, logger: this.context.logger }
+      { mediaService: this.context.mediaService, logger: this.context.logger, sourcePreference: "streaming_first" }
     );
     return normalizeServiceResult("roon_play_playlist", `Playlist sent to ${zone.display_name}.`, result, true);
   }
@@ -475,7 +513,7 @@ export class IntentGateway {
       input.playlist_id,
       input.track_id,
       { zone_id: zone.zone_id, mode: input.mode || "play_now" },
-      { mediaService: this.context.mediaService, logger: this.context.logger }
+      { mediaService: this.context.mediaService, logger: this.context.logger, sourcePreference: "streaming_first" }
     );
     return normalizeServiceResult("roon_play_playlist_track", `Playlist track sent to ${zone.display_name}.`, result, false);
   }
@@ -496,10 +534,27 @@ export class IntentGateway {
     const data = await this.context.playlistService.resolveVirtualPlaylistItems(input.playlist_id, {
       mediaService: this.context.mediaService,
       logger: this.context.logger,
+      sourcePreference: "streaming_first",
       trackIds: input.scope === "selected" ? input.track_ids : undefined,
       force: input.scope === "all" || input.scope === "selected"
     });
-    return completed("roon_resolve_playlist", "Playlist identities resolved.", data, { verified: true });
+    const playlist = data.playlist || (
+      typeof (this.context.playlistService as any).getPlaylist === "function"
+        ? this.context.playlistService.getPlaylist(input.playlist_id)
+        : { playlist_id: input.playlist_id, tracks: [] }
+    );
+    const result = this.playlistMutationResult(
+      "roon_resolve_playlist",
+      "Playlist resolution completed.",
+      playlist
+    );
+    return {
+      ...result,
+      data: {
+        ...(result.data as Record<string, unknown>),
+        resolution_attempts: data.resolution
+      }
+    };
   }
 
   private materializePlaylistTrack(input: unknown): unknown {
@@ -532,6 +587,7 @@ export class IntentGateway {
         score: result.match_score,
         confidence: result.confidence,
         reason: "selected_search_result",
+        selection_origin: "model",
         persistent_identity: "track_id",
         roon_item_key_persistent: false
       }

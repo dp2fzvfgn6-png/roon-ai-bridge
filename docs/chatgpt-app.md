@@ -1,6 +1,6 @@
 # ChatGPT App
 
-> Current status: MCP v2 and widget v16 are available for ChatGPT connection.
+> Current status: MCP v2 and widget v17 are available for ChatGPT connection.
 > Use `Settings -> Connections` in the portal as the authoritative setup and
 > OAuth administration surface.
 
@@ -57,12 +57,12 @@ The MCP server exposes tools for:
 The server registers three focused Apps SDK widget resources under:
 
 ```text
-ui://roon-ai-bridge/v16/
+ui://roon-ai-bridge/v17/
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
-metadata cached even after the backend deploy succeeds; the versioned v16
+metadata cached even after the backend deploy succeeds; the versioned v17
 resource URIs invalidate the widget cache.
 
 ## ChatGPT Developer Setup (public URL mode)
@@ -158,6 +158,14 @@ Busca Bad Bunny en Roon.
 ```
 
 Expected tool: `roon_search_media`.
+
+Model-facing searches prefer TIDAL by default. Playlist creation and repair use
+strict track identity resolution before source or quality is considered. After
+`roon_save_playlist`, `roon_edit_playlist_tracks` or `roon_resolve_playlist`,
+ChatGPT must inspect `verified` and `resolution_summary.unresolved`; it must not
+describe the playlist as fully checked while `verified` is false or unresolved
+is greater than zero. `resolution.status: "manual"` means an explicit result was
+selected, while `selection_origin` distinguishes model and portal-user choices.
 
 ```text
 ¿Qué está sonando?

@@ -206,13 +206,13 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_search_media", {
     title: "Search Roon Media",
-    description: "Use this when the user wants to explore or select music. It returns Roon's best match followed by separately ranked artists, albums, EPs, singles, tracks and playlists, and never starts playback. Pass one explicit type when the user clearly says artist, album or song.",
+    description: "Use this when the user wants to explore or explicitly select music. It returns Roon's best match followed by separately ranked artists, albums, EPs, singles, tracks and playlists, and never starts playback. Pass one explicit type when the user clearly says artist, album or song. Model searches prefer TIDAL by default; the portal keeps its broader discovery policy.",
     annotations: readOnly,
     inputSchema: {
       query: z.string().min(1),
       types: z.array(mediaType).optional(),
       count: z.number().int().min(1).max(25).default(10),
-      source_preference: sourcePreference.default("highest_quality")
+      source_preference: sourcePreference.default("streaming_first")
     }
   }, (input) => gateway.searchMedia(input));
 
@@ -292,7 +292,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_save_playlist", {
     title: "Save RoonIA Playlist",
-    description: "Use this when a virtual playlist should be created or its metadata and complete track list updated. Omit playlist_id to create it. Prefer track result_id values returned by roon_search_media; text-only tracks are searched and associated with playable Roon recordings before completion.",
+    description: "Use this when a virtual playlist should be created or its metadata and complete track list updated. Omit playlist_id to create it. Prefer track result_id values returned by roon_search_media for explicit selections. Text-only tracks use strict title/artist/version resolution and prefer equivalent TIDAL recordings. Treat the playlist as fully verified only when verified=true and resolution_summary.unresolved is zero.",
     annotations: write,
     inputSchema: {
       playlist_id: z.string().optional(),
@@ -315,13 +315,13 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_set_playlist_cover", {
     title: "Set RoonIA Playlist Cover",
-    description: "Use this when a user-supplied or generated JPEG, PNG or WebP image should become a virtual playlist's custom cover. Provide a data URL, or base64 bytes together with content_type; do not use a track artwork key.",
+    description: "Use this when a user-supplied or generated image should become a virtual playlist's custom cover. When creating artwork, target a 768x768 square sRGB WebP under 750 KB and keep important subjects or text centered, away from the edges. JPEG and PNG are also accepted. RoonIA auto-rotates, square-crops, strips metadata, resizes and compresses every upload to a lightweight WebP. Provide a data URL, or base64 bytes with content_type; do not use a track artwork key.",
     annotations: write,
     inputSchema: {
       playlist_id: z.string().min(1),
-      image_data_url: z.string().min(1).max(8_000_000).optional(),
-      image_base64: z.string().min(1).max(8_000_000).optional(),
-      content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional()
+      image_data_url: z.string().min(1).max(8_000_000).optional().describe("Base64 data URL. Optimal generated artwork is a 768x768 square sRGB WebP under 750 KB."),
+      image_base64: z.string().min(1).max(8_000_000).optional().describe("Raw base64 image bytes. For generated artwork prefer a 768x768 square WebP under 750 KB."),
+      content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional().describe("Required with image_base64; prefer image/webp for generated artwork.")
     }
   }, (input) => gateway.setPlaylistCover(input));
 
@@ -365,7 +365,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_resolve_playlist", {
     title: "Resolve RoonIA Playlist",
-    description: "Use this when stale, missing, ambiguous or incorrectly associated playlist tracks should be searched again and restored. Use selected with track_ids to repair chosen entries, all for a full rebuild, or unresolved by default.",
+    description: "Use this when stale, missing, ambiguous or incorrectly associated playlist tracks should be searched again and restored. It uses strict track identity matching, then prefers an equivalent TIDAL recording and its best known quality. Use selected with track_ids to repair chosen entries, all for a full rebuild, or unresolved by default. Do not claim completion while verified=false or resolution_summary.unresolved is nonzero.",
     annotations: write,
     inputSchema: {
       playlist_id: z.string().min(1),

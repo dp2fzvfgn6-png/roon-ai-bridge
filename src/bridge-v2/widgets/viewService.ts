@@ -38,15 +38,6 @@ function imageUrl(context: BridgeV2Context, imageKey: unknown): string | null {
     : createWidgetAssetUrl(context.config, "roon-image", imageKey);
 }
 
-function playlistImageUrl(context: BridgeV2Context, imageKey: unknown): string | null {
-  if (typeof imageKey !== "string" || !imageKey) return null;
-  return createWidgetAssetUrl(
-    context.config,
-    "playlist-cover",
-    imageKey.startsWith("custom:") ? imageKey.slice("custom:".length) : imageKey
-  );
-}
-
 function normalize(value: string): string {
   return value
     .normalize("NFD")
@@ -172,7 +163,7 @@ export class WidgetV2ViewService {
         name: detail.name,
         description: detail.description,
         track_count: detail.track_count,
-        image_url: playlistImageUrl(this.context, coverKey)
+        image_url: imageUrl(this.context, coverKey)
       },
       tracks: tracks.map((track) => ({
         track_id: track.track_id,

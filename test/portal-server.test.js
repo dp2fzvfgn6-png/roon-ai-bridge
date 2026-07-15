@@ -84,9 +84,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     const portalPageText = await page.text();
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
+    assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260714\.1"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260714\.1"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260715\.1"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260715\.1"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
@@ -123,6 +124,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
     assert.match(portalScriptText, /data-more-results/);
     assert.match(portalScriptText, /playlist-search-form/);
+    assert.match(portalScriptText, /source_preference:"streaming_first"/);
+    assert.doesNotMatch(portalScriptText, /source_preference:"library_first"/);
     assert.match(portalScriptText, /artist-detail/);
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /entityByline\(np\.line2,np\.line3/);
@@ -168,6 +171,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="system-bridge-url"/);
     assert.match(portalScriptText, /delete_forever/);
     assert.match(portalScriptText, /function confirmPortal/);
+    assert.match(portalScriptText, /title:'Eliminar playlist'/);
+    assert.doesNotMatch(portalScriptText, /confirm\('Esta acción eliminará la playlist/);
 
     const previewScriptText = fs.readFileSync(
       path.join(__dirname, "..", "scripts", "portal-ux-preview.js"),

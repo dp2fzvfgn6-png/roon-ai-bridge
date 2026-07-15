@@ -156,6 +156,43 @@ function requireWidgetAssetSignature(
 export function createWidgetAssetsRouter(context: ApiContext): Router {
   const router = Router();
 
+  router.get("/mcp", async (req, res, next) => {
+    if (typeof req.query.widget_asset !== "string") return next();
+
+    try {
+      const kind = req.query.widget_asset;
+      const assetId = typeof req.query.asset_id === "string" ? req.query.asset_id : "";
+      if ((kind !== "roon-image" && kind !== "playlist-cover") || !assetId) {
+        throw new ApiError("INVALID_IMAGE_REQUEST", "Invalid widget asset request", {}, 400);
+      }
+
+      requireWidgetAssetSignature(
+        context,
+        kind,
+        assetId,
+        req.query.expires,
+        req.query.signature
+      );
+
+      if (kind === "roon-image") {
+        const image = await widgetService(context).getImage(assetId, {
+          width: parseNumber(req.query.width, 640),
+          height: parseNumber(req.query.height, 640)
+        });
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.type(image.contentType).send(image.bytes);
+        return;
+      }
+
+      const cover = context.playlistService.getCustomCover(assetId);
+      res.setHeader("Content-Type", cover.content_type);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(cover.bytes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/widget-assets/roon-images/:image_key", async (req, res, next) => {
     try {
       requireWidgetAssetSignature(
