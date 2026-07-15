@@ -1,15 +1,15 @@
 # MCP v2 Local Validation
 
-Status: automated and deployed Roon/MCP validation complete for v0.17.0.
+Status: deployed Roon/MCP validation complete for v0.17.0; the v0.17.1
+playlist additions below have automated local validation only.
 
 ## Contract checks
 
-- `tools/list` exposes 34 tools: 30 canonical intents, three model-visible
-  widget entry points and one app-only navigation tool.
+- `tools/list` exposes 34 tools: 31 canonical intents and three model-visible
+  widget entry points.
 - All descriptions start with `Use this when...`.
 - Every tool declares a discriminated output schema.
 - Only the three widget entry points advertise an `openai/outputTemplate`.
-- `roon_ui_navigate` declares app-only visibility and no output template.
 - Legacy names such as `roon_status`, `roon_list_zones`,
   `roon_play_by_query` and widget action tools are absent.
 - Zone and output inputs accept semantic names or stable IDs.
@@ -19,6 +19,13 @@ Status: automated and deployed Roon/MCP validation complete for v0.17.0.
 - Accent-insensitive exact zone-name resolution is covered.
 - Query-to-play performs one internal search followed by one action.
 - Ambiguous search returns candidates and performs no playback.
+- Playlist creation and batch additions resolve text entries before returning.
+- A playable search `result_id` is materialized as an exact manual playlist
+  association instead of being stored as text only.
+- Selected playlist tracks and full playlists can be re-resolved, and an exact
+  `result_id` can repair one incorrect track association.
+- Custom JPEG, PNG and WebP playlist covers are exposed to ChatGPT through
+  `roon_set_playlist_cover`.
 - Existing HTTP, OAuth, portal, playlist, media, safety, grouping and transfer
   regression tests continue to pass.
 

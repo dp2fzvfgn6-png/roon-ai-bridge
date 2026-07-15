@@ -331,20 +331,30 @@ export class IntentGateway {
     description?: string;
     tracks?: unknown[];
   }): Promise<OperationResult> {
-    const data = input.playlist_id
-      ? this.context.playlistService.updatePlaylist(input.playlist_id, input)
-      : await this.context.playlistService.createPlaylistResolved(input, {
+    const tracks = input.tracks?.map((track) => this.materializePlaylistTrack(track));
+    let data;
+    if (input.playlist_id) {
+      data = this.context.playlistService.updatePlaylist(input.playlist_id, input);
+      if (tracks) {
+        data = await this.context.playlistService.replaceTracksResolved(input.playlist_id, tracks, {
           mediaService: this.context.mediaService,
           logger: this.context.logger
         });
+      }
+    } else {
+      data = await this.context.playlistService.createPlaylistResolved({ ...input, tracks }, {
+        mediaService: this.context.mediaService,
+        logger: this.context.logger
+      });
+    }
     return completed("roon_save_playlist", input.playlist_id ? "Playlist updated." : "Playlist created.", data, { verified: true });
   }
 
-  editPlaylistTracks(input: {
+  async editPlaylistTracks(input: {
     playlist_id: string;
     operations: Array<Record<string, any>>;
     confirm?: boolean;
-  }): OperationResult {
+  }): Promise<OperationResult> {
     const destructiveOperations = input.operations.filter((operation) =>
       operation.type === "remove" || operation.type === "replace"
     );
@@ -363,14 +373,63 @@ export class IntentGateway {
       };
     }
     for (const operation of input.operations) {
-      if (operation.type === "add") this.context.playlistService.addTrack(input.playlist_id, operation.track || operation.media);
-      else if (operation.type === "update") this.context.playlistService.updateTrack(input.playlist_id, operation.track_id, operation.changes || {});
+      if (operation.type === "add") {
+        const track = this.materializePlaylistTrack(operation.track || operation.media);
+        await this.context.playlistService.addTrackResolved(input.playlist_id, track, {
+          mediaService: this.context.mediaService,
+          logger: this.context.logger
+        });
+      }
+      else if (operation.type === "update") {
+        const changes = operation.changes || {};
+        if (changes.result_id) {
+          this.materializePlaylistTrack(changes);
+          const { result_id, ...metadataChanges } = changes;
+          if (Object.keys(metadataChanges).length > 0) {
+            this.context.playlistService.updateTrack(input.playlist_id, operation.track_id, metadataChanges);
+          }
+          this.context.playlistService.setTrackMatch(
+            input.playlist_id,
+            operation.track_id,
+            result_id,
+            { mediaService: this.context.mediaService, selectionReason: "selected_search_result" }
+          );
+        } else {
+          this.context.playlistService.updateTrack(input.playlist_id, operation.track_id, changes);
+          await this.context.playlistService.resolveVirtualPlaylistItems(input.playlist_id, {
+            mediaService: this.context.mediaService,
+            logger: this.context.logger,
+            trackIds: [operation.track_id],
+            force: true
+          });
+        }
+      }
       else if (operation.type === "remove") this.context.playlistService.removeTrack(input.playlist_id, operation.track_id);
       else if (operation.type === "reorder") this.context.playlistService.reorderTracks(input.playlist_id, operation.track_ids);
-      else if (operation.type === "replace") this.context.playlistService.replaceTracks(input.playlist_id, operation.tracks);
+      else if (operation.type === "replace") {
+        await this.context.playlistService.replaceTracksResolved(
+          input.playlist_id,
+          (operation.tracks || []).map((track: unknown) => this.materializePlaylistTrack(track)),
+          { mediaService: this.context.mediaService, logger: this.context.logger }
+        );
+      }
       else throw new ApiError("INVALID_PLAYLIST_TRACK", "Unsupported playlist track operation", { type: operation.type });
     }
     return completed("roon_edit_playlist_tracks", "Playlist track operations completed.", this.context.playlistService.getPlaylist(input.playlist_id), { verified: true });
+  }
+
+  setPlaylistCover(input: {
+    playlist_id: string;
+    image_data_url?: string;
+    image_base64?: string;
+    content_type?: "image/jpeg" | "image/png" | "image/webp";
+  }): OperationResult {
+    const data = this.context.playlistService.setCustomCover(input.playlist_id, {
+      data_url: input.image_data_url,
+      image_base64: input.image_base64,
+      content_type: input.content_type
+    });
+    return completed("roon_set_playlist_cover", "Playlist cover image saved.", data, { verified: true });
   }
 
   deletePlaylist(input: { playlist_id: string; confirm?: boolean }): OperationResult {
@@ -429,12 +488,54 @@ export class IntentGateway {
     return completed("roon_analyze_playlist", "Playlist analysis completed.", { validation, duplicates }, { verified: true });
   }
 
-  async resolvePlaylist(input: { playlist_id: string }): Promise<OperationResult> {
+  async resolvePlaylist(input: {
+    playlist_id: string;
+    track_ids?: string[];
+    scope?: "unresolved" | "selected" | "all";
+  }): Promise<OperationResult> {
     const data = await this.context.playlistService.resolveVirtualPlaylistItems(input.playlist_id, {
       mediaService: this.context.mediaService,
-      logger: this.context.logger
+      logger: this.context.logger,
+      trackIds: input.scope === "selected" ? input.track_ids : undefined,
+      force: input.scope === "all" || input.scope === "selected"
     });
     return completed("roon_resolve_playlist", "Playlist identities resolved.", data, { verified: true });
+  }
+
+  private materializePlaylistTrack(input: unknown): unknown {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+    const track = input as Record<string, any>;
+    if (!track.result_id) return track;
+    const result = this.context.mediaService.get(track.result_id);
+    if (result.media_type !== "track" || !result.playable || !result.roon_item_key) {
+      throw new ApiError("INVALID_PLAYLIST_TRACK", "result_id must reference a playable Roon track", {
+        result_id: track.result_id,
+        media_type: result.media_type,
+        playable: result.playable
+      });
+    }
+    return {
+      ...track,
+      query: track.query || [result.title, result.artist || result.subtitle].filter(Boolean).join(" "),
+      roon_item_key: result.roon_item_key,
+      title: track.title || result.title,
+      artist: track.artist || result.artist || result.subtitle,
+      album: track.album || result.album,
+      image_key: track.image_key || result.image_key,
+      duration_seconds: track.duration_seconds || result.duration_seconds,
+      source: track.source || result.source,
+      quality: track.quality || result.quality,
+      resolution: {
+        status: "manual",
+        selected_result_id: result.result_id,
+        selected_roon_item_key: result.roon_item_key,
+        score: result.match_score,
+        confidence: result.confidence,
+        reason: "selected_search_result",
+        persistent_identity: "track_id",
+        roon_item_key_persistent: false
+      }
+    };
   }
 
   exportPlaylist(input: { playlist_id: string; format?: "json" | "csv" | "m3u" }): OperationResult {

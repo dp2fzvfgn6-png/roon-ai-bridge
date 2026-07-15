@@ -37,6 +37,32 @@ const mediaSelector = z.object({
   source_preference: sourcePreference.optional()
 }).refine((value) => Boolean(value.result_id || value.query), "result_id or query is required");
 const looseObject = z.object({}).catchall(z.unknown());
+const playlistTrack = z.object({
+  result_id: z.string().min(1).optional().describe("Temporary result_id from roon_search_media for an exact playable track selection."),
+  query: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  artist: z.string().min(1).optional(),
+  album: z.string().min(1).optional(),
+  user_metadata: looseObject.optional()
+}).catchall(z.unknown()).refine(
+  (value) => Boolean(value.result_id || value.query || value.title),
+  "result_id, query or title is required"
+);
+const playlistTrackChanges = z.object({
+  result_id: z.string().min(1).optional().describe("Use a playable track result_id to repair this entry with an exact manual match."),
+  query: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  artist: z.string().min(1).optional(),
+  album: z.string().min(1).optional(),
+  user_metadata: looseObject.optional()
+}).catchall(z.unknown());
+const playlistOperation = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("add"), track: playlistTrack }),
+  z.object({ type: z.literal("update"), track_id: z.string().min(1), changes: playlistTrackChanges }),
+  z.object({ type: z.literal("remove"), track_id: z.string().min(1) }),
+  z.object({ type: z.literal("reorder"), track_ids: z.array(z.string().min(1)).min(1) }),
+  z.object({ type: z.literal("replace"), tracks: z.array(playlistTrack).max(500) })
+]);
 
 type ToolOptions = {
   title: string;
@@ -266,26 +292,38 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_save_playlist", {
     title: "Save RoonIA Playlist",
-    description: "Use this when a virtual playlist should be created or its name and description updated. Omit playlist_id to create it.",
+    description: "Use this when a virtual playlist should be created or its metadata and complete track list updated. Omit playlist_id to create it. Prefer track result_id values returned by roon_search_media; text-only tracks are searched and associated with playable Roon recordings before completion.",
     annotations: write,
     inputSchema: {
       playlist_id: z.string().optional(),
       name: z.string().min(1).optional(),
       description: z.string().optional(),
-      tracks: z.array(looseObject).optional()
+      tracks: z.array(playlistTrack).max(500).optional()
     }
   }, (input) => gateway.savePlaylist(input));
 
   register("roon_edit_playlist_tracks", {
     title: "Edit RoonIA Playlist Tracks",
-    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch.",
+    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch. Additions, replacements and identity-changing updates are resolved to playable Roon recordings before completion; prefer result_id for exact selections.",
     annotations: destructive,
     inputSchema: {
       playlist_id: z.string().min(1),
-      operations: z.array(looseObject).min(1).max(250),
+      operations: z.array(playlistOperation).min(1).max(250),
       confirm: z.boolean().default(false)
     }
   }, (input) => gateway.editPlaylistTracks(input));
+
+  register("roon_set_playlist_cover", {
+    title: "Set RoonIA Playlist Cover",
+    description: "Use this when a user-supplied or generated JPEG, PNG or WebP image should become a virtual playlist's custom cover. Provide a data URL, or base64 bytes together with content_type; do not use a track artwork key.",
+    annotations: write,
+    inputSchema: {
+      playlist_id: z.string().min(1),
+      image_data_url: z.string().min(1).max(8_000_000).optional(),
+      image_base64: z.string().min(1).max(8_000_000).optional(),
+      content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional()
+    }
+  }, (input) => gateway.setPlaylistCover(input));
 
   register("roon_delete_playlist", {
     title: "Delete RoonIA Playlist",
@@ -327,9 +365,13 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_resolve_playlist", {
     title: "Resolve RoonIA Playlist",
-    description: "Use this when stale, missing or ambiguous playlist identities should be searched again and their resolution state updated.",
+    description: "Use this when stale, missing, ambiguous or incorrectly associated playlist tracks should be searched again and restored. Use selected with track_ids to repair chosen entries, all for a full rebuild, or unresolved by default.",
     annotations: write,
-    inputSchema: { playlist_id: z.string().min(1) }
+    inputSchema: {
+      playlist_id: z.string().min(1),
+      track_ids: z.array(z.string().min(1)).min(1).optional(),
+      scope: z.enum(["unresolved", "selected", "all"]).default("unresolved")
+    }
   }, (input) => gateway.resolvePlaylist(input));
 
   register("roon_export_playlist", {

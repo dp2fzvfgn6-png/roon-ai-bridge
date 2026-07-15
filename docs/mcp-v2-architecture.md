@@ -58,7 +58,16 @@ album track list through Roon Browse.
 
 `roon_edit_playlist_tracks` accepts an ordered batch of add, update, remove,
 reorder or replace operations. This avoids one MCP round trip per track while
-keeping playlist deletion in a separate destructive tool.
+keeping playlist deletion in a separate destructive tool. Its operation
+schemas are explicit so the model does not need to infer field names.
+
+Creation, addition, replacement and identity-changing updates resolve stored
+text against Roon before returning. A playable `result_id` from
+`roon_search_media` is preferred because it records the exact selected track;
+an update with `changes.result_id` repairs one incorrect association manually.
+`roon_resolve_playlist` can retry unresolved entries, selected `track_ids` or
+the complete playlist. `roon_set_playlist_cover` stores a supplied or generated
+JPEG, PNG or WebP image as the custom playlist cover.
 
 ### Lightweight visual responses
 

@@ -104,7 +104,7 @@ test("v2 play intent returns candidates and never acts on an ambiguous search", 
   assert.equal(result.data.candidates.length, 2);
 });
 
-test("v2 batch playlist edits require confirmation before removing tracks", () => {
+test("v2 batch playlist edits require confirmation before removing tracks", async () => {
   const client = roonClient();
   let removals = 0;
   const context = gatewayContext(client, {});
@@ -114,20 +114,158 @@ test("v2 batch playlist edits require confirmation before removing tracks", () =
   };
   const gateway = new IntentGateway(context);
 
-  const pending = gateway.editPlaylistTracks({
+  const pending = await gateway.editPlaylistTracks({
     playlist_id: "p1",
     operations: [{ type: "remove", track_id: "t1" }]
   });
   assert.equal(pending.status, "confirmation_required");
   assert.equal(removals, 0);
 
-  const completed = gateway.editPlaylistTracks({
+  const completed = await gateway.editPlaylistTracks({
     playlist_id: "p1",
     operations: [{ type: "remove", track_id: "t1" }],
     confirm: true
   });
   assert.equal(completed.status, "completed");
   assert.equal(removals, 1);
+});
+
+test("v2 playlist additions resolve text tracks before returning", async () => {
+  const context = gatewayContext(roonClient(), {});
+  let plainAdds = 0;
+  let resolvedAdds = 0;
+  context.playlistService = {
+    addTrack: () => { plainAdds += 1; },
+    addTrackResolved: async (_playlistId, track, options) => {
+      resolvedAdds += 1;
+      assert.equal(track.title, "Teardrop");
+      assert.equal(options.mediaService, context.mediaService);
+    },
+    getPlaylist: () => ({ playlist_id: "p1", tracks: [{ title: "Teardrop", resolution: { status: "resolved" } }] })
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.editPlaylistTracks({
+    playlist_id: "p1",
+    operations: [{ type: "add", track: { title: "Teardrop", artist: "Massive Attack" } }]
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(resolvedAdds, 1);
+  assert.equal(plainAdds, 0);
+});
+
+test("v2 playlist creation materializes a playable search result identity", async () => {
+  const media = {
+    get: (resultId) => ({
+      result_id: resultId,
+      media_type: "track",
+      title: "Teardrop",
+      artist: "Massive Attack",
+      album: "Mezzanine",
+      roon_item_key: "roon:teardrop",
+      playable: true,
+      image_key: "cover:mezzanine",
+      confidence: "high",
+      match_score: 100
+    })
+  };
+  const context = gatewayContext(roonClient(), media);
+  context.playlistService = {
+    createPlaylistResolved: async (input) => input
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.savePlaylist({
+    name: "Trip hop",
+    tracks: [{ result_id: "result:teardrop" }]
+  });
+
+  const track = result.data.tracks[0];
+  assert.equal(track.roon_item_key, "roon:teardrop");
+  assert.equal(track.resolution.status, "manual");
+  assert.equal(track.resolution.selected_result_id, "result:teardrop");
+});
+
+test("v2 playlist repair forwards selected tracks and force mode", async () => {
+  const context = gatewayContext(roonClient(), {});
+  let options;
+  context.playlistService = {
+    resolveVirtualPlaylistItems: async (_playlistId, received) => {
+      options = received;
+      return { resolution: [{ track_id: "t2", status: "resolved" }] };
+    }
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.resolvePlaylist({
+    playlist_id: "p1",
+    track_ids: ["t2"],
+    scope: "selected"
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(options.trackIds, ["t2"]);
+  assert.equal(options.force, true);
+});
+
+test("v2 playlist update can repair one track with an exact search result", async () => {
+  const media = {
+    get: () => ({
+      result_id: "result:fixed",
+      media_type: "track",
+      title: "Angel",
+      artist: "Massive Attack",
+      roon_item_key: "roon:angel",
+      playable: true
+    })
+  };
+  const context = gatewayContext(roonClient(), media);
+  let matched;
+  let automaticResolutions = 0;
+  context.playlistService = {
+    setTrackMatch: (playlistId, trackId, resultId, options) => {
+      matched = { playlistId, trackId, resultId, options };
+    },
+    resolveVirtualPlaylistItems: async () => { automaticResolutions += 1; },
+    getPlaylist: () => ({ playlist_id: "p1", tracks: [{ track_id: "t1", resolution: { status: "manual" } }] })
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.editPlaylistTracks({
+    playlist_id: "p1",
+    operations: [{ type: "update", track_id: "t1", changes: { result_id: "result:fixed" } }]
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(matched.resultId, "result:fixed");
+  assert.equal(matched.options.selectionReason, "selected_search_result");
+  assert.equal(automaticResolutions, 0);
+});
+
+test("v2 exposes custom playlist cover storage through the gateway", () => {
+  const context = gatewayContext(roonClient(), {});
+  let stored;
+  context.playlistService = {
+    setCustomCover: (playlistId, input) => {
+      stored = { playlistId, input };
+      return { playlist_id: playlistId, cover_image_key: "custom:cover.png" };
+    }
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = gateway.setPlaylistCover({
+    playlist_id: "p1",
+    image_base64: "aW1hZ2U=",
+    content_type: "image/png"
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.data.cover_image_key, "custom:cover.png");
+  assert.deepEqual(stored, {
+    playlistId: "p1",
+    input: { data_url: undefined, image_base64: "aW1hZ2U=", content_type: "image/png" }
+  });
 });
 
 test("v2 never upgrades an explicitly unverified SDK result", () => {
