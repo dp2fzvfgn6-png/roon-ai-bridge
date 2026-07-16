@@ -39,6 +39,7 @@ import { ExtensionManagerService } from "../services/extensionManagerService";
 import { DiagnosticsService } from "../services/diagnosticsService";
 import { ToolAccessService } from "../services/toolAccessService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
+import { HomeHistoryService } from "../services/homeHistoryService";
 
 export type ApiContext = {
   config: AppConfig;
@@ -58,6 +59,7 @@ export type ApiContext = {
   extensionManagerService?: ExtensionManagerService;
   diagnosticsService?: DiagnosticsService;
   toolAccessService: ToolAccessService;
+  homeHistoryService?: HomeHistoryService;
 };
 
 export function createServer(context: ApiContext): express.Express {

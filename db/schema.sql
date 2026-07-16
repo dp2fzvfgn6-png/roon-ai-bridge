@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS play_history (
   metadata_json TEXT
 );
 
+CREATE TABLE IF NOT EXISTS home_history (
+  history_id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL CHECK (event_type IN ('search', 'play')),
+  media_type TEXT,
+  result_id TEXT,
+  playlist_id TEXT,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  image_key TEXT,
+  query TEXT,
+  zone_id TEXT,
+  zone_name TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS command_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   command_type TEXT NOT NULL,
@@ -139,6 +154,9 @@ CREATE INDEX IF NOT EXISTS idx_virtual_playlist_tracks_playlist
 
 CREATE INDEX IF NOT EXISTS idx_play_history_zone_started
   ON play_history (zone_id, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_home_history_created
+  ON home_history (created_at);
 
 CREATE INDEX IF NOT EXISTS idx_search_cache_query
   ON search_cache (query);

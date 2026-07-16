@@ -18,6 +18,7 @@ import { TechnicalLogService, createObservedLogger } from "./services/technicalL
 import { ExtensionManagerService } from "./services/extensionManagerService";
 import { DiagnosticsService } from "./services/diagnosticsService";
 import { ToolAccessService } from "./services/toolAccessService";
+import { HomeHistoryService } from "./services/homeHistoryService";
 
 const config = loadConfig();
 const baseLogger = createLogger(config.logLevel);
@@ -55,6 +56,7 @@ const outputVolumeSettingsService = new OutputVolumeSettingsService(
 );
 const volumeLimitService = new VolumeLimitService(config, database);
 const actionLogService = new ActionLogService(database);
+const homeHistoryService = new HomeHistoryService(database);
 const extensionManagerService = new ExtensionManagerService(config, technicalLogService);
 const context = {
   config,
@@ -70,6 +72,7 @@ const context = {
   outputVolumeSettingsService,
   volumeLimitService,
   actionLogService,
+  homeHistoryService,
   technicalLogService,
   extensionManagerService,
   toolAccessService

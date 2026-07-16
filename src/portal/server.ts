@@ -198,6 +198,11 @@ export function createPortalServer(context: ApiContext): express.Express {
       include_recent_errors: false,
       include_tool_schemas: false
     }) as any;
+    const recentPlaylists = [...playlists.playlists]
+      .filter((playlist: any) => playlist.last_played_at)
+      .sort((left: any, right: any) => String(right.last_played_at).localeCompare(String(left.last_played_at)))
+      .slice(0, 6);
+    const history = context.homeHistoryService?.list(8) as any;
 
     res.json({
       version: APP_VERSION,
@@ -223,6 +228,8 @@ export function createPortalServer(context: ApiContext): express.Express {
       extension_manager: context.extensionManagerService?.status() || null,
       recent_actions: actions?.actions || [],
       recent_errors: errors?.errors || [],
+      recent_playlists: recentPlaylists,
+      recent_history: history?.entries || [],
       now_playing: zones
         .filter((zone) => zone.state === "playing")
         .map((zone) => ({
@@ -232,6 +239,24 @@ export function createPortalServer(context: ApiContext): express.Express {
           artist: zone.now_playing?.three_line?.line2 || null
         }))
     });
+  });
+
+  app.get("/api/history", (req, res) => {
+    res.json(context.homeHistoryService?.list(Number(req.query.limit) || 100) || {
+      ok: true, entries: [], total: 0, limit: 100, max_entries: 100
+    });
+  });
+
+  app.post("/api/history", (req, res, next) => {
+    try {
+      const eventType = req.body?.event_type;
+      if (eventType !== "search" && eventType !== "play") {
+        throw new ApiError("VALIDATION_ERROR", "event_type must be search or play");
+      }
+      res.status(201).json(context.homeHistoryService?.record({ ...req.body, event_type: eventType }) || { ok: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/api/admin/settings", (_req, res) => {

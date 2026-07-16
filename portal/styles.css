@@ -196,6 +196,20 @@ select { color-scheme: dark; }
 .activity-row strong, .activity-row small { display: block; font-size: 11px; }
 .activity-row small, .activity-row time { margin-top: 3px; color: var(--text-dim); font-size: 9px; }
 .activity-list.tall { max-height: 520px; overflow: auto; }
+.featured-other-zones { display: inline-flex; align-items: center; gap: 7px; margin-top: 11px; padding: 0; border: 0; color: var(--text-soft); background: transparent; font: inherit; font-size: 11px; }
+.featured-other-zones:hover { color: var(--text); }
+.home-playlists, .home-history { margin-top: 44px; }
+.home-playlist-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.home-playlist-card { min-width: 0; display: grid; grid-template-columns: 72px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 0; border: 0; color: var(--text); background: transparent; text-align: left; }
+.home-playlist-card .playlist-collage, .home-playlist-card .cover, .home-playlist-card .cover-fallback { width: 72px; height: 72px; }
+.home-playlist-card strong, .home-playlist-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-playlist-card small { margin-top: 5px; color: var(--text-dim); font-size: 10px; }
+.home-playlist-card > .material-symbols-rounded { color: var(--text-dim); font-size: 18px; }
+.home-history-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; }
+.home-history-row { min-width: 0; display: grid; grid-template-columns: 24px 42px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--line); color: var(--text); background: transparent; text-align: left; }
+.home-history-row .cover { width: 42px; height: 42px; }
+.home-history-row strong, .home-history-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-history-row strong { font-size: 12px; }.home-history-row small, .home-history-row time { margin-top: 3px; color: var(--text-dim); font-size: 9px; }.home-history-icon { color: var(--brand-green-light); }
 
 /* Music */
 .search-stage { max-width: 920px; height: 60px; display: flex; align-items: center; gap: 14px; margin: 0 0 38px; padding: 0 0 0 15px; border-bottom: 1px solid var(--line-strong); }
@@ -618,6 +632,7 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   .now-grid { grid-template-columns: 1fr; }
   .now-card { border-right: 0; }
   .two-column, .home-columns { grid-template-columns: 1fr; gap: 40px; }
+  .home-playlist-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .zone-body { grid-template-columns: auto 1fr; gap: 22px; }
   .zone-foot { grid-column: 1/-1; }
   .tool-row { grid-template-columns: minmax(190px,.7fr) minmax(220px,1.4fr) auto; }
@@ -639,6 +654,8 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 
 @media (max-width: 780px) {
   :root { --rail-width: 0px; --player-height: 78px; }
+  .home-playlists, .home-history { margin-top: 36px; }
+  .home-playlist-grid, .home-history-list { grid-template-columns: 1fr; }
   .app { display: block; }
   .rail { inset: auto 0 0 0; width: auto; height: 66px; display: block; padding: 5px 10px; border-top: 1px solid var(--line); border-right: 0; }
   .brand, .rail-foot { display: none; }
