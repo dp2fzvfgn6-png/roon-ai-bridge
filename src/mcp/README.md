@@ -92,7 +92,7 @@ Widget entry points visible to the model:
 
 The widgets are read-only and contain no interactive tool calls or polling.
 The three focused resources are cache-busted under
-`ui://roon-ai-bridge/v16/` and support both
+`ui://roon-ai-bridge/v18/` and support both
 the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
 
 ## Running locally

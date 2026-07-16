@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.17.1 repository:
+This documentation covers the current v0.17.2 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
@@ -11,7 +11,8 @@ This documentation covers the current v0.17.1 repository:
 - [Roon SDK Reliability Boundary](roon-sdk-reliability.md)
 - [MCP v2 Architecture](mcp-v2-architecture.md)
 - [MCP v2 Local Validation](mcp-v2-validation.md)
-- [v0.17.2 Beta Validation](v0.17.2-validation.md)
+- [v0.17.2 Release Notes](v0.17.2-release-notes.md)
+- [v0.17.2 Validation](v0.17.2-validation.md)
 - [v0.17.1 Playlist MCP Validation](v0.17.1-playlist-validation.md)
 - [Widget v2 Local Validation](widget-v2-validation.md)
 - [Widget v13 Validation](widget-v13-validation.md)

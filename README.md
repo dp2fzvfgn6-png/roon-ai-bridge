@@ -1,12 +1,12 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. The current stable package is v0.17.1. It extends the
+administration portal. The current stable package is v0.17.2. It extends the
 canonical MCP v2 surface with deterministic media discovery, strict playlist
-track resolution, richer music navigation and cache-busted v17 widgets.
+creation, richer catalog navigation and cache-busted v18 widgets.
 
-See the [changelog](CHANGELOG.md), [v0.17.1 release notes](docs/v0.17.1-release-notes.md)
-and [release validation](docs/v0.17.1-validation.md).
+See the [changelog](CHANGELOG.md), [v0.17.2 release notes](docs/v0.17.2-release-notes.md)
+and [release validation](docs/v0.17.2-validation.md).
 
 This project does not expose anything to the internet by itself. It does not
 implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
@@ -32,11 +32,11 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.17.1 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.17.2 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.17.1 Scope
+## v0.17.2 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -82,7 +82,7 @@ v0.17.1 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Check GitHub versions and request a host-supervised update.
 - Optionally protect the HTTP API with `Authorization: Bearer <API_TOKEN>`.
 - Expose remote MCP over `POST /mcp` and `GET /mcp` for ChatGPT app development.
-- Register three lightweight read-only Apps SDK widgets under `ui://roon-ai-bridge/v15/`.
+- Register three lightweight read-only Apps SDK widgets under `ui://roon-ai-bridge/v18/`.
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
@@ -534,7 +534,7 @@ virtual playlists, volume policies, zone presets and diagnostics. See
 [MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
 
 Now-playing, adaptive media and playlist widgets are published under the
-cache-busted `ui://roon-ai-bridge/v15/` namespace. They contain no controls,
+cache-busted `ui://roon-ai-bridge/v18/` namespace. They contain no controls,
 polling loops or widget-to-tool calls: each renders the bounded result returned
 by one model-visible tool. ChatGPT connections are managed from the
 portal under `Settings -> Connections`, together with OAuth
@@ -622,6 +622,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
   persistent playlist identity and reliability improvements.
 - v0.17.1: deterministic catalog navigation, strict track resolution, richer
   playlist UX and signed artwork for v17 widgets.
+- v0.17.2: batched playlist creation, complete streaming catalog navigation,
+  portal activity history, update-channel controls and embedded v18 artwork.
 
 ## Security
 

@@ -3,9 +3,9 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.17.2 Beta - Unreleased
+## 0.17.2 - 2026-07-17
 
-- Development continues on the `beta` branch from the v0.17.1 stable release.
+- Promoted the validated v0.17.2 beta line to the stable `main` channel.
 - Refined automatic playlist collages to rotate every two seconds at random
   positions, changing one tile in 2x2 and 3x3 layouts and two tiles in 4x4
   layouts without fade or zoom transitions. Distinct artwork is sampled and
