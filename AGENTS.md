@@ -69,6 +69,10 @@ Do not publish when tests or the build fail.
 
 - Do not stage, commit, push, create tags or open pull requests unless the user
   explicitly requests the specific action.
+- An explicit request to promote `beta` to `main` counts as authorization to
+  create the required release commit, update and push `main`, create and push
+  the matching annotated version tag, and start and push the next beta version
+  when the user requests one as part of the same promotion.
 - Do not update, rebuild or restart the LXC unless the user explicitly requests
   an LXC deployment or update.
 - A request to change code does not imply permission to commit, push or deploy.
@@ -138,12 +142,18 @@ Update both:
 - `package.json`
 - `src/config/version.ts`
 
-Only when the user explicitly requests a release, after automated and live
-validation:
+An explicit request to promote `beta` to `main` means the tested beta is
+accepted as the release candidate. Run the complete automated test suite and
+build on the final release contents, then create the annotated tag on the exact
+commit pushed to `main`:
 
 ```powershell
 git tag -a vX.Y.Z -m "Roon AI Bridge vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-Do not tag a version while its required live validation is still pending.
+The beta validation accumulated during development plus the final automated
+suite and build are sufficient for tagging. Do not require an additional LXC
+deployment or post-promotion live validation unless the user explicitly asks
+for it. Promotion and tagging never imply permission to deploy, rebuild or
+restart the LXC.
