@@ -54,17 +54,21 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
 - Search references retain the original Roon session and item identity for
   their TTL. A session is consumed by at most one traversal; later operations
   resolve a fresh, fingerprint-checked candidate.
-- Album and artist details first consult cached `albums` and `artists` root
-  indexes. Cached item keys are never reused because they are session-local;
-  only the normalized identity and absolute ordinal are cached for ten
-  minutes. A fresh session loads that ordinal and verifies title, artist and
-  artwork before opening it. Index drift triggers one refresh and retry.
+- Album and artist details first reopen the exact retained search reference
+  when it is still valid, preserving the selected streaming-catalog entity and
+  its Roon action tree. Cached `albums` and `artists` root indexes are the
+  verified fallback. Their item keys are never reused because they are
+  session-local; only normalized identity and absolute ordinal are cached for
+  ten minutes. A fresh session loads that ordinal and verifies title, artist
+  and artwork before opening it. Index drift triggers one refresh and retry.
 - Native library details report `data_origin=roon_library`; streaming search
   traversal reports `roon_search_session`. `completeness`, `ordered` and
   `identity_verified` make uncertainty explicit.
-- A tracklist contains only structurally track-like rows. Playback actions and
-  album entities are excluded. Native `1. Title` and `1-2 Title` prefixes are
-  parsed and removed from the visible title.
+- A tracklist contains only rows inside a verified album contents or Tracks
+  list. Playback actions and album entities are excluded. Native `1. Title`
+  and `1-2 Title` prefixes are parsed and removed from the visible title, but
+  streaming rows do not require numbers or durations when the enclosing Roon
+  list already establishes their album context.
 - A global track search can populate `related_tracks`, but it cannot populate
   the ordered `tracks` collection or synthesize track numbers.
 - A global artist-name album search is never promoted to a discography. If
@@ -73,10 +77,17 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
 ## Portal latency contract
 
 The manual portal starts artist (6), album (6), track (12) and playlist (6)
-requests together. Each section has its own loading and failure state, stale
-requests are aborted and late responses from an older generation are ignored.
-The global “best result” is hidden unless the service provides a non-selection-
-required recommendation. Search editions are deduplicated conservatively with
+requests together. Each section has its own circular loading and failure state,
+stale requests are aborted and late responses from an older generation are
+ignored. Once those first rows are visible, categories with more results are
+hydrated silently up to 100 entries. `available_counts` reports Roon's list
+size and each `Ver más` action reveals at most 12 additional entries, which is
+two desktop rows for six-column card sections.
+
+The portal reconstructs one global “Mejor resultado” from the direct,
+non-ambiguous recommendation returned by each typed Roon search. This does not
+add a fifth search request. The block remains hidden when no category supplies
+a safe direct match. Search editions are deduplicated conservatively with
 source, year, version and artwork in the identity.
 
 ## Post-deployment validation

@@ -323,6 +323,37 @@ test("lists virtual playlists without tracks by default and paginates tracks exp
   assert.equal(outside.playlists.length, 0);
 });
 
+test("playlist summaries expose exact and partial total durations", () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const complete = service.createPlaylist({
+    name: "Timed mix",
+    tracks: [
+      { query: "one", title: "One", duration_seconds: 3600 },
+      { query: "two", title: "Two", audio_metadata: { duration_seconds: 1860 } }
+    ]
+  });
+  const partial = service.createPlaylist({
+    name: "Partial mix",
+    tracks: [
+      { query: "known", title: "Known", duration_seconds: 900 },
+      { query: "unknown", title: "Unknown" }
+    ]
+  });
+
+  const summaries = service.listPlaylists({ includeTracks: false, limit: 10 }).playlists;
+  const completeSummary = summaries.find((playlist) => playlist.playlist_id === complete.playlist_id);
+  const partialSummary = summaries.find((playlist) => playlist.playlist_id === partial.playlist_id);
+  assert.equal(completeSummary.total_duration_seconds, 5460);
+  assert.equal(completeSummary.duration_known_track_count, 2);
+  assert.equal(partialSummary.total_duration_seconds, 900);
+  assert.equal(partialSummary.duration_known_track_count, 1);
+
+  const detail = service.getPlaylistDetail(complete.playlist_id, { includeTracks: false });
+  assert.equal(detail.total_duration_seconds, 5460);
+  assert.equal(detail.duration_known_track_count, 2);
+});
+
 test("gets one virtual playlist with paginated tracks or summary only", () => {
   const config = tempConfig();
   const service = new PlaylistService(config);

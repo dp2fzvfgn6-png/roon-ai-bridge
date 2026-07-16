@@ -102,6 +102,8 @@ export type VirtualPlaylist = {
   tracks: VirtualPlaylistTrack[];
   track_count: number;
   tracks_count: number;
+  total_duration_seconds: number | null;
+  duration_known_track_count: number;
   last_played_at: string | null;
   created_at: string;
   updated_at: string;
@@ -391,6 +393,30 @@ function imageKeyFromMetadata(metadata: VirtualPlaylistTrackMetadata | null): st
 
 function buildCover(imageKey: string | null): { image_key: string } | null {
   return imageKey ? { image_key: imageKey } : null;
+}
+
+function summarizeDurations(durations: unknown[]): {
+  total_duration_seconds: number | null;
+  duration_known_track_count: number;
+} {
+  let total = 0;
+  let known = 0;
+  for (const value of durations) {
+    const duration = optionalFiniteInteger(value);
+    if (duration === null || duration <= 0) continue;
+    total += duration;
+    known += 1;
+  }
+  return {
+    total_duration_seconds: known > 0 ? total : null,
+    duration_known_track_count: known
+  };
+}
+
+function durationFromStoredMetadata(metadata: VirtualPlaylistTrackMetadata | null): number | null {
+  const split = splitStoredMetadata(metadata);
+  return optionalFiniteInteger(split.audio_metadata?.duration_seconds)
+    ?? optionalFiniteInteger(split.identity?.duration_seconds);
 }
 
 function customCoverFileName(imageKey: string | null): string | null {
@@ -810,7 +836,8 @@ export class PlaylistService {
     const includeTracks = options.includeTracks !== false;
     const limit = normalizePageNumber(options.limit, 50, 1, 500);
     const offset = normalizePageNumber(options.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-    const trackCount = this.countTrackRows(playlistId);
+    const stats = this.getPlaylistTrackStats(playlistId);
+    const trackCount = stats.track_count;
     const tracks = includeTracks
       ? this.listTrackRows(playlistId, limit, offset).map((track) => this.mapTrack(track))
       : undefined;
@@ -822,6 +849,8 @@ export class PlaylistService {
       cover: buildCover(row.cover_image_key),
       track_count: trackCount,
       tracks_count: trackCount,
+      total_duration_seconds: stats.total_duration_seconds,
+      duration_known_track_count: stats.duration_known_track_count,
       include_tracks: includeTracks,
       limit,
       offset,
@@ -1789,6 +1818,9 @@ export class PlaylistService {
   private getPlaylistFromRow(row: PlaylistRow): VirtualPlaylist {
     const tracks = this.listTrackRows(row.playlist_id).map((track) => this.mapTrack(track));
     const trackCount = tracks.length;
+    const duration = summarizeDurations(tracks.map((track) =>
+      track.audio_metadata?.duration_seconds ?? track.identity.duration_seconds
+    ));
     return {
       playlist_id: row.playlist_id,
       name: row.name,
@@ -1798,6 +1830,7 @@ export class PlaylistService {
       tracks,
       track_count: trackCount,
       tracks_count: trackCount,
+      ...duration,
       last_played_at: row.last_played_at,
       created_at: row.created_at,
       updated_at: row.updated_at
@@ -1808,7 +1841,8 @@ export class PlaylistService {
     row: PlaylistRow,
     options: { includeTracks: boolean; trackLimit: number; trackOffset: number }
   ): VirtualPlaylistListItem {
-    const trackCount = this.countTrackRows(row.playlist_id);
+    const stats = this.getPlaylistTrackStats(row.playlist_id);
+    const trackCount = stats.track_count;
     const base = {
       playlist_id: row.playlist_id,
       name: row.name,
@@ -1817,6 +1851,8 @@ export class PlaylistService {
       cover: buildCover(row.cover_image_key),
       track_count: trackCount,
       tracks_count: trackCount,
+      total_duration_seconds: stats.total_duration_seconds,
+      duration_known_track_count: stats.duration_known_track_count,
       last_played_at: row.last_played_at,
       created_at: row.created_at,
       updated_at: row.updated_at
@@ -1856,6 +1892,24 @@ export class PlaylistService {
         .all(playlistId, limit, offset || 0) as TrackRow[];
     }
     return this.database.db.prepare(sql).all(playlistId) as TrackRow[];
+  }
+
+  private getPlaylistTrackStats(playlistId: string): {
+    track_count: number;
+    total_duration_seconds: number | null;
+    duration_known_track_count: number;
+  } {
+    const rows = this.database.db
+      .prepare(
+        `SELECT metadata_json
+         FROM virtual_playlist_tracks
+         WHERE playlist_id = ?`
+      )
+      .all(playlistId) as Array<{ metadata_json: string | null }>;
+    return {
+      track_count: rows.length,
+      ...summarizeDurations(rows.map((row) => durationFromStoredMetadata(parseMetadata(row.metadata_json))))
+    };
   }
 
   private backfillPersistentTrackIdentity(): void {

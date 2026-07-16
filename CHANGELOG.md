@@ -13,6 +13,8 @@ each release lives under [`docs/`](docs/README.md).
   different covers.
 - Reordered playlist card details to show the track count and last playback
   immediately after the title, followed by a naturally sized description.
+- Added total playlist duration in hours and minutes to portal cards, marking
+  partial totals when one or more tracks have no known duration.
 - Replaced stacked portal toasts and stale update text in the header with one
   concise three-second action notification whose newest message takes priority.
 - Added contextual feedback for playback, volume, grouping, queue, playlist,
@@ -44,9 +46,16 @@ each release lives under [`docs/`](docs/README.md).
 - Rebuilt manual media search so typed Roon categories run in independent
   sessions concurrently, while the portal renders each category as soon as it
   arrives and cancels stale searches.
+- Replaced search skeleton rectangles with per-section activity indicators,
+  restored the direct Roon `Mejor resultado`, and added silent background
+  hydration with 12-item progressive `Ver más` expansion up to 100 results per
+  category.
 - Artist and album details now prefer exact native-library identities through
   a cached ordinal index, label their provenance and completeness, and retain
   the selected search session when a streaming result must be opened.
+- Exact catalog references now take precedence while valid, preserving Roon's
+  classified artist discography and complete streaming album contents even
+  when individual track rows omit number or duration metadata.
 - Removed name-only discography fabrication and synthetic album ordering:
   unverified global matches are omitted or displayed separately as related
   results, actions are excluded from tracklists and track numbers are parsed

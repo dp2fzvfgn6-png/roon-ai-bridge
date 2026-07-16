@@ -25,6 +25,7 @@ function loadCollageRuntime() {
   });
   vm.runInContext(`${prefix}\n;globalThis.collageTestApi = {
     animatePlaylistCollages,
+    playlistDurationLabel,
     playlistArtwork,
     setLoadImage: (loader) => { loadImage = loader; }
   };`, context);
@@ -123,4 +124,19 @@ test("collage replacement keeps every old image visible when loading fails", asy
 test("playlist collage rotation is scheduled every two seconds", () => {
   const { intervals } = loadCollageRuntime();
   assert.ok(intervals.some(({ delay }) => delay === 2000));
+});
+
+test("playlist duration labels format exact and partial totals in hours and minutes", () => {
+  const { api } = loadCollageRuntime();
+  assert.equal(api.playlistDurationLabel({
+    track_count: 10,
+    total_duration_seconds: 21_900,
+    duration_known_track_count: 10
+  }), "6 h 5 min");
+  assert.equal(api.playlistDurationLabel({
+    track_count: 10,
+    total_duration_seconds: 21_600,
+    duration_known_track_count: 8
+  }), "al menos 6 h");
+  assert.equal(api.playlistDurationLabel({ track_count: 3 }), "");
 });

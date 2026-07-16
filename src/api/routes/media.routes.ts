@@ -68,7 +68,7 @@ export function createMediaRouter(context: ApiContext): Router {
       const query = optionalString(req.query.q) || "";
       const types = parseTypes(req.query.types);
       const sourcePreference = parseSourcePreference(req.query.source_preference);
-      const count = parseCount(req.query.count, 10, 25);
+      const count = parseCount(req.query.count, 10, 100);
 
       context.logger.info("Typed media search received", {
         query,

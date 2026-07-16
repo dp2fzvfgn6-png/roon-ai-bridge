@@ -172,7 +172,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.doesNotMatch(portalStylesText, /\.playlist-card p \{[^}]*height:6em/);
     assert.match(portalStylesText, /\.library-destination-grid/);
     assert.match(portalStylesText, /\.best-search-result\{width:min\(100%,590px\)/);
-    assert.match(portalStylesText, /\.search-result-skeleton/);
+    assert.match(portalStylesText, /\.search-section-spinner/);
+    assert.doesNotMatch(portalStylesText, /\.search-result-skeleton/);
     assert.match(portalStylesText, /\.detail-trust/);
     assert.match(portalStylesText, /\.cover-fallback\.artist/);
     assert.match(portalStylesText, /\.toast\.warning/);
@@ -205,6 +206,12 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /new AbortController\(\)/);
     assert.match(portalScriptText, /Promise\.allSettled\(SEARCH_CATEGORIES/);
     assert.match(portalScriptText, /category_status/);
+    assert.match(portalScriptText, /SEARCH_BACKGROUND_LIMIT = 100/);
+    assert.match(portalScriptText, /available_counts/);
+    assert.match(portalScriptText, /function finalizeSearchBestMatch/);
+    assert.match(portalScriptText, /direct_match&&item\?\.roon_item_key/);
+    assert.match(portalScriptText, /SEARCH_EXPAND_STEPS/);
+    assert.match(portalScriptText, /search-section-spinner/);
     assert.match(portalScriptText, /Sin tracklist verificada/);
     assert.match(portalScriptText, /Resultados relacionados/);
     assert.match(portalScriptText, /data-more-results/);
@@ -225,6 +232,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.doesNotMatch(portalScriptText, /exact\|\|bestExact\|\|candidates\[0\]/);
     assert.match(portalScriptText, /data-entity-link="\$\{esc\(type\)\}"/);
     assert.match(portalScriptText, /playlist-collage/);
+    assert.match(portalScriptText, /playlistDurationLabel\(item\)/);
+    assert.match(portalScriptText, /al menos /);
     assert.match(portalScriptText, /<h3>\$\{esc\(item\.name\)\}<\/h3><div class="playlist-meta">[\s\S]*<\/div><p title=/);
     assert.match(portalScriptText, /uniqueKeys\.length >= 16 \? 4 : uniqueKeys\.length >= 10 \? 3 : 2/);
     assert.match(portalScriptText, /capacity = columns \* columns/);
@@ -251,6 +260,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /playerPendingUpdates/);
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /miniRenderSignature===signature/);
+    assert.match(portalScriptText, /playback:playbackSignature\(zone\),position/);
+    assert.match(portalScriptText, /function setMiniPlayerSeekClock/);
+    assert.match(portalScriptText, /input\.dataset\.basePosition=String\(seconds\)/);
+    assert.match(portalScriptText, /zone\.now_playing=\{\.\.\.\(zone\.now_playing\|\|\{\}\),seek_position:seconds\}/);
+    assert.match(portalScriptText, /catch\(err=>\{state\.miniRenderSignature=null;notifyError/);
     assert.match(portalScriptText, /homePlaybackSignature===signature/);
     assert.match(portalScriptText, /featured-backdrop.*imageTag\(featured\.now_playing\?\.image_key,"",500\)/);
     assert.match(portalScriptText, /function fitFeaturedTitle/);

@@ -69,10 +69,42 @@ test("search_media returns stable result ids and details for mocked Roon results
   assert.equal(search.results[0].artist, "Radiohead");
   assert.equal(search.results[0].roon_item_key, "track-key");
   assert.equal(search.results[0].is_library, true);
+  assert.equal(search.available_counts.track, 1);
   assert.equal("image_data_url" in search.results[0], false);
 
   const details = service.get(search.results[0].result_id);
   assert.deepEqual(details, search.results[0]);
+});
+
+test("search_media reports and can index more than the initial portal result window", async () => {
+  let stage = "root";
+  const allTracks = Array.from({ length: 40 }, (_, index) => ({
+    title: `Result ${index + 1}`,
+    subtitle: "Indexed Artist",
+    item_key: `indexed-${index + 1}`,
+    hint: "action_list"
+  }));
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "tracks-category") { stage = "tracks"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Tracks", item_key: "tracks-category", hint: "list" }] }); return; }
+      const offset = opts.offset || 0;
+      callback(false, { list: { title: "Tracks", count: allTracks.length }, items: allTracks.slice(offset, offset + (opts.count || 10)) });
+    }
+  };
+  const service = new RoonMediaService({ isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse }, "tidal");
+
+  const initial = await service.search({ query: "Result", types: ["track"], count: 12 });
+  const indexed = await service.search({ query: "Result", types: ["track"], count: 40 });
+
+  assert.equal(initial.results.length, 12);
+  assert.equal(initial.available_counts.track, 40);
+  assert.equal(indexed.results.length, 40);
+  assert.equal(indexed.available_counts.track, 40);
 });
 
 test("search_media removes Roon internal link ids from visible metadata", async () => {
@@ -526,6 +558,45 @@ test("album detail follows counted track sections and loads every page", async (
   assert.deepEqual(detail.tracks.map((track) => track.title), ["Track One", "Track Two", "Track Three"]);
 });
 
+function createStreamingAlbumWithoutTrackMetadataClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "caracal-key") { stage = "caracal"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Caracal (Deluxe)", subtitle: "Disclosure", item_key: "caracal-key", hint: "action_list", media: { source: "tidal" } }] }); return; }
+      const tracks = ["Nocturnal", "Omen", "Holding On"].map((title, index) => ({
+        title,
+        subtitle: "Disclosure",
+        item_key: `caracal-track-${index + 1}`,
+        hint: "action_list",
+        media: { artist: "Disclosure", source: "tidal" }
+      }));
+      const offset = opts.offset || 0;
+      callback(false, { list: { title: "Caracal (Deluxe)", count: tracks.length }, items: tracks.slice(offset, offset + (opts.count || tracks.length)) });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("streaming album detail trusts the ordered album list even when rows omit track numbers", async () => {
+  const service = new RoonMediaService(createStreamingAlbumWithoutTrackMetadataClient(), "tidal");
+  const search = await service.search({ query: "Caracal Deluxe Disclosure", types: ["album"], count: 6 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Nocturnal", "Omen", "Holding On"]);
+  assert.deepEqual(detail.tracks.map((track) => track.track_number), [null, null, null]);
+  assert.equal(detail.data_origin, "roon_search_session");
+  assert.equal(detail.completeness, "complete");
+  assert.equal(detail.ordered, true);
+  assert.deepEqual(detail.related_tracks, []);
+});
+
 function createRoonAlbumSearchTracklistClient() {
   let stage = "root";
   const browse = {
@@ -773,6 +844,48 @@ test("artist discography follows nested Roon sections, separates releases and re
   assert.equal(detail.releases.find((release) => release.title === "One Song").release_type, "single");
   assert.equal(detail.releases.find((release) => release.title === "Short Release").release_type, "ep");
   assert.equal(detail.releases.some((release) => release.artist === "Gabriella Quevedo"), false);
+});
+
+function createCatalogAndLibraryArtistClient() {
+  const stages = new Map();
+  let libraryLoads = 0;
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.hierarchy === "search" && opts.input) { stages.set(session, "search-root"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artists-category") { stages.set(session, "search-artists"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "disclosure-catalog") { stages.set(session, "catalog-artist"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "discography-key") { stages.set(session, "discography"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "main-albums-key") { stages.set(session, "main-albums"); callback(false, { action: "list" }); return; }
+      if (opts.hierarchy === "artists" && !opts.item_key) { libraryLoads += 1; stages.set(session, "library-artists"); callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "search-root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
+      if (stage === "search-artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Disclosure", subtitle: "8 Albums", image_key: "disclosure-image", item_key: "disclosure-catalog", hint: "action_list" }] }); return; }
+      if (stage === "catalog-artist") { callback(false, { list: { title: "Disclosure", count: 1 }, items: [{ title: "Discography", item_key: "discography-key", hint: "list" }] }); return; }
+      if (stage === "discography") { callback(false, { list: { title: "Discography", count: 1 }, items: [{ title: "Main Albums (2)", item_key: "main-albums-key", hint: "list" }] }); return; }
+      if (stage === "main-albums") { callback(false, { list: { title: "Main Albums", count: 2 }, items: [{ title: "Settle", subtitle: "Disclosure", item_key: "settle", hint: "action_list", media: { artist: "Disclosure", release_year: 2013 } }, { title: "Caracal", subtitle: "Disclosure", item_key: "caracal", hint: "action_list", media: { artist: "Disclosure", release_year: 2015 } }] }); return; }
+      callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Disclosure", subtitle: "1 Album", image_key: "disclosure-image", item_key: "library-disclosure", hint: "list" }] });
+    }
+  };
+  return {
+    client: { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse },
+    libraryLoads: () => libraryLoads
+  };
+}
+
+test("artist discography prefers the exact catalog session over the smaller local library", async () => {
+  const mock = createCatalogAndLibraryArtistClient();
+  const service = new RoonMediaService(mock.client, "tidal");
+  const search = await service.search({ query: "Disclosure", types: ["artist"], count: 6 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+
+  assert.deepEqual(detail.releases.map((release) => release.title), ["Settle", "Caracal"]);
+  assert.equal(detail.releases.every((release) => release.data_origin === "roon_search_session"), true);
+  assert.equal(detail.releases.every((release) => release.completeness === "complete"), true);
+  assert.equal(mock.libraryLoads(), 0);
 });
 
 function createArtistSearchClient(items = [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]) {
