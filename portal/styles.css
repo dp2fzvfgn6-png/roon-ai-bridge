@@ -345,10 +345,10 @@ select { color-scheme: dark; }
 .danger-text { color: var(--danger) !important; }
 .playlist-open { width:38px; height:38px; display:grid; place-items:center; position:absolute; right:12px; bottom:12px; border-radius:50%; color:white; background:var(--brand-orange); opacity:0; transform:translateY(7px); transition:.15s; }
 .playlist-card:hover .playlist-open { opacity:1; transform:none; }
-.playlist-card-body { min-width:0; display:grid; grid-template-rows:auto 6em auto; align-content:start; padding: 12px 0 0; }
+.playlist-card-body { min-width:0; display:grid; grid-template-rows:auto auto auto; align-content:start; padding: 12px 0 0; }
 .playlist-card h3 { display:-webkit-box; min-height:2.5em; margin: 0 0 5px; overflow:hidden; font-size: 14px; line-height:1.25; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-.playlist-card p { display:-webkit-box; height:6em; margin:0 0 10px; overflow:hidden; color: var(--text-dim); font-size: 11px; line-height:1.5; -webkit-box-orient:vertical; -webkit-line-clamp:4; }
-.playlist-meta { display:grid; gap:4px; color:var(--text-dim); font-size:9px; }
+.playlist-card p { display:-webkit-box; margin:0; overflow:hidden; color: var(--text-dim); font-size: 11px; line-height:1.5; -webkit-box-orient:vertical; -webkit-line-clamp:4; }
+.playlist-meta { display:grid; gap:4px; margin:0 0 10px; color:var(--text-dim); font-size:9px; }
 .playlist-meta span:first-child { color:var(--text-soft); font-size:10px; }
 
 /* Playback */

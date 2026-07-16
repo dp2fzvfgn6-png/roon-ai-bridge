@@ -11,6 +11,8 @@ each release lives under [`docs/`](docs/README.md).
   layouts without fade or zoom transitions. Distinct artwork is sampled and
   kept unique within the visible grid whenever the playlist provides enough
   different covers.
+- Reordered playlist card details to show the track count and last playback
+  immediately after the title, followed by a naturally sized description.
 - Replaced stacked portal toasts and stale update text in the header with one
   concise three-second action notification whose newest message takes priority.
 - Added contextual feedback for playback, volume, grouping, queue, playlist,

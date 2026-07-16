@@ -168,7 +168,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.playlist-collage\.collage-4x4 \{[^}]*repeat\(4,/);
     assert.match(portalStylesText, /\.playlist-collage > img \{[^}]*min-width: 0;[^}]*object-fit: cover;[^}]*object-position: center;/);
     assert.doesNotMatch(portalStylesText, /collage-changing|\.playlist-collage > img \{[^}]*transition:/);
-    assert.match(portalStylesText, /\.playlist-card p \{[^}]*-webkit-line-clamp:4;/);
+    assert.match(portalStylesText, /\.playlist-card p \{[^}]*margin:0;[^}]*-webkit-line-clamp:4;/);
+    assert.doesNotMatch(portalStylesText, /\.playlist-card p \{[^}]*height:6em/);
     assert.match(portalStylesText, /\.library-destination-grid/);
     assert.match(portalStylesText, /\.best-search-result\{width:min\(100%,590px\)/);
     assert.match(portalStylesText, /\.cover-fallback\.artist/);
@@ -215,6 +216,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.doesNotMatch(portalScriptText, /exact\|\|bestExact\|\|candidates\[0\]/);
     assert.match(portalScriptText, /data-entity-link="\$\{esc\(type\)\}"/);
     assert.match(portalScriptText, /playlist-collage/);
+    assert.match(portalScriptText, /<h3>\$\{esc\(item\.name\)\}<\/h3><div class="playlist-meta">[\s\S]*<\/div><p title=/);
     assert.match(portalScriptText, /uniqueKeys\.length >= 16 \? 4 : uniqueKeys\.length >= 10 \? 3 : 2/);
     assert.match(portalScriptText, /capacity = columns \* columns/);
     assert.match(portalScriptText, /collage-\$\{columns\}x\$\{columns\}/);
