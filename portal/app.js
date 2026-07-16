@@ -21,10 +21,95 @@ const imageUrl = (key, size = 500, scale = "fill") => key ? (key.startsWith("cus
 const imageTag = (key, label = "", size = 500, scale = "fill") => key ? `<img data-image-key="${esc(key)}" data-image-size="${size}" data-image-scale="${esc(scale)}" alt="${esc(label)}" loading="lazy">` : "";
 const fallbackIcon = (kind) => ({artist:"person",album:"album",playlist:"queue_music",track:"music_note"})[kind] || "music_note";
 const cover = (key, label = "", cls = "", kind = "track") => `<div class="cover ${cls}" data-fallback-kind="${esc(kind)}"><div class="cover-fallback ${esc(kind)}">${icon(fallbackIcon(kind))}</div>${key ? imageTag(key,label,500) : ""}</div>`;
-function playlistArtwork(playlist, label = "") { const custom=playlist.cover_image_key?.startsWith("custom:")?playlist.cover_image_key:null;if(custom)return `<div class="playlist-custom-cover">${imageTag(custom,label||playlist.name,700)}</div>`;const keys=(playlist.tracks||[]).map((track)=>track.image_key||track.cover?.image_key).filter(Boolean).slice(0,16);if(!keys.length)return `<div class="cover-fallback">${icon("queue_music")}</div>`;const columns=keys.length<=4?2:keys.length<=9?3:4;const capacity=columns*columns;const tiles=Array.from({length:capacity},(_,index)=>keys[index%keys.length]);return `<div class="playlist-collage collage-${columns}x${columns}" data-collage-keys="${esc(JSON.stringify(keys))}" data-collage-step="0" role="img" aria-label="Mosaico de ${esc(label||playlist.name)}">${tiles.map((key,index)=>imageTag(key,"",500,"fill").replace("<img ",`<img data-collage-slot="${index}" `)).join("")}</div>`;}
-function setCollageImage(img,key){img.removeAttribute('src');delete img.dataset.imageLoading;delete img.dataset.imageLoaded;delete img.dataset.imageFailed;img.dataset.imageKey=key;}
-function animatePlaylistCollages(){if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;$$('[data-collage-keys]').forEach((collage)=>{if(collage.dataset.collageAnimating==='true')return;let keys=[];try{keys=JSON.parse(collage.dataset.collageKeys||'[]')}catch{}const images=$$('img[data-collage-slot]',collage);if(keys.length<2||images.length<2)return;const step=Number(collage.dataset.collageStep||0);const first=images[step%images.length];const alternatives=images.filter((image)=>image!==first&&image.dataset.imageKey!==first.dataset.imageKey);if(!alternatives.length)return;const second=alternatives[step%alternatives.length];const firstKey=first.dataset.imageKey;const secondKey=second.dataset.imageKey;if(!firstKey||!secondKey)return;collage.dataset.collageAnimating='true';first.classList.add('collage-changing');second.classList.add('collage-changing');setTimeout(async()=>{setCollageImage(first,secondKey);setCollageImage(second,firstKey);await Promise.all([hydrateImages(first),hydrateImages(second)]);first.classList.remove('collage-changing');second.classList.remove('collage-changing');collage.dataset.collageStep=String(step+1);collage.dataset.collageAnimating='false';},180);});}
-setInterval(animatePlaylistCollages,2600);
+function shuffled(values) {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+function playlistArtwork(playlist, label = "") {
+  const custom = playlist.cover_image_key?.startsWith("custom:") ? playlist.cover_image_key : null;
+  if (custom) return `<div class="playlist-custom-cover">${imageTag(custom,label||playlist.name,700)}</div>`;
+  const uniqueKeys = [...new Set((playlist.tracks || []).map((track) => track.image_key || track.cover?.image_key).filter(Boolean))];
+  if (!uniqueKeys.length) return `<div class="cover-fallback">${icon("queue_music")}</div>`;
+  const keys = shuffled(uniqueKeys).slice(0,48);
+  const columns = uniqueKeys.length >= 16 ? 4 : uniqueKeys.length >= 10 ? 3 : 2;
+  const capacity = columns * columns;
+  const tiles = Array.from({ length: capacity }, (_, index) => keys[index % keys.length]);
+  return `<div class="playlist-collage collage-${columns}x${columns}" data-collage-keys="${esc(JSON.stringify(keys))}" data-collage-position-bag="[]" role="img" aria-label="Mosaico de ${esc(label||playlist.name)}">${tiles.map((key,index)=>imageTag(key,"",500,"fill").replace("<img ",`<img data-collage-slot="${index}" `)).join("")}</div>`;
+}
+function takeRandomCollageImages(collage, images, count) {
+  let bag = [];
+  let previous = [];
+  try { bag = JSON.parse(collage.dataset.collagePositionBag || '[]'); } catch {}
+  try { previous = JSON.parse(collage.dataset.collageLastSlots || '[]'); } catch {}
+  bag = bag.filter((index) => Number.isInteger(index) && index >= 0 && index < images.length);
+  while (bag.length < count) {
+    const excluded = new Set(bag);
+    const fresh = images.map((_, index) => index).filter((index) => !excluded.has(index) && !previous.includes(index));
+    const refill = fresh.length >= count - bag.length
+      ? fresh
+      : images.map((_, index) => index).filter((index) => !excluded.has(index));
+    bag.push(...shuffled(refill));
+  }
+  const selectedIndexes = bag.splice(0, count);
+  collage.dataset.collagePositionBag = JSON.stringify(bag);
+  collage.dataset.collageLastSlots = JSON.stringify(selectedIndexes);
+  return selectedIndexes.map((index) => images[index]);
+}
+function collageReplacementKeys(images, selected, keys) {
+  const selectedSet = new Set(selected);
+  const unchangedKeys = new Set(images.filter((image) => !selectedSet.has(image)).map((image) => image.dataset.imageKey));
+  const candidates = shuffled(keys.filter((key) => !unchangedKeys.has(key)));
+  const replacements = [];
+  function assign(index) {
+    if (index === selected.length) return true;
+    for (const candidate of candidates) {
+      if (candidate === selected[index].dataset.imageKey || replacements.includes(candidate)) continue;
+      replacements[index] = candidate;
+      if (assign(index + 1)) return true;
+    }
+    replacements.length = index;
+    return false;
+  }
+  return assign(0) ? replacements : [];
+}
+function setCollageImage(img, key, src) {
+  delete img.dataset.imageFailed;
+  img.dataset.imageKey = key;
+  img.dataset.imageLoading = "true";
+  img.dataset.imageLoaded = "true";
+  img.src = src;
+}
+async function animatePlaylistCollages() {
+  await Promise.all($$('[data-collage-keys]').map(async (collage) => {
+    if (collage.dataset.collageAnimating === 'true') return;
+    let keys = [];
+    try { keys = JSON.parse(collage.dataset.collageKeys || '[]'); } catch {}
+    const images = $$('img[data-collage-slot]', collage);
+    if (keys.length < 2 || images.length < 2) return;
+    const count = collage.classList.contains('collage-4x4') ? 2 : 1;
+    const selected = takeRandomCollageImages(collage, images, count);
+    const replacements = collageReplacementKeys(images, selected, keys);
+    if (replacements.length !== count) return;
+    collage.dataset.collageAnimating = 'true';
+    try {
+      const sources = await Promise.all(replacements.map((key, index) => loadImage(
+        key,
+        Number(selected[index].dataset.imageSize || 500),
+        selected[index].dataset.imageScale || 'fill'
+      )));
+      selected.forEach((image, index) => setCollageImage(image, replacements[index], sources[index]));
+    } catch {
+      // Keep the existing artwork visible if a replacement cannot be loaded.
+    } finally {
+      collage.dataset.collageAnimating = 'false';
+    }
+  }));
+}
+setInterval(animatePlaylistCollages,2000);
 function activeZone() { return state.zones.find((zone) => zone.zone_id === state.activeZoneId) || state.zones.find((zone) => zone.state === "playing") || state.zones[0] || null; }
 function syncActiveZone() { const zone = activeZone(); if (!zone) { state.activeZoneId = null; localStorage.removeItem("roonia.portal.active-zone"); return null; } if (state.activeZoneId !== zone.zone_id) { state.activeZoneId = zone.zone_id; localStorage.setItem("roonia.portal.active-zone",zone.zone_id); } return zone; }
 

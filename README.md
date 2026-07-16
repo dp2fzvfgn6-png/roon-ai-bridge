@@ -62,6 +62,8 @@ v0.17.1 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Serve an independent administration portal on port `3001`.
 - Control playback, volume, queues and synchronized zone groups from the portal.
 - Create, edit, reorder, play and delete virtual playlists from the portal.
+- Generate automatic playlist cover collages from distinct track artwork, with
+  instant random tile rotation every two seconds.
 - Resolve playlist tracks through strict recording identity matching, preferring
   equivalent TIDAL lossless candidates without allowing source quality to hide
   artist or version mismatches.
