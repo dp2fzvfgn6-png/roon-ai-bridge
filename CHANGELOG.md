@@ -64,6 +64,10 @@ each release lives under [`docs/`](docs/README.md).
   safe entity-navigation actions before reading content. Artist fichas retain
   Roon's section labels and order, and streaming album fichas load their real
   ordered tracklists when exposed by Browse.
+- Artist discographies now follow native `View All` continuations instead of
+  stopping at Roon's preview shelf. Catalog releases are reopened with their
+  exact album-and-artist identity so albums outside the local library retain
+  access to their ordered streaming tracklists.
 - Removed name-only discography fabrication and synthetic album ordering:
   unverified global matches are omitted or displayed separately as related
   results, actions are excluded from tracklists and track numbers are parsed

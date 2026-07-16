@@ -110,8 +110,12 @@ Unknown Roon metadata is returned as `unknown`, `low`, `null`, or omitted
 rather than guessed.
 
 Artist detail follows the native Discography, Albums, EPs and Singles sections
-instead of accepting surname/substring search matches. Album detail follows
-counted track-list and disc levels and paginates until the requested limit, so
+instead of accepting surname/substring search matches. Preview shelves are
+expanded through Roon's native `View All` list before the response is marked
+complete, so the portal does not stop at the first visible row. Releases found
+inside an artist page are re-resolved with the exact album title plus artist
+when their original browse session has already been consumed. Album detail
+follows counted track-list and disc levels and paginates until the requested limit, so
 the `tracks` array represents the complete Roon list rather than its first page.
 When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category

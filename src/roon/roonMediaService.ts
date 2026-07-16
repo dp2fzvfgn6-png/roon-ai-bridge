@@ -1668,16 +1668,35 @@ export class RoonMediaService {
       if (/\b(albums?|albumes|discography|discografia)\b/.test(title)) return "album";
       return null;
     };
+    const releaseSectionItem = (item: BrowseItem): ReleaseType | null => {
+      const context = releaseSection(item);
+      if (!context) return null;
+      const hint = String(item.hint || "");
+      if (["header", "list"].includes(hint)) return context;
+      if (hint !== "action_list") return null;
+      const title = normalize(String(item.title || "")).replace(/\s*\(\s*\d+\s*\)\s*$/u, "").trim();
+      return /^(?:(?:main|live)\s+)?albums?$|^albumes?(?:\s+(?:principales|en vivo|en directo))?$|^discograph(?:y|ia)$|^singles?(?:\s*(?:&|and|\/)\s*eps?)?$|^sencillos?(?:\s+y\s+eps?)?$|^eps?$|^extended plays?$|^compilations?$|^recopilatorios?$|^remixes?$|^remezclas?$/.test(title)
+        ? context
+        : null;
+    };
     const cleanSectionTitle = (value: string, context: ReleaseType): string => {
       const cleaned = (cleanRoonDisplayText(value) || "").replace(/\s*\(\s*\d+\s*\)\s*$/u, "").trim();
       if (cleaned && !["discography", "discografia"].includes(normalize(cleaned))) return cleaned;
       return context === "single_ep" ? "Singles & EPs" : context === "single" ? "Singles" : context === "ep" ? "EPs" : "Albums";
     };
+    const isSectionContinuation = (item: BrowseItem): boolean => {
+      if (!item.item_key || item.hint !== "list") return false;
+      const title = normalize(String(item.title || ""));
+      return /^(?:view|show|see|browse|explore)\s+(?:all|more)\b/.test(title) ||
+        /^(?:all|more)\s+(?:albums?|releases?|singles?|eps?)\b/.test(title) ||
+        /^(?:ver|mostrar|explorar)\s+(?:todo|todos|toda|todas|mas)\b/.test(title) ||
+        /^(?:todo|todos|toda|todas|mas)\s+(?:albumes?|lanzamientos?|singles?|sencillos?|eps?)\b/.test(title);
+    };
     const collectDirect = (items: BrowseItem[], context: ReleaseType, sectionTitle: string): void => {
       let activeContext = context;
       let activeSectionTitle = sectionTitle;
       for (const candidate of items) {
-        const sectionContext = releaseSection(candidate);
+        const sectionContext = releaseSectionItem(candidate);
         if (sectionContext) {
           activeContext = sectionContext;
           activeSectionTitle = cleanSectionTitle(String(candidate.title || ""), sectionContext);
@@ -1685,27 +1704,49 @@ export class RoonMediaService {
             continue;
           }
         }
-        if (!isMediaContentItem(candidate) || isVerifiedTrackItem(candidate)) continue;
+        if (!isMediaContentItem(candidate) || isVerifiedTrackItem(candidate) || isSectionContinuation(candidate)) continue;
         collected.push({ item: candidate, context: activeContext, sectionTitle: activeSectionTitle, ordinal: collected.length });
       }
     };
+    const visitedNavigations = new Set<string>();
     const walkSections = async (
       items: BrowseItem[],
       depth: number,
       context: ReleaseType,
       sectionTitle: string,
-      allowDirect: boolean
+      allowDirect: boolean,
+      listTitle: string | null
     ): Promise<void> => {
       if (allowDirect) collectDirect(items, context, sectionTitle);
-      if (depth >= 3 || collected.length >= count) return;
-      const sections = items.filter((item) =>
-        item.item_key &&
-        ["list", "action_list"].includes(String(item.hint || "")) &&
-        releaseSection(item)
-      );
-      for (const section of sections) {
-        const sectionContext = releaseSection(section) || context;
-        const childSectionTitle = cleanSectionTitle(String(section.title || ""), sectionContext);
+      if (depth >= 5 || collected.length >= count) return;
+      const navigations: Array<{ item: BrowseItem; context: ReleaseType; title: string }> = [];
+      let activeContext = releaseSection({ title: listTitle || "" }) || context;
+      let activeSectionTitle = releaseSection({ title: listTitle || "" })
+        ? cleanSectionTitle(listTitle || "", activeContext)
+        : sectionTitle;
+      let continuationAllowed = Boolean(releaseSection({ title: listTitle || "" }));
+      for (const item of items) {
+        const itemContext = releaseSectionItem(item);
+        if (itemContext) {
+          activeContext = itemContext;
+          activeSectionTitle = cleanSectionTitle(String(item.title || ""), itemContext);
+          continuationAllowed = true;
+          if (
+            item.item_key &&
+            ["list", "action_list"].includes(String(item.hint || ""))
+          ) {
+            navigations.push({ item, context: itemContext, title: activeSectionTitle });
+          }
+          continue;
+        }
+        if (continuationAllowed && isSectionContinuation(item)) {
+          navigations.push({ item, context: activeContext, title: activeSectionTitle });
+        }
+      }
+      for (const navigation of navigations) {
+        const section = navigation.item;
+        if (!section.item_key || visitedNavigations.has(section.item_key)) continue;
+        visitedNavigations.add(section.item_key);
         const opened = await browseCall(detail.browse, {
           hierarchy: detail.hierarchy,
           multi_session_key: detail.sessionKey,
@@ -1717,7 +1758,14 @@ export class RoonMediaService {
             ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(count, 200))
             : await loadCompleteList(detail.browse, detail.hierarchy, detail.sessionKey, Math.max(count, 200));
           if ((Number(loaded.list?.count) || 0) > loaded.items.length) catalogComplete = false;
-          await walkSections(loaded.items, depth + 1, sectionContext, childSectionTitle, true);
+          await walkSections(
+            loaded.items,
+            depth + 1,
+            navigation.context,
+            navigation.title,
+            true,
+            typeof loaded.list?.title === "string" ? loaded.list.title : null
+          );
           await browseCall(detail.browse, {
             hierarchy: detail.hierarchy,
             multi_session_key: detail.sessionKey,
@@ -1733,7 +1781,8 @@ export class RoonMediaService {
       0,
       "album",
       "Albums",
-      true
+      true,
+      typeof detail.current.list?.title === "string" ? detail.current.list.title : null
     );
 
     if (collected.length > count) catalogComplete = false;
@@ -1744,7 +1793,7 @@ export class RoonMediaService {
       const rawMedia = objectValue(candidate.media) || {};
       const releaseArtist = pickString(rawMedia, ["artist", "artist_name"]);
       const releaseAlbumArtist = pickString(rawMedia, ["album_artist", "albumartist"]);
-      return this.registerReference(artist.title, "album", {
+      return this.registerReference([candidate.title, artist.title].filter(Boolean).join(" "), "album", {
         ...candidate,
         source_context: detail.hierarchy === "artists" ? "library" : candidate.source_context,
         release_type_context: context,

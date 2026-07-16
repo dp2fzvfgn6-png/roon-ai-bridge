@@ -917,6 +917,109 @@ test("artist discography follows nested Roon sections, separates releases and re
   assert.equal(detail.releases.some((release) => release.artist === "Gabriella Quevedo"), false);
 });
 
+function createArtistShelfContinuationClient() {
+  let stage = "root";
+  const releases = Array.from({ length: 9 }, (_, index) => ({
+    title: `Album ${index + 1}`,
+    subtitle: "Shelf Artist",
+    item_key: `album-${index + 1}`,
+    hint: "action_list",
+    media: { artist: "Shelf Artist", release_year: 2010 + index }
+  }));
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artists-category") { stage = "artists"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artist-key") { stage = "artist-actions"; callback(false, { action: "list", list: { title: "Shelf Artist", hint: "action_list" } }); return; }
+      if (opts.item_key === "go-to-artist") { stage = "artist"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "view-all-albums") { stage = "all-albums"; callback(false, { action: "list" }); return; }
+      if (opts.pop_levels) { stage = "artist"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
+      if (stage === "artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Shelf Artist", item_key: "artist-key", hint: "action_list" }] }); return; }
+      if (stage === "artist-actions") { callback(false, { list: { title: "Shelf Artist", count: 1, hint: "action_list" }, items: [{ title: "Go to Artist", item_key: "go-to-artist", hint: "list" }] }); return; }
+      if (stage === "artist") {
+        callback(false, { list: { title: "Shelf Artist", count: 6 }, items: [
+          { title: "Main Albums (9)", hint: "header" },
+          ...releases.slice(0, 4),
+          { title: "View All", item_key: "view-all-albums", hint: "list" }
+        ] });
+        return;
+      }
+      const offset = opts.offset || 0;
+      callback(false, { list: { title: "Main Albums", count: releases.length }, items: releases.slice(offset, offset + (opts.count || releases.length)) });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("artist discography follows a section View All continuation instead of stopping at the preview shelf", async () => {
+  const service = new RoonMediaService(createArtistShelfContinuationClient(), "tidal");
+  const search = await service.search({ query: "Shelf Artist", types: ["artist"], count: 5 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+
+  assert.deepEqual(detail.releases.map((release) => release.title), Array.from({ length: 9 }, (_, index) => `Album ${index + 1}`));
+  assert.equal(detail.releases.some((release) => release.title === "View All"), false);
+  assert.equal(detail.releases.every((release) => release.release_section === "Main Albums"), true);
+});
+
+function createArtistReleaseAlbumDetailClient() {
+  const stages = new Map();
+  const searchInputs = [];
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.input) {
+        searchInputs.push(opts.input);
+        stages.set(session, opts.input === "Catalog Album Disclosure" ? "album-root" : "artist-root");
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "artists-category") { stages.set(session, "artists"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stages.set(session, "albums"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artist-key") { stages.set(session, "artist"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "catalog-album-key") { stages.set(session, "album-actions"); callback(false, { action: "list", list: { title: "Catalog Album", hint: "action_list" } }); return; }
+      if (opts.item_key === "go-to-album") { stages.set(session, "album-detail"); callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "artist-root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
+      if (stage === "album-root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Disclosure", item_key: "artist-key", hint: "list" }] }); return; }
+      if (stage === "artist") { callback(false, { list: { title: "Disclosure", count: 2 }, items: [
+        { title: "Main Albums (1)", hint: "header" },
+        { title: "Catalog Album", subtitle: "Disclosure", item_key: "artist-release-key", hint: "action_list", media: { artist: "Disclosure", source: "tidal" } }
+      ] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Catalog Album", subtitle: "Disclosure", item_key: "catalog-album-key", hint: "action_list", media: { artist: "Disclosure", source: "tidal" } }] }); return; }
+      if (stage === "album-actions") { callback(false, { list: { title: "Catalog Album", count: 1, hint: "action_list" }, items: [{ title: "Go to Album", item_key: "go-to-album", hint: "list" }] }); return; }
+      callback(false, { list: { title: "Catalog Album", count: 2 }, items: [
+        { title: "Opening Track", subtitle: "Disclosure", item_key: "track-1", hint: "action_list" },
+        { title: "Closing Track", subtitle: "Disclosure", item_key: "track-2", hint: "action_list" }
+      ] });
+    }
+  };
+  return {
+    client: { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse },
+    searchInputs
+  };
+}
+
+test("catalog albums discovered through an artist are re-resolved with album and artist before loading tracks", async () => {
+  const mock = createArtistReleaseAlbumDetailClient();
+  const service = new RoonMediaService(mock.client, "tidal");
+  const search = await service.search({ query: "Disclosure", types: ["artist"], count: 5 });
+  const releases = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+  const detail = await service.getAlbumDetail(releases.releases[0].result_id, undefined, 200);
+
+  assert.equal(mock.searchInputs.includes("Catalog Album Disclosure"), true);
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Opening Track", "Closing Track"]);
+  assert.equal(detail.data_origin, "roon_search_session");
+  assert.equal(detail.ordered, true);
+});
+
 function createCatalogAndLibraryArtistClient() {
   const stages = new Map();
   let libraryLoads = 0;

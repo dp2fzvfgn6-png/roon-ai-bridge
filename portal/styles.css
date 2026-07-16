@@ -568,7 +568,7 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: linear-gradient(90deg,var(--brand-green-light) 0 var(--range-progress),rgba(237,241,239,.78) var(--range-progress) 100%) center / 100% 3px no-repeat;
+  background: linear-gradient(90deg,var(--brand-orange-light) 0 var(--range-progress),rgba(237,241,239,.78) var(--range-progress) 100%) center / 100% 3px no-repeat;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -578,7 +578,7 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .mini-progress input[type=range]::-moz-range-track, .mini-volume input[type=range]::-moz-range-track,
 .mini-progress input[type=range]::-moz-range-progress, .mini-volume input[type=range]::-moz-range-progress { height: 3px; border: 0; border-radius: 0; background: transparent; }
 .mini-progress input[type=range]::-moz-range-thumb, .mini-volume input[type=range]::-moz-range-thumb { width: 1px; height: 15px; border: 0; border-radius: 0; background: transparent; box-shadow: none; opacity: 0; }
-.mini-progress input[type=range]:focus-visible, .mini-volume input[type=range]:focus-visible { outline: 1px solid rgba(159,193,179,.55); outline-offset: 1px; }
+.mini-progress input[type=range]:focus-visible, .mini-volume input[type=range]:focus-visible { outline: 1px solid rgba(224,122,94,.55); outline-offset: 1px; }
 .mini-progress input:disabled { cursor: default; opacity: .3; }
 .mini-right { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 11px; }
 .mini-queue-button { flex: 0 0 auto; }

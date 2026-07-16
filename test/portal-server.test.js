@@ -179,6 +179,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.toast\.warning/);
     assert.match(portalStylesText, /\.toast\.info/);
     assert.match(portalStylesText, /--range-progress: 0%/);
+    assert.match(portalStylesText, /linear-gradient\(90deg,var\(--brand-orange-light\) 0 var\(--range-progress\)/);
     assert.match(portalStylesText, /::-webkit-slider-thumb/);
     assert.match(portalStylesText, /::-moz-range-thumb/);
     assert.match(portalStylesText, /border-radius: 0; background: transparent/);
