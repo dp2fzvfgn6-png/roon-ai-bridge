@@ -188,6 +188,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.featured-zone-links button/);
     assert.match(portalStylesText, /\.home-playlist-card > div:first-child[^}]*position: relative/);
     assert.match(portalStylesText, /\.featured-title-slot/);
+    assert.match(portalStylesText, /\.home-idle-cloud/);
+    assert.match(portalStylesText, /@keyframes home-zone-float/);
+    assert.match(portalStylesText, /::view-transition-group\(home-zone-cover-0\)/);
     assert.match(portalStylesText, /\.update-compact/);
     assert.match(portalStylesText, /\.available-update\[hidden\]/);
     assert.match(portalStylesText, /\.service-panel/);
@@ -279,6 +282,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /featured-backdrop.*imageTag\(featured\.now_playing\?\.image_key,"",500\)/);
     assert.match(portalScriptText, /function fitFeaturedTitle/);
     assert.match(portalScriptText, /title\.scrollHeight>slot\.clientHeight/);
+    assert.match(portalScriptText, /function beginHomeZonePreview/);
+    assert.match(portalScriptText, /data-preview-zone/);
+    assert.match(portalScriptText, /document\.startViewTransition/);
+    assert.match(portalScriptText, /},5000\)/);
     assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
