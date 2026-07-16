@@ -121,11 +121,24 @@ the complete playlist. Playlist mutations include `resolution_summary` and are
 only returned with `verified: true` when every track is resolved or explicitly
 selected. Explicit model selections record `selection_origin: "model"`; the
 legacy `manual` status alone must not be described as human verification.
-`roon_set_playlist_cover` accepts a supplied or generated
-JPEG, PNG or WebP image and normalizes it to a square, metadata-free WebP of at
-most 768×768 and 750 KB before storing it. Its model-facing description asks
-image generation to start from a 768×768 square sRGB WebP, keep important
-content centered and target less than 750 KB.
+Generated playlist artwork uses an explicit two-step MCP flow.
+`roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
+name and returns its description, bounded track context, generation requirements
+and required next steps before image generation begins. The server instructions
+require this preflight before generated artwork.
+
+`roon_set_playlist_cover` declares `image_file` through
+`_meta["openai/fileParams"]`, so ChatGPT passes an authorized `file_id` and
+temporary `download_url` instead of asking the model to serialize binary data as
+Base64. The bridge accepts only public HTTPS file URLs, bounds download time and
+bytes, redacts the temporary URL from logs and retains inline Base64 only for
+legacy clients.
+
+JPEG, PNG and WebP sources must be at least 768×768. RoonIA rejects smaller
+thumbnails rather than storing a blurry cover, corrects orientation, center
+crops, strips metadata and writes a verified square WebP at 1024×1024 and no
+more than 750 KB. The tool result reports the stored dimensions, format, color
+space and byte count.
 
 ### Lightweight visual responses
 

@@ -38,6 +38,22 @@ each release lives under [`docs/`](docs/README.md).
   remix, cover and alternate versions, avoids adjacent tracks by the same
   artist and stores the complete available Roon observation separately from
   model-supplied metadata.
+- Playlist playback now reconstructs fresh Roon references with the original
+  successful title-and-artist query when enriched secondary credits or release
+  context make the canonical metadata query too restrictive.
+- Rebuilt manual media search so typed Roon categories run in independent
+  sessions concurrently, while the portal renders each category as soon as it
+  arrives and cancels stale searches.
+- Artist and album details now prefer exact native-library identities through
+  a cached ordinal index, label their provenance and completeness, and retain
+  the selected search session when a streaming result must be opened.
+- Removed name-only discography fabrication and synthetic album ordering:
+  unverified global matches are omitted or displayed separately as related
+  results, actions are excluded from tracklists and track numbers are parsed
+  only from Roon's structured data or native list prefixes.
+- Search ambiguity now blocks recommendation for indistinguishable exact
+  candidates, and artist-credit parsing preserves slash band names such as
+  AC/DC.
 
 ## 0.17.1 - 2026-07-16
 

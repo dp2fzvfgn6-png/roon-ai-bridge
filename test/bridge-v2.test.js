@@ -377,6 +377,86 @@ test("v2 exposes custom playlist cover storage through the gateway", async () =>
     playlistId: "p1",
     input: { data_url: undefined, image_base64: "aW1hZ2U=", content_type: "image/png" }
   });
+  assert.equal(result.data.upload_source, "inline_base64");
+  assert.deepEqual(result.data.cover_verification, { cover_image_key: "custom:cover.png" });
+});
+
+test("v2 prepares playlist-specific artwork requirements before generation", () => {
+  const context = gatewayContext(roonClient(), {});
+  context.playlistService = {
+    getPlaylistByReference: (reference) => {
+      assert.deepEqual(reference, { name: "Focus" });
+      return {
+        playlist_id: "p1",
+        name: "Focus",
+        description: "Deep work without distractions",
+        cover_image_key: null,
+        track_count: 2,
+        tracks: [
+          { position: 0, title: "Everything In Its Right Place", artist: "Radiohead", album: "Kid A", query: "radiohead" },
+          { position: 1, title: "Avril 14th", artist: "Aphex Twin", album: "Drukqs", query: "aphex twin" }
+        ]
+      };
+    }
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = gateway.preparePlaylistCover({ playlist: { name: "Focus" } });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.verified, true);
+  assert.equal(result.data.playlist.playlist_id, "p1");
+  assert.equal(result.data.artwork_requirements.recommended_width, 1024);
+  assert.equal(result.data.artwork_requirements.minimum_width, 768);
+  assert.equal(result.data.generation_context.tracks.length, 2);
+  assert.match(result.summary, /Generate the image now/);
+});
+
+test("v2 downloads an authorized ChatGPT file before saving and verifies the result", async () => {
+  const context = gatewayContext(roonClient(), {});
+  const file = {
+    download_url: "https://files.example.test/cover.png",
+    file_id: "file_cover",
+    mime_type: "image/png",
+    file_name: "cover.png"
+  };
+  context.downloadToolImage = async (received) => {
+    assert.deepEqual(received, file);
+    return {
+      bytes: Buffer.from("png-bytes"),
+      contentType: "image/png",
+      fileId: file.file_id,
+      fileName: file.file_name
+    };
+  };
+  let stored;
+  context.playlistService = {
+    setCustomCover: (playlistId, input) => {
+      stored = { playlistId, input };
+      return { playlist_id: playlistId, cover_image_key: "custom:cover.webp" };
+    },
+    inspectCustomCover: async () => ({
+      cover_image_key: "custom:cover.webp",
+      width: 1024,
+      height: 1024,
+      bytes: 120000
+    })
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.setPlaylistCover({ playlist_id: "p1", image_file: file });
+
+  assert.deepEqual(stored, {
+    playlistId: "p1",
+    input: {
+      data_url: undefined,
+      image_base64: Buffer.from("png-bytes").toString("base64"),
+      content_type: "image/png"
+    }
+  });
+  assert.equal(result.data.upload_source, "authorized_file");
+  assert.deepEqual(result.data.source_file, { file_id: "file_cover", file_name: "cover.png" });
+  assert.equal(result.data.cover_verification.width, 1024);
 });
 
 test("v2 never upgrades an explicitly unverified SDK result", () => {

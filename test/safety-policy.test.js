@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const sharp = require("sharp");
 
 const { createServer } = require("../dist/api/server");
 const { createDatabase } = require("../dist/db/database");
@@ -133,10 +134,20 @@ test("destructive playlist MCP tools require confirmation and support dry_run", 
     mediaService: {}
   };
   const tools = registerTools(context);
+  const coverSource = await sharp({
+    create: {
+      width: 1024,
+      height: 1024,
+      channels: 3,
+      background: { r: 20, g: 40, b: 70 }
+    }
+  })
+    .png()
+    .toBuffer();
 
   const coverUpdated = await invoke(tools.get("roon_set_virtual_playlist_cover_image"), {
     playlist_id: playlist.playlist_id,
-    image_base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    image_base64: coverSource.toString("base64"),
     content_type: "image/png"
   });
   assert.equal(coverUpdated.ok, true);

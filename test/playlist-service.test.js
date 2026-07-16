@@ -190,10 +190,12 @@ test("normalizes, serves and clears a validated custom playlist cover", async ()
   const config = tempConfig();
   const service = new PlaylistService(config);
   const playlist = service.createPlaylist({ name: "Custom artwork" });
-  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const png = await sharp({
+    create: { width: 1024, height: 1024, channels: 3, background: { r: 20, g: 40, b: 70 } }
+  }).png().toBuffer();
 
   const updated = await service.setCustomCover(playlist.playlist_id, {
-    image_base64: png,
+    image_base64: png.toString("base64"),
     content_type: "image/png"
   });
   assert.match(updated.cover_image_key, /^custom:.+\.webp$/);
@@ -201,7 +203,19 @@ test("normalizes, serves and clears a validated custom playlist cover", async ()
   assert.equal(stored.content_type, "image/webp");
   assert.ok(stored.bytes.length > 20);
   assert.ok(stored.bytes.length <= 750 * 1024);
-  assert.equal((await sharp(stored.bytes).metadata()).format, "webp");
+  const metadata = await sharp(stored.bytes).metadata();
+  assert.equal(metadata.format, "webp");
+  assert.equal(metadata.width, 1024);
+  assert.equal(metadata.height, 1024);
+  assert.deepEqual(await service.inspectCustomCover(updated.cover_image_key.slice("custom:".length)), {
+    cover_image_key: updated.cover_image_key,
+    content_type: "image/webp",
+    width: 1024,
+    height: 1024,
+    format: "webp",
+    bytes: stored.bytes.length,
+    color_space: "srgb"
+  });
 
   const cleared = service.clearCustomCover(playlist.playlist_id);
   assert.equal(cleared.cover_image_key, null);
@@ -226,10 +240,42 @@ test("crops large playlist artwork to a manageable square WebP", async () => {
   const stored = service.getCustomCover(updated.cover_image_key.slice("custom:".length));
   const metadata = await sharp(stored.bytes).metadata();
 
-  assert.equal(metadata.width, 768);
-  assert.equal(metadata.height, 768);
+  assert.equal(metadata.width, 1024);
+  assert.equal(metadata.height, 1024);
   assert.equal(metadata.format, "webp");
   assert.ok(stored.bytes.length <= 750 * 1024);
+});
+
+test("rejects low-resolution playlist artwork instead of storing a blurry cover", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({ name: "Too small" });
+  const source = await sharp({
+    create: { width: 256, height: 256, channels: 3, background: { r: 31, g: 73, b: 122 } }
+  }).png().toBuffer();
+
+  await assert.rejects(
+    () => service.setCustomCover(playlist.playlist_id, {
+      image_base64: source.toString("base64"),
+      content_type: "image/png"
+    }),
+    (error) => error.code === "INVALID_PLAYLIST_COVER" &&
+      error.details.received_width === 256 &&
+      error.details.minimum_width === 768
+  );
+  assert.equal(service.getPlaylist(playlist.playlist_id).cover_image_key, null);
+});
+
+test("resolves playlist cover preflight references by ID or accent-insensitive exact name", () => {
+  const service = new PlaylistService(tempConfig());
+  const playlist = service.createPlaylist({ name: "Música nocturna" });
+
+  assert.equal(service.getPlaylistByReference({ id: playlist.playlist_id }).playlist_id, playlist.playlist_id);
+  assert.equal(service.getPlaylistByReference({ name: "musica nocturna" }).playlist_id, playlist.playlist_id);
+  assert.throws(
+    () => service.getPlaylistByReference({ name: "Otra lista" }),
+    (error) => error.code === "PLAYLIST_NOT_FOUND"
+  );
 });
 
 test("lists virtual playlists without tracks by default and paginates tracks explicitly", () => {
@@ -1240,6 +1286,107 @@ test("production playlist playback reconstructs fresh media references from pers
   assert.deepEqual(plays.map((call) => call.resultId), ["fresh:One", "fresh:Two"]);
   assert.equal(controlCalls, 1);
   assert.ok(result.results.every((entry) => entry.cached_roon_item_key_used === false));
+});
+
+test("playback retries the original resolved query when enriched artist credits are too restrictive", async () => {
+  const config = tempConfig();
+  const service = new PlaylistService(config);
+  const playlist = service.createPlaylist({
+    name: "Enriched credits",
+    tracks: [{
+      query: "Chimes Hudson Mohawke",
+      title: "Chimes",
+      artist: "Hudson Mohawke, Ross Birchard",
+      album: "Lantern",
+      audio_metadata: {
+        title: "Chimes",
+        artist: "Hudson Mohawke, Ross Birchard",
+        album: "Lantern",
+        release_year: 2015,
+        version_hint: "studio",
+        source: "tidal"
+      },
+      resolution: {
+        status: "resolved",
+        score: 120,
+        reason: "selected_equivalent_recording"
+      }
+    }]
+  });
+  const searches = [];
+  const plays = [];
+  const mediaService = {
+    async search(request) {
+      searches.push(request);
+      if (request.query !== "Chimes Hudson Mohawke") {
+        return { results: [], warnings: [] };
+      }
+      return {
+        results: [{
+          result_id: "fresh:chimes",
+          roon_item_key: "fresh-key:chimes",
+          type: "track",
+          media_type: "track",
+          title: "Chimes",
+          artist: "Hudson Mohawke",
+          artists: [{ type: "artist", title: "Hudson Mohawke", artist: null, result_id: null }],
+          subtitle: "Hudson Mohawke",
+          album: "Lantern",
+          album_artist: "Hudson Mohawke",
+          release_year: 2015,
+          version_hint: "studio",
+          version_penalties: [],
+          source: "tidal",
+          source_confidence: "high",
+          quality: null,
+          image_key: null,
+          is_library: false,
+          playable: true,
+          is_best_match: true,
+          selection_required: false,
+          match_score: 100,
+          confidence: "high",
+          match_reasons: [],
+          match_penalties: [],
+          warnings: [],
+          expires_at: new Date(Date.now() + 60000).toISOString()
+        }],
+        warnings: []
+      };
+    },
+    async play(resultId, zoneId, mode) {
+      plays.push({ resultId, zoneId, mode });
+      return { ok: true, result_id: resultId, mode };
+    }
+  };
+  const zone = { zone_id: "office", state: "paused", is_play_allowed: true };
+  const roonClient = {
+    isCoreConnected: () => true,
+    getZone: () => zone,
+    isTransportReady: () => true,
+    getTransport: () => ({
+      control(_zone, command, callback) {
+        if (command === "play") zone.state = "playing";
+        callback(false);
+      }
+    })
+  };
+
+  const result = await service.playPlaylist(
+    roonClient,
+    playlist.playlist_id,
+    { zone_id: "office", mode: "play_now" },
+    { mediaService }
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(searches.map((request) => request.query), [
+    "Chimes Hudson Mohawke, Ross Birchard",
+    "Chimes Hudson Mohawke"
+  ]);
+  assert.ok(searches.every((request) => request.strategy.prefer_original_album === true));
+  assert.deepEqual(plays, [{ resultId: "fresh:chimes", zoneId: "office", mode: "replace_queue" }]);
+  assert.equal(service.getPlaylist(playlist.playlist_id).tracks[0].resolution.status, "resolved");
 });
 
 test("play_now leaves the current queue untouched when the first identity is ambiguous", async () => {

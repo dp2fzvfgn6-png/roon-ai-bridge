@@ -50,13 +50,15 @@ media.push(
   ...Array.from({length:12},(_,index)=>({result_id:`track-preview-${index}`,media_type:"track",title:`Pista destacada ${index+1}`,artist:index%2?"Radiohead":"AIR",album:index%2?"In Rainbows":"Moon Safari",image_key:index%2?"radio":"moon",source:"library"}))
 );
 function previewGroupKey(item) { return item.media_type==="album"&&["ep","single_ep","single"].includes(item.release_type)?item.release_type:item.media_type; }
-function previewSearchPayload(query) {
+function previewSearchPayload(query, requestedTypes = null) {
   const normalized=String(query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const priority={artist:0,album:1,ep:2,single_ep:3,single:4,track:5,playlist:6};
-  const exact=media.filter((item)=>String(item.title||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()===normalized)
+  const allowed=requestedTypes?.length?new Set(requestedTypes):null;
+  const visibleMedia=allowed?media.filter((item)=>allowed.has(item.media_type)):media;
+  const exact=visibleMedia.filter((item)=>String(item.title||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()===normalized)
     .sort((left,right)=>priority[previewGroupKey(left)]-priority[previewGroupKey(right)]);
-  const best=exact[0]||media.find((item)=>item.media_type==="artist"&&String(item.artist||"").toLowerCase()===normalized)||media.find((item)=>item.is_best_match)||media[0];
-  const results=media.map((item)=>({...item,is_best_match:item.result_id===best?.result_id,direct_match:item.result_id===best?.result_id,direct_match_score:item.result_id===best?.result_id?100:0}));
+  const best=exact[0]||visibleMedia.find((item)=>item.media_type==="artist"&&String(item.artist||"").toLowerCase()===normalized)||visibleMedia.find((item)=>item.is_best_match)||visibleMedia[0];
+  const results=visibleMedia.map((item)=>({...item,is_best_match:item.result_id===best?.result_id,direct_match:item.result_id===best?.result_id,direct_match_score:item.result_id===best?.result_id?100:0,data_origin:"roon_search_session",completeness:"unknown",ordered:null,identity_verified:true}));
   const groups={artist:[],album:[],ep:[],single_ep:[],single:[],track:[],playlist:[]};
   results.forEach((item)=>groups[previewGroupKey(item)].push(item));
   const best_by_type=Object.fromEntries(Object.entries(groups).filter(([,items])=>items.length).map(([key,items])=>[key,items[0]]));
@@ -92,10 +94,10 @@ app.get("/api/session", (_req,res)=>res.json({ok:true,version:previewVersion,bui
 app.get("/api/dashboard", (_req,res)=>res.json({version:previewVersion,status:{core_connected:true,core_name:"Roon Server · Nucleus",transport_ready:true,browse_ready:true},counts:{zones:3,playing_zones:1,playlists:4,playlist_tracks:146,active_api_keys:2,mcp_tools:14,recent_errors:0},recent_actions:[{tool_or_endpoint:"roon_play_media",source:"mcp",timestamp:"2026-07-10T08:19:00Z"},{tool_or_endpoint:"/zones/salon/volume",source:"portal",timestamp:"2026-07-10T08:16:00Z"}],now_playing:[]}));
 app.get("/api/roon/zones",(_req,res)=>res.json(zones));
 app.get("/api/roon/outputs",(_req,res)=>res.json(zones.flatMap(z=>z.outputs)));
-app.get("/api/roon/media/search",(req,res)=>res.json(previewSearchPayload(req.query.q)));
+app.get("/api/roon/media/search",(req,res)=>{const types=String(req.query.types||"").split(",").filter(Boolean);const delay={artist:80,album:180,track:320,playlist:480}[types[0]]||80;setTimeout(()=>res.json(previewSearchPayload(req.query.q,types)),delay);});
 app.get("/api/roon/media/:id/releases",(_req,res)=>res.json({releases:media.filter(x=>x.media_type==="album")}));
-app.get("/api/roon/media/:id/artist-detail",(req,res)=>{const artist=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="artist");res.json({artist,bio:"Una breve biografía editorial proporcionada por Roon para contextualizar la trayectoria, el sonido y la discografía esencial del artista.",popular_tracks:media.filter(x=>x.media_type==="track").slice(0,12),albums:media.filter(x=>x.media_type==="album").slice(0,6),singles_eps:media.filter(x=>x.media_type==="album").slice(6,8),warnings:[]});});
-app.get("/api/roon/media/:id/album-detail",(req,res)=>{const album=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="album");res.json({album,description:"Edición disponible en la biblioteca y los servicios conectados a Roon.",tracks:media.filter(x=>x.media_type==="track").slice(0,12),warnings:[]});});
+app.get("/api/roon/media/:id/artist-detail",(req,res)=>{const artist=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="artist");res.json({artist:{...artist,data_origin:"roon_library",completeness:"complete",identity_verified:true},bio:"Una breve biografía editorial proporcionada por Roon para contextualizar la trayectoria, el sonido y la discografía esencial del artista.",popular_tracks:media.filter(x=>x.media_type==="track").slice(0,12),albums:media.filter(x=>x.media_type==="album").slice(0,6).map(x=>({...x,source:"library"})),singles_eps:media.filter(x=>x.media_type==="album").slice(6,8),data_origin:"roon_library",completeness:"complete",identity_verified:true,warnings:[]});});
+app.get("/api/roon/media/:id/album-detail",(req,res)=>{const album=media.find(x=>x.result_id===req.params.id)||media.find(x=>x.media_type==="album");const tracks=media.filter(x=>x.media_type==="track").slice(0,12).map((x,index)=>({...x,track_number:index+1,duration_seconds:210+index*7,source:"library"}));res.json({album:{...album,source:"library",is_library:true,data_origin:"roon_library",completeness:"complete",identity_verified:true},description:"Edición disponible en la biblioteca y los servicios conectados a Roon.",tracks,related_tracks:[],data_origin:"roon_library",completeness:"complete",ordered:true,identity_verified:true,warnings:[]});});
 app.get("/api/roon/media/:id",(req,res)=>res.json(media.find(x=>x.result_id===req.params.id)||media[0]));
 app.post("/api/roon/media/:id/:action",(_req,res)=>res.json({ok:true,state_verified:true}));
 app.get("/api/playlists",(_req,res)=>res.json({playlists,total:playlists.length}));

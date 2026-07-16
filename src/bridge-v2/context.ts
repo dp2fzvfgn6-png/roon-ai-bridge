@@ -11,6 +11,7 @@ import { ToolAccessService } from "../services/toolAccessService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
 import { ApiKeyRecord } from "../services/apiKeyService";
 import { Logger } from "../utils/logger";
+import type { DownloadedToolImage, ToolFileReference } from "../services/toolFileService";
 
 export type BridgeV2Context = {
   config: AppConfig;
@@ -25,6 +26,7 @@ export type BridgeV2Context = {
   actionLogService?: ActionLogService;
   technicalLogService?: TechnicalLogService;
   toolAccessService?: ToolAccessService;
+  downloadToolImage?: (file: ToolFileReference) => Promise<DownloadedToolImage>;
   activeApiKey?: ApiKeyRecord | null;
   manifestMode?: boolean;
 };

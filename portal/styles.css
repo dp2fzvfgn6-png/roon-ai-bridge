@@ -626,6 +626,19 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .connection-config { width: 100%; min-height: 260px; resize: vertical; font: 11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; }
 .skeleton-block { position: relative; overflow: hidden; }
 .skeleton-block::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035), transparent); animation: shimmer 1.5s infinite; }
+.search-result-skeleton { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+.search-result-skeleton i { min-height:92px; border:1px solid var(--line); background:linear-gradient(90deg,var(--surface),rgba(255,255,255,.045),var(--surface)); background-size:220% 100%; animation:search-shimmer 1.25s linear infinite; }
+.search-section-error { padding:18px; border-left:2px solid var(--warn); background:rgba(223,177,95,.045); }
+.search-section-error p { margin:0; color:var(--text-dim); font-size:12px; }
+.detail-trust { display:flex; align-items:center; gap:11px; margin:22px 0 6px; padding:12px 14px; border:1px solid var(--line); background:rgba(103,132,117,.07); }
+.detail-trust>.material-symbols-rounded { color:var(--brand-green-light); }
+.detail-trust span,.detail-trust strong,.detail-trust small { display:block; }
+.detail-trust strong { font-size:12px; }
+.detail-trust small { margin-top:2px; color:var(--text-dim); font-size:10px; }
+.detail-trust.partial { border-left:2px solid var(--warn); background:rgba(223,177,95,.045); }
+.detail-trust.partial>.material-symbols-rounded { color:var(--warn); }
+.related-results { border-left:2px solid var(--warn); padding-left:18px; }
+@keyframes search-shimmer { to { background-position:-220% 0; } }
 @keyframes shimmer { to { transform: translateX(100%); } }
 
 @media (max-width: 1120px) {
@@ -789,6 +802,7 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
   .search-stage { padding-left: 7px; }
   .search-stage input { font-size: 15px; }
   .search-stage .btn { padding: 0 10px; }
+  .search-result-skeleton { grid-template-columns:1fr 1fr; }
 }
 /* Deterministic search and navigable media metadata */
 .best-search-result{width:min(100%,590px);margin:0 0 2.25rem;padding:14px 16px 14px 18px;border:1px solid color-mix(in srgb,var(--brand-green) 72%,transparent);border-left:3px solid var(--brand-green-light);border-radius:2px;background:linear-gradient(135deg,color-mix(in srgb,var(--brand-green) 13%,var(--surface)),var(--surface))}

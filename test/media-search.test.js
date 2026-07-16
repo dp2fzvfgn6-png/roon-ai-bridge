@@ -358,17 +358,19 @@ test("expand_media_search tries context-stripped searches and returns best candi
 });
 
 function createMultiTypeSearchClient({ direct = [], artist = [], album = [], track = [], playlist = [] }) {
-  let stage = "root";
+  const stages = new Map();
   const titles = { artist: "Artists", album: "Albums", track: "Tracks", playlist: "Playlists" };
   const collections = { artist, album, track, playlist };
   const browse = {
     browse(opts, callback) {
-      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      const session = opts.multi_session_key || "default";
+      if (opts.input) { stages.set(session, "root"); callback(false, { action: "list" }); return; }
       const match = Object.keys(titles).find((type) => opts.item_key === `${type}-category`);
-      if (match) { stage = match; callback(false, { action: "list" }); return; }
+      if (match) { stages.set(session, match); callback(false, { action: "list" }); return; }
       callback(false, { action: "none" });
     },
-    load(_opts, callback) {
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default") || "root";
       if (stage === "root") {
         callback(false, { list: { title: "Search" }, items: [
           ...direct,
@@ -381,6 +383,19 @@ function createMultiTypeSearchClient({ direct = [], artist = [], album = [], tra
   };
   return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
 }
+
+test("multi-type search runs independent Roon sessions concurrently", async () => {
+  const stages=new Map();let active=0;let peak=0;
+  const titles={artist:"Artists",album:"Albums",track:"Tracks",playlist:"Playlists"};
+  const browse={
+    browse(opts,callback){const session=opts.multi_session_key;if(opts.input){stages.set(session,"root");callback(false,{action:"list"});return;}const type=Object.keys(titles).find((key)=>opts.item_key===`${key}-category`);if(type){stages.set(session,type);callback(false,{action:"list"});return;}callback(false,{action:"none"});},
+    load(opts,callback){const stage=stages.get(opts.multi_session_key);if(stage==="root"){callback(false,{list:{title:"Search",count:4},items:Object.entries(titles).map(([type,title])=>({title,item_key:`${type}-category`,hint:"list"}))});return;}active+=1;peak=Math.max(peak,active);setTimeout(()=>{active-=1;callback(false,{list:{title:titles[stage],count:1},items:[{title:`${stage} result`,subtitle:"Example",item_key:`${stage}-result`,hint:"action_list"}]});},20);}
+  };
+  const service=new RoonMediaService({isCoreConnected:()=>true,isBrowseReady:()=>true,getBrowse:()=>browse},"tidal");
+  const search=await service.search({query:"Example",types:["artist","album","track","playlist"],count:1});
+  assert.equal(search.results.length,4);
+  assert.equal(peak,4);
+});
 
 test("best match follows Roon direct result and resolves entity priority deterministically", async (t) => {
   await t.test("Bad Bunny selects the artist even when Roon reports zero albums", async () => {
@@ -561,16 +576,18 @@ function createRoonAlbumSearchTracklistClient() {
   return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
 }
 
-test("album detail recovers Roon's full streaming tracklist from the shared album cover", async () => {
+test("album detail keeps cover-matched search results separate from an unverified tracklist", async () => {
   const service = new RoonMediaService(createRoonAlbumSearchTracklistClient(), "tidal");
   const search = await service.search({ query: "EL BAIFO", types: ["album"], count: 5 });
   const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
 
-  assert.deepEqual(detail.tracks.map((track) => track.title), ["EL BAIFO", "AL GOLPITO", "NI BORRACHO"]);
-  assert.deepEqual(detail.tracks.map((track) => track.track_number), [1, 2, 3]);
-  assert.equal(detail.tracks.every((track) => track.album === "EL BAIFO"), true);
-  assert.equal(detail.tracks.every((track) => track.source === "tidal"), true);
-  assert.deepEqual(detail.warnings, ["tracklist_recovered_from_roon_album_search"]);
+  assert.deepEqual(detail.tracks, []);
+  assert.deepEqual(detail.related_tracks.map((track) => track.title), ["EL BAIFO", "AL GOLPITO", "NI BORRACHO"]);
+  assert.deepEqual(detail.related_tracks.map((track) => track.track_number), [null, null, null]);
+  assert.equal(detail.related_tracks.every((track) => track.album === "EL BAIFO"), true);
+  assert.equal(detail.related_tracks.every((track) => track.source === "tidal"), true);
+  assert.equal(detail.ordered, false);
+  assert.deepEqual(detail.warnings, ["ordered_tracklist_unavailable: showing related Roon search results separately"]);
 });
 
 function createMultiDiscAlbumDetailClient() {
@@ -618,6 +635,110 @@ test("album detail combines every disc instead of returning only the first track
     "Finale",
     "Epilogue"
   ]);
+});
+
+test("search_media requires selection when two direct-looking exact recordings remain indistinguishable", async () => {
+  const service = new RoonMediaService(createSearchClient([
+    {title:"Hallelujah",subtitle:"Jeff Buckley",item_key:"hallelujah-1",image_key:"grace-1",hint:"action_list"},
+    {title:"Hallelujah",subtitle:"Jeff Buckley",item_key:"hallelujah-2",image_key:"grace-2",hint:"action_list"}
+  ]), "tidal");
+  const search = await service.search({query:"Hallelujah Jeff Buckley",types:["track"],count:5});
+  assert.equal(search.ambiguous, true);
+  assert.equal(search.selection_required, true);
+  assert.equal(search.recommended_result_id, null);
+});
+
+test("splitArtistCredit preserves slash band names such as AC/DC", () => {
+  const { splitArtistCredit } = require("../dist/roon/roonMediaService");
+  assert.deepEqual(splitArtistCredit("AC/DC"), ["AC/DC"]);
+  assert.deepEqual(splitArtistCredit("Artist One / Artist Two"), ["Artist One", "Artist Two"]);
+});
+
+function createNativeLibraryAlbumClient() {
+  const stages = new Map();
+  let indexLoads = 0;
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.hierarchy === "search" && opts.input) { stages.set(session, "search-root"); callback(false, { action:"list" }); return; }
+      if (opts.item_key === "albums-category") { stages.set(session, "search-albums"); callback(false, { action:"list" }); return; }
+      if (opts.hierarchy === "albums" && !opts.item_key) { stages.set(session, "library-albums"); if (session.includes("library-index")) indexLoads += 1; callback(false, { action:"list" }); return; }
+      if (opts.hierarchy === "albums" && String(opts.item_key).startsWith("library-nevermind")) { stages.set(session, "library-nevermind-detail"); callback(false, { action:"list" }); return; }
+      callback(false, { action:"none" });
+    },
+    load(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      const stage = stages.get(session);
+      if (stage === "search-root") { callback(false, { list:{title:"Search",count:1}, items:[{title:"Albums",item_key:"albums-category",hint:"list"}] }); return; }
+      if (stage === "search-albums") { callback(false, { list:{title:"Albums",count:1}, items:[{title:"Nevermind",subtitle:"Nirvana",image_key:"never-cover",item_key:"search-nevermind",hint:"action_list"}] }); return; }
+      if (stage === "library-albums") {
+        const all = [
+          {title:"Bleach",subtitle:"Nirvana",image_key:"bleach-cover",item_key:`library-bleach-${session}`,hint:"list"},
+          {title:"Nevermind",subtitle:"Nirvana",image_key:"never-cover",item_key:`library-nevermind-${session}`,hint:"list"}
+        ];
+        callback(false, { list:{title:"Albums",count:all.length}, items:all.slice(opts.offset||0,(opts.offset||0)+(opts.count||all.length)) }); return;
+      }
+      callback(false, { list:{title:"Nevermind",count:3}, items:[
+        {title:"Play Album",item_key:"play-nevermind",hint:"action"},
+        {title:"1. Smells Like Teen Spirit",subtitle:"Nirvana",item_key:"native-track-1",hint:"action_list",duration_seconds:301},
+        {title:"1-2 In Bloom",subtitle:"Nirvana",item_key:"native-track-2",hint:"action_list",duration_seconds:254}
+      ] });
+    }
+  };
+  return { client:{isCoreConnected:()=>true,isBrowseReady:()=>true,getBrowse:()=>browse}, indexLoads:()=>indexLoads };
+}
+
+test("album detail resolves a fresh native library item by cached ordinal and exposes only ordered tracks", async () => {
+  const mock = createNativeLibraryAlbumClient();
+  const service = new RoonMediaService(mock.client, "tidal");
+  const search = await service.search({query:"Nevermind Nirvana",types:["album"],count:5});
+  const first = await service.getAlbumDetail(search.results[0].result_id);
+  const second = await service.getAlbumDetail(search.results[0].result_id);
+
+  assert.deepEqual(first.tracks.map((track)=>track.title), ["Smells Like Teen Spirit","In Bloom"]);
+  assert.deepEqual(first.tracks.map((track)=>[track.disc_number,track.track_number]), [[null,1],[1,2]]);
+  assert.equal(first.tracks.some((track)=>track.title === "Play Album"), false);
+  assert.equal(first.data_origin, "roon_library");
+  assert.equal(first.completeness, "complete");
+  assert.equal(first.ordered, true);
+  assert.equal(first.identity_verified, true);
+  assert.equal(first.tracks.every((track)=>track.source === "library"), true);
+  assert.equal(second.tracks.length, 2);
+  assert.equal(mock.indexLoads(), 1);
+});
+
+function createNativeLibraryArtistClient() {
+  const stages = new Map();
+  const browse = {
+    browse(opts, callback) {
+      const session=opts.multi_session_key||"default";
+      if(opts.hierarchy==="search"&&opts.input){stages.set(session,"search-root");callback(false,{action:"list"});return;}
+      if(opts.item_key==="artists-category"){stages.set(session,"search-artists");callback(false,{action:"list"});return;}
+      if(opts.hierarchy==="artists"&&!opts.item_key){stages.set(session,"library-artists");callback(false,{action:"list"});return;}
+      if(opts.hierarchy==="artists"&&String(opts.item_key).includes("nirvana-us")){stages.set(session,"nirvana-us");callback(false,{action:"list"});return;}
+      callback(false,{action:"none"});
+    },
+    load(opts, callback) {
+      const session=opts.multi_session_key||"default";const stage=stages.get(session);
+      if(stage==="search-root"){callback(false,{list:{title:"Search",count:1},items:[{title:"Artists",item_key:"artists-category",hint:"list"}]});return;}
+      if(stage==="search-artists"){callback(false,{list:{title:"Artists",count:1},items:[{title:"Nirvana",subtitle:"9 Albums",image_key:"nirvana-us-image",item_key:"search-nirvana",hint:"action_list"}]});return;}
+      if(stage==="library-artists"){const all=[{title:"Nirvana",subtitle:"9 Albums",image_key:"nirvana-us-image",item_key:`nirvana-us-${session}`,hint:"list"},{title:"Nirvana",subtitle:"4 Albums",image_key:"nirvana-uk-image",item_key:`nirvana-uk-${session}`,hint:"list"}];callback(false,{list:{title:"Artists",count:2},items:all.slice(opts.offset||0,(opts.offset||0)+(opts.count||2))});return;}
+      callback(false,{list:{title:"Nirvana",count:3},items:[{title:"Play Artist",item_key:"play-artist",hint:"action"},{title:"Nevermind",subtitle:"Nirvana",image_key:"never",item_key:"never",hint:"action_list"},{title:"In Utero",subtitle:"Nirvana",image_key:"utero",item_key:"utero",hint:"action_list"}]});
+    }
+  };
+  return {isCoreConnected:()=>true,isBrowseReady:()=>true,getBrowse:()=>browse};
+}
+
+test("artist detail uses the image-verified native homonym and never mixes another artist's albums", async () => {
+  const service=new RoonMediaService(createNativeLibraryArtistClient(),"tidal");
+  const search=await service.search({query:"Nirvana",types:["artist"],count:5});
+  service.search=async()=>({results:[],groups:{artist:[],album:[],ep:[],single_ep:[],single:[],track:[],playlist:[]},warnings:[]});
+  service.readArtistBio=async()=>null;
+  const detail=await service.getArtistDetail(search.results[0].result_id);
+  assert.deepEqual(detail.albums.map((album)=>album.title),["Nevermind","In Utero"]);
+  assert.equal(detail.data_origin,"roon_library");
+  assert.equal(detail.completeness,"complete");
+  assert.equal(detail.albums.every((album)=>album.source==="library"),true);
 });
 
 function createNestedArtistDiscographyClient() {
@@ -698,15 +819,16 @@ test("artist detail groups albums and singles and keeps biography optional", asy
   assert.deepEqual(detail.singles_eps.map((album) => album.title), ["Burn the Witch"]);
 });
 
-test("artist fallback loads beyond 25 releases and enriches albums EPs singles and years", async () => {
+test("artist detail never turns a global name search into an official discography", async () => {
+  let metadataCalls = 0;
   const metadata = {
-    listArtistReleases: async () => Array.from({ length: 30 }, (_, index) => ({
+    listArtistReleases: async () => { metadataCalls += 1; return Array.from({ length: 30 }, (_, index) => ({
       title: `Release ${index + 1}`,
       artists: ["Quevedo"],
       release_type: index < 10 ? "album" : index < 20 ? "ep" : "single",
       release_year: 2000 + index,
       score: 100
-    }))
+    })); }
   };
   const service = new RoonMediaService(createArtistSearchClient([{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]), "tidal", metadata);
   const search = await service.search({ query: "Quevedo", types: ["artist"], count: 1 });
@@ -721,14 +843,14 @@ test("artist fallback loads beyond 25 releases and enriches albums EPs singles a
   service.readArtistBio = async () => null;
 
   const detail = await service.getArtistDetail(search.results[0].result_id, undefined, 200);
-  assert.equal(detail.albums.length, 10);
-  assert.equal(detail.singles_eps.filter((release) => release.release_type === "ep").length, 10);
-  assert.equal(detail.singles_eps.filter((release) => release.release_type === "single").length, 10);
-  assert.equal(detail.albums[0].release_year, 2000);
-  assert.equal(detail.singles_eps.at(-1).release_year, 2029);
+  assert.deepEqual(detail.albums, []);
+  assert.deepEqual(detail.singles_eps, []);
+  assert.equal(metadataCalls, 0);
+  assert.equal(detail.completeness, "unknown");
+  assert.match(detail.warnings.join(" "), /discography_unavailable/);
 });
 
-test("artist fallback never opens every unmatched release to infer its track count", async () => {
+test("artist detail omits unmatched global releases without opening them", async () => {
   const metadata = { listArtistReleases: async () => [] };
   const service = new RoonMediaService(createArtistSearchClient([{ title: "Quevedo", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]), "tidal", metadata);
   const search = await service.search({ query: "Quevedo", types: ["artist"], count: 1 });
@@ -748,6 +870,6 @@ test("artist fallback never opens every unmatched release to infer its track cou
 
   const detail = await service.getArtistDetail(search.results[0].result_id, undefined, 200);
   assert.equal(albumTraversals, 0);
-  assert.deepEqual(detail.albums.map((release) => release.title), ["Long Release", "Short Release", "One Song"]);
+  assert.deepEqual(detail.albums, []);
   assert.deepEqual(detail.singles_eps, []);
 });

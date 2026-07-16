@@ -27,6 +27,11 @@ import { TargetResolver } from "./targetResolver";
 import type { MediaType, SourcePreference } from "../roon/roonMediaService";
 import { APP_VERSION } from "../config/version";
 import { PlaylistBuildService } from "../services/playlistBuildService";
+import {
+  MAX_CUSTOM_COVER_BYTES,
+  PLAYLIST_COVER_POLICY
+} from "../services/playlistService";
+import { downloadToolImage, ToolFileReference } from "../services/toolFileService";
 
 export class IntentGateway {
   readonly targets: TargetResolver;
@@ -515,16 +520,75 @@ export class IntentGateway {
 
   async setPlaylistCover(input: {
     playlist_id: string;
+    image_file?: ToolFileReference;
     image_data_url?: string;
     image_base64?: string;
     content_type?: "image/jpeg" | "image/png" | "image/webp";
   }): Promise<OperationResult> {
+    const downloaded = input.image_file
+      ? await (this.context.downloadToolImage || ((file: ToolFileReference) =>
+          downloadToolImage(file, { maximumBytes: MAX_CUSTOM_COVER_BYTES })))(input.image_file)
+      : null;
     const data = await this.context.playlistService.setCustomCover(input.playlist_id, {
-      data_url: input.image_data_url,
-      image_base64: input.image_base64,
-      content_type: input.content_type
+      data_url: downloaded ? undefined : input.image_data_url,
+      image_base64: downloaded ? downloaded.bytes.toString("base64") : input.image_base64,
+      content_type: downloaded ? downloaded.contentType : input.content_type
     });
-    return completed("roon_set_playlist_cover", "Playlist cover image saved.", data, { verified: true });
+    const coverId = typeof data.cover_image_key === "string" && data.cover_image_key.startsWith("custom:")
+      ? data.cover_image_key.slice("custom:".length)
+      : null;
+    const coverVerification = coverId && typeof (this.context.playlistService as any).inspectCustomCover === "function"
+      ? await (this.context.playlistService as any).inspectCustomCover(coverId)
+      : { cover_image_key: data.cover_image_key };
+    return completed("roon_set_playlist_cover", "Playlist cover image saved and verified.", {
+      ...data,
+      upload_source: downloaded ? "authorized_file" : "inline_base64",
+      source_file: downloaded
+        ? { file_id: downloaded.fileId, file_name: downloaded.fileName }
+        : null,
+      cover_verification: coverVerification
+    }, { verified: true });
+  }
+
+  preparePlaylistCover(input: {
+    playlist: { id?: string; name?: string };
+  }): OperationResult {
+    const playlist = this.context.playlistService.getPlaylistByReference(input.playlist);
+    const trackContext = playlist.tracks.slice(0, 24).map((track) => ({
+      position: track.position,
+      title: track.audio_metadata?.title || track.title || track.query,
+      artist: track.audio_metadata?.artist || track.artist || null,
+      album: track.audio_metadata?.album || track.album || null
+    }));
+    return completed(
+      "roon_prepare_playlist_cover",
+      `Artwork requirements prepared for ${playlist.name}. Generate the image now, then upload it with roon_set_playlist_cover using image_file.`,
+      {
+        playlist: {
+          playlist_id: playlist.playlist_id,
+          name: playlist.name,
+          description: playlist.description,
+          track_count: playlist.track_count,
+          current_cover_image_key: playlist.cover_image_key
+        },
+        generation_context: {
+          tracks: trackContext,
+          tracks_returned: trackContext.length,
+          tracks_total: playlist.track_count
+        },
+        artwork_requirements: PLAYLIST_COVER_POLICY,
+        required_next_steps: [
+          "Generate one square cover from this playlist context and the user's requested style.",
+          "Keep essential subjects and text centered inside an edge-safe area.",
+          "Call roon_set_playlist_cover with playlist_id and image_file from the generated or attached image.",
+          "Only report success when roon_set_playlist_cover returns status=completed and verified=true."
+        ]
+      },
+      {
+        verified: true,
+        references: { playlist_id: playlist.playlist_id }
+      }
+    );
   }
 
   deletePlaylist(input: { playlist_id: string; confirm?: boolean }): OperationResult {

@@ -19,15 +19,33 @@ import { Logger } from "../utils/logger";
 
 export const playlistServiceImplemented = true;
 const CUSTOM_COVER_PREFIX = "custom:";
-const MAX_CUSTOM_COVER_BYTES = 5 * 1024 * 1024;
+export const MAX_CUSTOM_COVER_BYTES = 5 * 1024 * 1024;
 const MAX_CUSTOM_COVER_INPUT_PIXELS = 40_000_000;
-const NORMALIZED_COVER_SIZE = 768;
+const MIN_CUSTOM_COVER_DIMENSION = 768;
+const NORMALIZED_COVER_SIZE = 1024;
 const MAX_NORMALIZED_COVER_BYTES = 750 * 1024;
 const COVER_CONTENT_TYPES = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
   ["image/webp", "webp"]
 ]);
+
+export const PLAYLIST_COVER_POLICY = {
+  recommended_width: 1024,
+  recommended_height: 1024,
+  minimum_width: MIN_CUSTOM_COVER_DIMENSION,
+  minimum_height: MIN_CUSTOM_COVER_DIMENSION,
+  maximum_input_bytes: MAX_CUSTOM_COVER_BYTES,
+  maximum_input_pixels: MAX_CUSTOM_COVER_INPUT_PIXELS,
+  maximum_stored_width: NORMALIZED_COVER_SIZE,
+  maximum_stored_height: NORMALIZED_COVER_SIZE,
+  maximum_stored_bytes: MAX_NORMALIZED_COVER_BYTES,
+  accepted_content_types: Array.from(COVER_CONTENT_TYPES.keys()),
+  preferred_content_type: "image/webp",
+  color_space: "sRGB",
+  crop: "center square",
+  edge_safe: true
+} as const;
 
 export type VirtualPlaylistTrackMetadata = Record<string, unknown>;
 export type AudioMetadata = Record<string, unknown>;
@@ -426,37 +444,47 @@ function decodeCoverInput(input: {
 
 async function normalizeCoverImage(bytes: Buffer): Promise<Buffer> {
   try {
-    const image = sharp(bytes, {
+    const source = sharp(bytes, {
       failOn: "error",
       limitInputPixels: MAX_CUSTOM_COVER_INPUT_PIXELS
-    })
+    });
+    const metadata = await source.metadata();
+    const swapsAxes = typeof metadata.orientation === "number" && metadata.orientation >= 5;
+    const sourceWidth = swapsAxes ? metadata.height : metadata.width;
+    const sourceHeight = swapsAxes ? metadata.width : metadata.height;
+    if (!sourceWidth || !sourceHeight) {
+      throw new ApiError("INVALID_PLAYLIST_COVER", "Playlist cover dimensions could not be determined");
+    }
+    if (sourceWidth < MIN_CUSTOM_COVER_DIMENSION || sourceHeight < MIN_CUSTOM_COVER_DIMENSION) {
+      throw new ApiError(
+        "INVALID_PLAYLIST_COVER",
+        `Playlist cover must be at least ${MIN_CUSTOM_COVER_DIMENSION}x${MIN_CUSTOM_COVER_DIMENSION} pixels`,
+        {
+          minimum_width: MIN_CUSTOM_COVER_DIMENSION,
+          minimum_height: MIN_CUSTOM_COVER_DIMENSION,
+          received_width: sourceWidth,
+          received_height: sourceHeight
+        }
+      );
+    }
+
+    const image = source
       .rotate()
       .resize(NORMALIZED_COVER_SIZE, NORMALIZED_COVER_SIZE, {
         fit: "cover",
-        position: "centre",
-        withoutEnlargement: true
+        position: "centre"
       });
 
-    for (const quality of [80, 70, 60, 50]) {
+    for (const quality of [88, 82, 76, 70, 60, 50]) {
       const normalized = await image.clone().webp({ quality, effort: 4 }).toBuffer();
       if (normalized.length <= MAX_NORMALIZED_COVER_BYTES) return normalized;
     }
-
-    const fallback = await sharp(bytes, {
-      failOn: "error",
-      limitInputPixels: MAX_CUSTOM_COVER_INPUT_PIXELS
-    })
-      .rotate()
-      .resize(512, 512, { fit: "cover", position: "centre", withoutEnlargement: true })
-      .webp({ quality: 55, effort: 5 })
-      .toBuffer();
-    if (fallback.length > MAX_NORMALIZED_COVER_BYTES) {
-      throw new Error("normalized image remains larger than 750 KB");
-    }
-    return fallback;
+    throw new Error("normalized image remains larger than 750 KB");
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError("INVALID_PLAYLIST_COVER", "Playlist cover could not be decoded or normalized", {
       maximum_input_pixels: MAX_CUSTOM_COVER_INPUT_PIXELS,
+      minimum_input_dimension: MIN_CUSTOM_COVER_DIMENSION,
       normalized_size_pixels: NORMALIZED_COVER_SIZE,
       maximum_normalized_bytes: MAX_NORMALIZED_COVER_BYTES,
       reason: error instanceof Error ? error.message : String(error)
@@ -743,6 +771,33 @@ export class PlaylistService {
     return this.getPlaylistById(playlistId);
   }
 
+  getPlaylistByReference(input: { id?: unknown; name?: unknown }): VirtualPlaylist {
+    const playlistId = nonEmptyString(input?.id);
+    if (playlistId) return this.getPlaylistById(playlistId);
+    const requestedName = nonEmptyString(input?.name);
+    if (!requestedName) {
+      throw new ApiError("VALIDATION_ERROR", "Playlist reference requires id or name");
+    }
+    const wanted = canonicalText(requestedName);
+    const rows = this.database.db
+      .prepare(
+        `SELECT playlist_id, name, description, cover_image_key, last_played_at, created_at, updated_at
+         FROM virtual_playlists
+         ORDER BY name ASC`
+      )
+      .all() as PlaylistRow[];
+    const matches = rows.filter((row) => canonicalText(row.name) === wanted);
+    if (matches.length === 1) return this.getPlaylistFromRow(matches[0]);
+    if (matches.length > 1) {
+      throw new ApiError("AMBIGUOUS_MATCH", "Several playlists have the requested name", {
+        candidates: matches.map((row) => ({ id: row.playlist_id, name: row.name }))
+      });
+    }
+    throw new ApiError("PLAYLIST_NOT_FOUND", "Virtual playlist not found", {
+      requested: { name: requestedName }
+    });
+  }
+
   getPlaylistDetail(
     playlistId: string,
     options: {
@@ -982,6 +1037,20 @@ export class PlaylistService {
       cover_image_key: `${CUSTOM_COVER_PREFIX}${fileName}`,
       content_type: contentType,
       bytes: fs.readFileSync(filePath)
+    };
+  }
+
+  async inspectCustomCover(coverId: string): Promise<Record<string, unknown>> {
+    const cover = this.getCustomCover(coverId);
+    const metadata = await sharp(cover.bytes).metadata();
+    return {
+      cover_image_key: cover.cover_image_key,
+      content_type: cover.content_type,
+      width: metadata.width || null,
+      height: metadata.height || null,
+      format: metadata.format || null,
+      bytes: cover.bytes.length,
+      color_space: metadata.space || null
     };
   }
 
@@ -2243,12 +2312,16 @@ export class PlaylistService {
     mediaService: RoonMediaService,
     sourcePreference: SourcePreference = "streaming_first"
   ): Promise<{ result: MediaResult; score: number }> {
-    const query = playbackQueryForTrack(track);
+    // The stored query is the identity that originally reached Roon successfully.
+    // Enriched metadata can contain secondary credits or release context that is
+    // useful for ranking, but too restrictive as the only playback search query.
+    const query = track.query || playbackQueryForTrack(track);
     const match = await new TrackResolutionService(mediaService).resolve({
       query,
       title: track.identity.title,
       artist: track.identity.artist,
       album: track.identity.album,
+      releaseYear: track.identity.release_year,
       versionHint: track.identity.version_hint as VersionHint | null,
       count: 25,
       sourcePreference: sourcePreference || "streaming_first"

@@ -172,6 +172,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.doesNotMatch(portalStylesText, /\.playlist-card p \{[^}]*height:6em/);
     assert.match(portalStylesText, /\.library-destination-grid/);
     assert.match(portalStylesText, /\.best-search-result\{width:min\(100%,590px\)/);
+    assert.match(portalStylesText, /\.search-result-skeleton/);
+    assert.match(portalStylesText, /\.detail-trust/);
     assert.match(portalStylesText, /\.cover-fallback\.artist/);
     assert.match(portalStylesText, /\.toast\.warning/);
     assert.match(portalStylesText, /\.toast\.info/);
@@ -198,6 +200,13 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /active-zone-select/);
     assert.match(portalScriptText, /data-play-mode="play_next"/);
     assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
+    assert.match(portalScriptText, /SEARCH_CATEGORIES = \[\{type:"artist",count:6\}/);
+    assert.match(portalScriptText, /state\.searchController\?\.abort\(\)/);
+    assert.match(portalScriptText, /new AbortController\(\)/);
+    assert.match(portalScriptText, /Promise\.allSettled\(SEARCH_CATEGORIES/);
+    assert.match(portalScriptText, /category_status/);
+    assert.match(portalScriptText, /Sin tracklist verificada/);
+    assert.match(portalScriptText, /Resultados relacionados/);
     assert.match(portalScriptText, /data-more-results/);
     assert.match(portalScriptText, /playlist-search-form/);
     assert.match(portalScriptText, /source_preference:"streaming_first"/);
@@ -243,6 +252,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /miniRenderSignature===signature/);
     assert.match(portalScriptText, /homePlaybackSignature===signature/);
+    assert.match(portalScriptText, /featured-backdrop.*imageTag\(featured\.now_playing\?\.image_key,"",500\)/);
     assert.match(portalScriptText, /function fitFeaturedTitle/);
     assert.match(portalScriptText, /title\.scrollHeight>slot\.clientHeight/);
     assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);

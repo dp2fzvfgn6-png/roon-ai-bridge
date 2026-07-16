@@ -1,4 +1,4 @@
-const SENSITIVE_KEY_PATTERN = /(token|secret|password|authorization|cookie|api[_-]?key|private[_-]?key|oauth|bearer|(^|[_-])pin($|[_-]))/i;
+const SENSITIVE_KEY_PATTERN = /(token|secret|password|authorization|cookie|api[_-]?key|private[_-]?key|oauth|bearer|download[_-]?url|(^|[_-])pin($|[_-]))/i;
 const BINARY_IMAGE_KEY_PATTERN = /(image[_-]?base64|image[_-]?data|data[_-]?url)/i;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]{160,}={0,2}$/;
 const MAX_STRING_LENGTH = 1200;

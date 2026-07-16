@@ -64,6 +64,9 @@ v0.17.1 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Create, edit, reorder, play and delete virtual playlists from the portal.
 - Generate automatic playlist cover collages from distinct track artwork, with
   instant random tile rotation every two seconds.
+- Prepare generated playlist artwork from exact playlist context, transfer the
+  resulting ChatGPT file through an authorized file reference and store a
+  verified high-resolution square WebP instead of an inline thumbnail.
 - Resolve playlist tracks through strict recording identity matching, preferring
   equivalent TIDAL lossless candidates without allowing source quality to hide
   artist or version mismatches.

@@ -12,15 +12,13 @@ import {
 import { RoonClient } from "./roonClient";
 import { cleanRoonDisplayText } from "./roonText";
 import { getZoneOrThrow } from "./roonZoneService";
-import {
-  matchReleaseCatalog,
-  ReleaseMetadataService
-} from "../services/releaseMetadataService";
 
 export type MediaType = "track" | "album" | "artist" | "playlist";
 export type ReleaseType = "album" | "ep" | "single" | "single_ep" | "compilation" | "live" | "remix" | "unknown";
 export type ReleaseTypeSource = "roon_metadata" | "roon_section" | "musicbrainz" | "inferred" | "unknown";
 export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
+export type MediaDataOrigin = "roon_library" | "roon_search_session" | "external_metadata" | "inferred";
+export type MediaCompleteness = "complete" | "partial" | "unknown";
 export type MediaActionMode = "replace_queue" | "play_next" | "append";
 export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
 export type SearchStrategy = "broaden" | "remove_context" | "artist_only" | "title_only" | "fuzzy" | "all";
@@ -78,6 +76,10 @@ export type MediaResult = {
   roon_rank: number;
   direct_match: boolean;
   direct_match_score: number;
+  data_origin: MediaDataOrigin;
+  completeness: MediaCompleteness;
+  ordered: boolean | null;
+  identity_verified: boolean;
   links: {
     artist: MediaEntityLink | null;
     artists: MediaEntityLink[];
@@ -122,6 +124,9 @@ export type ArtistMediaDetail = {
   popular_tracks: MediaResult[];
   albums: MediaResult[];
   singles_eps: MediaResult[];
+  data_origin: MediaDataOrigin;
+  completeness: MediaCompleteness;
+  identity_verified: boolean;
   warnings: string[];
 };
 
@@ -129,6 +134,11 @@ export type AlbumMediaDetail = {
   album: MediaResult;
   description: string | null;
   tracks: MediaResult[];
+  related_tracks: MediaResult[];
+  data_origin: MediaDataOrigin;
+  completeness: MediaCompleteness;
+  ordered: boolean;
+  identity_verified: boolean;
   warnings: string[];
 };
 
@@ -137,6 +147,9 @@ type MediaReference = MediaResult & {
   ordinal: number;
   hierarchy: "search" | "playlists";
   sourcePreference: SourcePreference;
+  originalSessionKey: string | null;
+  originalSessionAvailable: boolean;
+  originalItem: BrowseItem;
 };
 
 export type SearchMediaRequest = {
@@ -214,6 +227,20 @@ const RADIO_ACTION_TITLES = [
 const DEFAULT_TYPES: MediaType[] = ["track", "album", "artist", "playlist"];
 const REFERENCE_TTL_MS = 20 * 60 * 1000;
 const MAX_REFERENCES = 2000;
+const LIBRARY_INDEX_TTL_MS = 10 * 60 * 1000;
+const LIBRARY_INDEX_PAGE_SIZE = 500;
+
+type LibraryIdentity = {
+  ordinal: number;
+  title: string;
+  subtitle: string | null;
+  image_key: string | null;
+};
+
+type LibraryIndex = {
+  expiresAt: number;
+  items: LibraryIdentity[];
+};
 
 function normalize(value: string): string {
   return (cleanRoonDisplayText(value) || "")
@@ -287,7 +314,7 @@ export function splitArtistCredit(value: string | null | undefined): string[] {
   if (!cleaned) return [];
   const parts = cleaned
     .replace(/[()[\]]/g, " ")
-    .split(/\s*(?:,|;|\/|\u00b7|\bfeat(?:uring)?\.?|\bft\.?|\bwith\b|\bcon\b|\bx\b)\s*/iu)
+    .split(/\s*(?:,|;|\u00b7|\bfeat(?:uring)?\.?|\bft\.?|\bwith\b|\bcon\b|\bx\b)\s*|\s+\/\s+/iu)
     .map((part) => part.trim())
     .filter(Boolean);
   return Array.from(new Map((parts.length ? parts : [cleaned]).map((part) => [normalize(part), part])).values());
@@ -299,7 +326,7 @@ function artistCreditIncludes(credit: string | null | undefined, artist: string)
   if (!target || !whole) return false;
   if (whole === target) return true;
   return (credit || "")
-    .split(/\s*(?:,|;|\/|\u00b7|&|\+|\bfeat(?:uring)?\.?|\bft\.?|\bwith\b|\bcon\b|\bx\b|\by\b)\s*/iu)
+    .split(/\s*(?:,|;|\u00b7|&|\+|\bfeat(?:uring)?\.?|\bft\.?|\bwith\b|\bcon\b|\bx\b|\by\b)\s*|\s+\/\s+/iu)
     .some((part) => normalize(part) === target);
 }
 
@@ -360,7 +387,7 @@ function releaseContentCount(item: BrowseItem): number | null {
 
 async function loadCompleteList(
   browse: any,
-  hierarchy: "search",
+  hierarchy: "search" | "albums" | "artists" | "playlists",
   sessionKey: string,
   maximum: number
 ): Promise<BrowseResponse> {
@@ -429,7 +456,7 @@ function sortGroup(results: MediaResult[]): MediaResult[] {
   );
 }
 
-type SearchTypeResult = { items: BrowseItem[]; directItems: BrowseItem[] };
+type SearchTypeResult = { items: BrowseItem[]; directItems: BrowseItem[]; sessionKey: string | null };
 
 const ENTITY_SECTION_TITLES = [
   "albums",
@@ -480,6 +507,42 @@ function isMediaContentItem(item: BrowseItem): boolean {
     ...RADIO_ACTION_TITLES
   ].map(normalize);
   return !actionTitles.some((candidate) => title === candidate || title.startsWith(`${candidate} `));
+}
+
+function parsedTrackPosition(item: BrowseItem): {
+  title: string;
+  track: number | null;
+  disc: number | null;
+  hasPrefix: boolean;
+} {
+  const title = cleanRoonDisplayText(String(item.title || "")) || "";
+  const structuredTrack = pickNestedNumber(item, ["track_number", "track"]);
+  const structuredDisc = pickNestedNumber(item, ["disc_number", "disc"]);
+  const discTrack = title.match(/^\s*(\d+)\s*[-.]\s*(\d+)\s+[.\-:]?\s*(.+)$/u);
+  if (discTrack) {
+    return {
+      title: discTrack[3].trim(),
+      track: structuredTrack ?? Number.parseInt(discTrack[2], 10),
+      disc: structuredDisc ?? Number.parseInt(discTrack[1], 10),
+      hasPrefix: true
+    };
+  }
+  const trackOnly = title.match(/^\s*(\d+)\s*[.\-:]\s+(.+)$/u);
+  if (trackOnly) {
+    return {
+      title: trackOnly[2].trim(),
+      track: structuredTrack ?? Number.parseInt(trackOnly[1], 10),
+      disc: structuredDisc,
+      hasPrefix: true
+    };
+  }
+  return { title, track: structuredTrack, disc: structuredDisc, hasPrefix: false };
+}
+
+function isVerifiedTrackItem(item: BrowseItem): boolean {
+  if (!isMediaContentItem(item)) return false;
+  const position = parsedTrackPosition(item);
+  return position.track !== null || position.hasPrefix || pickNestedNumber(item, ["duration_seconds", "duration", "length"]) !== null;
 }
 
 function descriptiveText(...sources: unknown[]): string | null {
@@ -1040,11 +1103,12 @@ function libraryFlag(source: MediaSource): boolean | null {
 
 export class RoonMediaService {
   private readonly references = new Map<string, MediaReference>();
+  private readonly libraryIndexes = new Map<"albums" | "artists", LibraryIndex>();
+  private readonly consumedSearchSessions = new Set<string>();
 
   constructor(
     private readonly roonClient: RoonClient,
-    private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null,
-    private readonly releaseMetadataService = new ReleaseMetadataService()
+    private readonly configuredStreamingSource: "tidal" | "qobuz" | null = null
   ) {}
 
   async search(request: SearchMediaRequest): Promise<SearchMediaResponse> {
@@ -1060,9 +1124,13 @@ export class RoonMediaService {
 
     this.pruneReferences();
 
-    for (const type of types) {
-      try {
-        const searchType = await this.searchType(query, type, request.zoneId, count);
+    const searches = await Promise.allSettled(
+      types.map(async (type) => ({ type, result: await this.searchType(query, type, request.zoneId, count) }))
+    );
+    for (const [index, search] of searches.entries()) {
+      const type = types[index];
+      if (search.status === "fulfilled") {
+        const searchType = search.value.result;
         directItems.push(...searchType.directItems);
         for (const [ordinal, item] of searchType.items.entries()) {
           results.push(
@@ -1072,11 +1140,13 @@ export class RoonMediaService {
               item,
               ordinal,
               item.result_hierarchy === "playlists" ? "playlists" : "search",
-              preference
+              preference,
+              searchType.sessionKey
             )
           );
         }
-      } catch (error) {
+      } else {
+        const error = search.reason;
         warnings.push(
           `${type}: ${error instanceof Error ? error.message : String(error)}`
         );
@@ -1128,8 +1198,10 @@ export class RoonMediaService {
     const closeCandidates = Boolean(
       best &&
       second &&
-      !best.direct_match &&
-      second.match_score >= 60 &&
+      (second.match_score >= 60 || (
+        normalize(best.title) === normalize(second.title) &&
+        normalize(best.artist || best.subtitle || "") === normalize(second.artist || second.subtitle || "")
+      )) &&
       Math.abs(best.match_score - second.match_score) <= 12
     );
     const recommendedResultId =
@@ -1302,7 +1374,6 @@ export class RoonMediaService {
 
     const warnings: string[] = [];
     let releases: MediaResult[] = [];
-    let usedSearchFallback = false;
     try {
       releases = (await this.listArtistReleases(resultId, zoneId, count)).releases;
     } catch (error) {
@@ -1310,26 +1381,9 @@ export class RoonMediaService {
     }
 
     if (releases.length === 0) {
-      try {
-        const fallback = await this.searchGlobalCategory(
-          artist.title,
-          "album",
-          zoneId,
-          Math.max(1, Math.min(count, 200))
-        );
-        releases = uniqueMedia(fallback.items.map((item, ordinal) =>
-          this.registerReference(artist.title, "album", item, ordinal)
-        )).filter((release) => mediaBelongsToArtist(release, artist.title));
-        usedSearchFallback = true;
-        warnings.push("discography_sections_unavailable: strictly matched releases use search classification");
-      } catch (error) {
-        warnings.push(`album_search: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      warnings.push("discography_unavailable: Roon did not expose a verified release section");
     }
 
-    const releasesPromise = usedSearchFallback && releases.length
-      ? this.enrichFallbackReleases(artist, releases, warnings)
-      : Promise.resolve(releases);
     const popularTracksPromise = (async (): Promise<MediaResult[]> => {
       try {
         const trackSearch = await this.search({
@@ -1355,17 +1409,19 @@ export class RoonMediaService {
         return null;
       }
     })();
-    const [enrichedReleases, popularTracks, bio] = await Promise.all([
-      releasesPromise,
+    const [popularTracks, bio] = await Promise.all([
       popularTracksPromise,
       bioPromise
     ]);
-    releases = enrichedReleases;
 
     const singlesEps = releases.filter((release) =>
       ["single", "ep", "single_ep"].includes(release.release_type || "")
     );
     const albums = releases.filter((release) => !singlesEps.includes(release));
+    const dataOrigin = releases[0]?.data_origin || artist.data_origin;
+    const completeness: MediaCompleteness = releases.length
+      ? releases.every((release) => release.completeness === "complete") ? "complete" : "partial"
+      : "unknown";
 
     return {
       artist: this.publicReference(artist),
@@ -1373,50 +1429,11 @@ export class RoonMediaService {
       popular_tracks: popularTracks,
       albums: albums.slice(0, count),
       singles_eps: singlesEps.slice(0, count),
+      data_origin: dataOrigin,
+      completeness,
+      identity_verified: artist.identity_verified,
       warnings
     };
-  }
-
-  private async enrichFallbackReleases(
-    artist: MediaReference,
-    releases: MediaResult[],
-    warnings: string[]
-  ): Promise<MediaResult[]> {
-    let catalog: Awaited<ReturnType<ReleaseMetadataService["listArtistReleases"]>> = [];
-    try {
-      catalog = await this.releaseMetadataService.listArtistReleases(artist.title);
-    } catch (error) {
-      warnings.push(`release_metadata: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    const enriched: MediaResult[] = [];
-    for (let offset = 0; offset < releases.length; offset += 4) {
-      const batch = releases.slice(offset, offset + 4);
-      enriched.push(...await Promise.all(batch.map(async (release) => {
-        const reference = this.references.get(release.result_id);
-        if (!reference) return release;
-        const releaseArtists = release.artists.length
-          ? release.artists.map((entry) => entry.title)
-          : splitArtistCredit(release.artist || release.subtitle || artist.title);
-        const metadata = matchReleaseCatalog(catalog, release.title, releaseArtists);
-        const canReplaceClassification = !["roon_metadata", "roon_section"].includes(
-          release.release_type_source || ""
-        );
-        const classifiedType = canReplaceClassification ? metadata?.release_type || null : release.release_type;
-        const classifiedSource: ReleaseTypeSource | null = canReplaceClassification && metadata?.release_type
-          ? "musicbrainz"
-          : release.release_type_source;
-
-        Object.assign(reference, {
-          release_year: release.release_year ?? metadata?.release_year ?? null,
-          release_type: classifiedType || release.release_type || "album",
-          release_type_source: classifiedSource || release.release_type_source || "unknown",
-          content_count: release.content_count ?? null
-        });
-        return this.publicReference(reference);
-      })));
-    }
-    return enriched;
   }
 
   async getAlbumDetail(
@@ -1435,21 +1452,27 @@ export class RoonMediaService {
     const warnings: string[] = [];
     let description: string | null = null;
     let tracks: MediaResult[] = [];
+    let relatedTracks: MediaResult[] = [];
+    let dataOrigin: MediaDataOrigin = "roon_search_session";
+    let completeness: MediaCompleteness = "unknown";
+    let ordered = false;
+    let identityVerified = false;
     try {
       const browseDetail = await this.readAlbumContents(album, zoneId, count);
       description = browseDetail.description;
       tracks = browseDetail.tracks;
+      dataOrigin = browseDetail.data_origin;
+      completeness = browseDetail.completeness;
+      ordered = browseDetail.ordered;
+      identityVerified = browseDetail.identity_verified;
     } catch (error) {
       warnings.push(`album_browse: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    if (tracks.length <= 1) {
+    if (tracks.length === 0) {
       try {
-        const discovered = await this.readAlbumTracksFromSearch(album, zoneId, count);
-        if (discovered.length > tracks.length) {
-          tracks = discovered;
-          warnings.push("tracklist_recovered_from_roon_album_search");
-        }
+        relatedTracks = await this.readAlbumTracksFromSearch(album, zoneId, count);
+        if (relatedTracks.length) warnings.push("ordered_tracklist_unavailable: showing related Roon search results separately");
       } catch (error) {
         warnings.push(`track_search: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -1459,6 +1482,11 @@ export class RoonMediaService {
       album: this.publicReference(album),
       description,
       tracks: uniqueMedia(tracks).slice(0, count),
+      related_tracks: uniqueMedia(relatedTracks).slice(0, count),
+      data_origin: dataOrigin,
+      completeness,
+      ordered,
+      identity_verified: identityVerified,
       warnings
     };
   }
@@ -1509,60 +1537,61 @@ export class RoonMediaService {
       });
     }
 
-    const sectionDefinitions: Array<{ names: string[]; context: ReleaseType }> = [
-      { names: ["albums", "main albums", "albumes", "albumes principales"], context: "album" },
-      { names: ["singles and eps", "singles & eps", "singles / eps", "sencillos y eps"], context: "single_ep" },
-      { names: ["singles", "sencillos"], context: "single" },
-      { names: ["eps", "extended plays"], context: "ep" }
-    ];
-    const discographyNames = ["discography", "discografia"];
-    let listTitle: string | null = null;
+    const detail = await this.openReference(artist, zoneId, "artist-releases", Math.max(count, 200));
     const collected: Array<{ item: BrowseItem; context: ReleaseType; ordinal: number }> = [];
-
-    for (const definition of sectionDefinitions) {
-      const browse = requireBrowse(this.roonClient);
-      const sessionKey = this.sessionKey(`releases-${definition.context}`);
-      const item = await this.resolveItem(artist, zoneId, sessionKey);
-      const first = await browseCall(browse, {
-        hierarchy: "search",
-        multi_session_key: sessionKey,
-        item_key: item.item_key,
-        ...(zoneId ? { zone_or_output_id: zoneId } : {})
-      });
-      if (first.action !== "list") continue;
-      const root = await loadCompleteList(browse, "search", sessionKey, Math.max(count, 200));
-      listTitle ||= root.list?.title || null;
-      let items = root.items;
-      let entry = items.find((candidate) => sectionTitleMatches(candidate, definition.names));
-      if (!entry?.item_key) {
-        const discography = items.find((candidate) => sectionTitleMatches(candidate, discographyNames));
-        if (discography?.item_key) {
-          const openedDiscography = await browseCall(browse, {
-            hierarchy: "search",
-            multi_session_key: sessionKey,
-            item_key: discography.item_key,
+    const releaseSection = (item: BrowseItem): ReleaseType | null => {
+      const title = normalize(String(item.title || ""));
+      if (/\b(singles?\s*(?:&|and|\/|y)\s*eps?|sencillos?\s*y\s*eps?)\b/.test(title)) return "single_ep";
+      if (/\b(singles?|sencillos?)\b/.test(title)) return "single";
+      if (/\b(eps?|extended plays?)\b/.test(title)) return "ep";
+      if (/\b(albums?|albumes|discography|discografia)\b/.test(title)) return "album";
+      return null;
+    };
+    const collectDirect = (items: BrowseItem[], context: ReleaseType, allowRoot: boolean): void => {
+      if (!allowRoot) return;
+      for (const candidate of selectableItems(items).filter(isMediaContentItem)) {
+        if ((candidate.hint === "list" && releaseSection(candidate)) || isVerifiedTrackItem(candidate)) continue;
+        collected.push({ item: candidate, context, ordinal: collected.length });
+      }
+    };
+    const walkSections = async (
+      items: BrowseItem[],
+      depth: number,
+      context: ReleaseType,
+      allowDirect: boolean
+    ): Promise<void> => {
+      collectDirect(items, context, allowDirect);
+      if (depth >= 3 || collected.length >= count) return;
+      const sections = items.filter((item) => item.item_key && item.hint === "list" && releaseSection(item));
+      for (const section of sections) {
+        const sectionContext = releaseSection(section) || context;
+        const opened = await browseCall(detail.browse, {
+          hierarchy: detail.hierarchy,
+          multi_session_key: detail.sessionKey,
+          item_key: section.item_key,
+          ...(zoneId ? { zone_or_output_id: zoneId } : {})
+        });
+        if (opened.action === "list") {
+          const loaded = detail.hierarchy === "search"
+            ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(count, 200))
+            : await loadCompleteList(detail.browse, detail.hierarchy, detail.sessionKey, Math.max(count, 200));
+          await walkSections(loaded.items, depth + 1, sectionContext, true);
+          await browseCall(detail.browse, {
+            hierarchy: detail.hierarchy,
+            multi_session_key: detail.sessionKey,
+            pop_levels: 1,
             ...(zoneId ? { zone_or_output_id: zoneId } : {})
           });
-          if (openedDiscography.action === "list") {
-            const discographyList = await loadCompleteList(browse, "search", sessionKey, Math.max(count, 200));
-            items = discographyList.items;
-            entry = items.find((candidate) => sectionTitleMatches(candidate, definition.names));
-          }
         }
       }
-      if (!entry?.item_key) continue;
-      const selected = await browseCall(browse, {
-        hierarchy: "search",
-        multi_session_key: sessionKey,
-        item_key: entry.item_key,
-        ...(zoneId ? { zone_or_output_id: zoneId } : {})
-      });
-      if (selected.action !== "list") continue;
-      const loaded = await loadCompleteList(browse, "search", sessionKey, count);
-      for (const candidate of selectableItems(loaded.items).filter(isMediaContentItem)) {
-        collected.push({ item: candidate, context: definition.context, ordinal: collected.length });
-      }
-    }
+    };
+
+    await walkSections(
+      detail.current.items,
+      0,
+      "album",
+      detail.hierarchy === "artists"
+    );
 
     const releases = uniqueMedia(collected.map(({ item: candidate, context, ordinal }) => {
       const rawMedia = objectValue(candidate.media) || {};
@@ -1570,20 +1599,26 @@ export class RoonMediaService {
       const releaseAlbumArtist = pickString(rawMedia, ["album_artist", "albumartist"]);
       return this.registerReference(artist.title, "album", {
         ...candidate,
+        source_context: detail.hierarchy === "artists" ? "library" : candidate.source_context,
         release_type_context: context,
         media: {
           ...rawMedia,
           artist: releaseArtist || releaseAlbumArtist || artist.title,
           album_artist: releaseAlbumArtist || releaseArtist || artist.title
         }
-      }, ordinal);
+      }, ordinal, "search", artist.sourcePreference, null, {
+        data_origin: detail.hierarchy === "artists" ? "roon_library" : "roon_search_session",
+        completeness: detail.hierarchy === "artists" ? "complete" : "partial",
+        ordered: null,
+        identity_verified: true
+      });
     })).filter((release) => mediaBelongsToArtist(release, artist.title))
       .sort((a, b) => this.releaseYear(b) - this.releaseYear(a) || a.roon_rank - b.roon_rank);
 
     return {
       artist: this.publicReference(artist),
       releases,
-      list_title: listTitle
+      list_title: detail.current.list?.title || null
     };
   }
 
@@ -1610,7 +1645,7 @@ export class RoonMediaService {
       return { items: selectableItems(itemsWithSourceContext(playlistBrowse.items))
         .filter((item) => normalize(`${item.title} ${item.subtitle || ""}`).includes(normalizedQuery))
         .map((item) => ({ ...item, result_hierarchy: "playlists" }))
-        .slice(0, count), directItems: globalResults.directItems };
+        .slice(0, count), directItems: globalResults.directItems, sessionKey: null };
     }
 
     return this.searchGlobalCategory(query, type, zoneId, count);
@@ -1633,7 +1668,7 @@ export class RoonMediaService {
     });
     const rootDirectItems = directSearchItems(root.items);
     const category = root.items.find((item) => titleMatchesCategory(String(item.title || ""), type));
-    if (!category?.item_key) return { items: [], directItems: rootDirectItems };
+    if (!category?.item_key) return { items: [], directItems: rootDirectItems, sessionKey };
 
     const selected = await browseCall(browse, {
       hierarchy: "search",
@@ -1641,10 +1676,10 @@ export class RoonMediaService {
       item_key: category.item_key,
       ...(zoneId ? { zone_or_output_id: zoneId } : {})
     });
-    if (selected.action !== "list") return { items: [], directItems: rootDirectItems };
+    if (selected.action !== "list") return { items: [], directItems: rootDirectItems, sessionKey };
 
     const loaded = await loadCurrentList(browse, "search", sessionKey, 0, count);
-    return { items: selectableItems(itemsWithSourceContext(loaded.items)), directItems: rootDirectItems };
+    return { items: selectableItems(itemsWithSourceContext(loaded.items)), directItems: rootDirectItems, sessionKey };
   }
 
   private registerReference(
@@ -1653,7 +1688,9 @@ export class RoonMediaService {
     item: BrowseItem,
     ordinal: number,
     hierarchy: "search" | "playlists" = "search",
-    sourcePreference: SourcePreference = "highest_quality"
+    sourcePreference: SourcePreference = "highest_quality",
+    originalSessionKey: string | null = null,
+    trust: Partial<Pick<MediaResult, "data_origin" | "completeness" | "ordered" | "identity_verified">> = {}
   ): MediaResult {
     const resultId = `media_${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + REFERENCE_TTL_MS).toISOString();
@@ -1709,11 +1746,18 @@ export class RoonMediaService {
       roon_rank: ordinal,
       direct_match: false,
       direct_match_score: 0,
+      data_origin: trust.data_origin || "roon_search_session",
+      completeness: trust.completeness || "unknown",
+      ordered: trust.ordered ?? null,
+      identity_verified: trust.identity_verified ?? Boolean(item.item_key),
       links: { artist: null, artists: [], album: null },
       query,
       ordinal,
       hierarchy,
-      sourcePreference
+      sourcePreference,
+      originalSessionKey,
+      originalSessionAvailable: Boolean(originalSessionKey && item.item_key && hierarchy === "search"),
+      originalItem: { ...item }
     };
     this.references.set(resultId, reference);
     return this.publicReference(reference);
@@ -1773,12 +1817,138 @@ export class RoonMediaService {
       ordinal: _ordinal,
       hierarchy: _hierarchy,
       sourcePreference,
+      originalSessionKey: _originalSessionKey,
+      originalSessionAvailable: _originalSessionAvailable,
+      originalItem: _originalItem,
       ...result
     } = reference;
     return this.withMatchScoring(result, {
       query,
       sourcePreference
     });
+  }
+
+  private libraryIdentityMatches(reference: MediaReference, item: LibraryIdentity | BrowseItem): boolean {
+    if (normalize(String(item.title || "")) !== normalize(reference.title)) return false;
+    const referenceArtist = normalize(reference.album_artist || reference.artist || reference.subtitle || "");
+    const candidateArtist = normalize(String(item.subtitle || ""));
+    if (reference.media_type === "album" && referenceArtist && candidateArtist) {
+      if (!candidateArtist.includes(referenceArtist) && !referenceArtist.includes(candidateArtist)) return false;
+    }
+    return true;
+  }
+
+  private async loadLibraryIndex(
+    hierarchy: "albums" | "artists",
+    force = false
+  ): Promise<LibraryIndex | null> {
+    const cached = this.libraryIndexes.get(hierarchy);
+    if (!force && cached && cached.expiresAt > Date.now()) return cached;
+
+    const sessionKey = this.sessionKey(`library-index-${hierarchy}`);
+    const first = await browseLibrary(this.roonClient, {
+      hierarchy,
+      offset: 0,
+      count: LIBRARY_INDEX_PAGE_SIZE,
+      popAll: true,
+      refreshList: false,
+      sessionKey
+    });
+    if (first.action !== "list") return null;
+
+    const total = Math.max(first.items.length, Number(first.list?.count) || 0);
+    const items = [...first.items];
+    const browse = requireBrowse(this.roonClient);
+    for (let offset = items.length; offset < total;) {
+      const page = await loadCurrentList(
+        browse,
+        hierarchy,
+        sessionKey,
+        offset,
+        Math.min(LIBRARY_INDEX_PAGE_SIZE, total - offset)
+      );
+      if (!page.items.length) break;
+      items.push(...page.items);
+      offset += page.items.length;
+    }
+
+    const index: LibraryIndex = {
+      expiresAt: Date.now() + LIBRARY_INDEX_TTL_MS,
+      items: items.map((item, ordinal) => ({
+        ordinal,
+        title: cleanRoonDisplayText(String(item.title || "")) || "",
+        subtitle: cleanRoonDisplayText(typeof item.subtitle === "string" ? item.subtitle : null),
+        image_key: typeof item.image_key === "string" ? item.image_key : null
+      }))
+    };
+    this.libraryIndexes.set(hierarchy, index);
+    return index;
+  }
+
+  private async openLibraryReference(
+    reference: MediaReference,
+    zoneId: string | undefined,
+    purpose: string,
+    count: number
+  ): Promise<{
+    browse: any;
+    sessionKey: string;
+    hierarchy: "albums" | "artists";
+    item: BrowseItem;
+    opened: any;
+    current: BrowseResponse;
+  } | null> {
+    if (!['album', 'artist'].includes(reference.media_type)) return null;
+    const hierarchy = reference.media_type === "album" ? "albums" : "artists";
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const index = await this.loadLibraryIndex(hierarchy, attempt > 0);
+      if (!index) return null;
+      const matches = index.items.filter((item) => this.libraryIdentityMatches(reference, item));
+      let identity = reference.image_key
+        ? matches.find((item) => item.image_key === reference.image_key)
+        : undefined;
+      if (!identity && matches.length === 1) identity = matches[0];
+      if (!identity) return null;
+
+      const sessionKey = this.sessionKey(`library-${purpose}`);
+      const loaded = await browseLibrary(this.roonClient, {
+        hierarchy,
+        zoneOrOutputId: zoneId,
+        offset: identity.ordinal,
+        count: 1,
+        popAll: true,
+        refreshList: false,
+        sessionKey
+      });
+      const item = loaded.items[0];
+      if (!item?.item_key || !this.libraryIdentityMatches(reference, item)) continue;
+
+      const browse = requireBrowse(this.roonClient);
+      const opened = await browseCall(browse, {
+        hierarchy,
+        multi_session_key: sessionKey,
+        item_key: item.item_key,
+        ...(zoneId ? { zone_or_output_id: zoneId } : {})
+      });
+      if (opened.action !== "list") return null;
+      const current = await loadCompleteList(
+        browse,
+        hierarchy,
+        sessionKey,
+        Math.max(1, Math.min(count, 500))
+      );
+      Object.assign(reference, {
+        source: "library",
+        source_confidence: "high",
+        is_library: true,
+        data_origin: "roon_library",
+        completeness: "complete",
+        identity_verified: true
+      });
+      return { browse, sessionKey, hierarchy, item, opened, current };
+    }
+    return null;
   }
 
   private async openReference(
@@ -1789,12 +1959,17 @@ export class RoonMediaService {
   ): Promise<{
     browse: any;
     sessionKey: string;
+    hierarchy: "search" | "playlists" | "albums" | "artists";
     item: BrowseItem;
     opened: any;
     current: BrowseResponse;
   }> {
+    const library = await this.openLibraryReference(reference, zoneId, purpose, count);
+    if (library) return library;
     const browse = requireBrowse(this.roonClient);
-    const sessionKey = this.sessionKey(purpose);
+    const sessionKey = reference.originalSessionAvailable && reference.originalSessionKey
+      ? reference.originalSessionKey
+      : this.sessionKey(purpose);
     const item = await this.resolveItem(reference, zoneId, sessionKey);
     const opened = await browseCall(browse, {
       hierarchy: reference.hierarchy,
@@ -1817,7 +1992,7 @@ export class RoonMediaService {
           0,
           Math.max(1, Math.min(count, 200))
         );
-    return { browse, sessionKey, item, opened, current };
+    return { browse, sessionKey, hierarchy: reference.hierarchy, item, opened, current };
   }
 
   private async readArtistBio(
@@ -1841,7 +2016,7 @@ export class RoonMediaService {
     if (!biography?.item_key) return null;
 
     const response = await browseCall(detail.browse, {
-      hierarchy: artist.hierarchy,
+      hierarchy: detail.hierarchy,
       multi_session_key: detail.sessionKey,
       item_key: biography.item_key,
       ...(zoneId ? { zone_or_output_id: zoneId } : {})
@@ -1850,7 +2025,7 @@ export class RoonMediaService {
       return response.message.trim();
     }
     if (response.action !== "list") return descriptiveText(biography, response);
-    const loaded = await loadCurrentList(detail.browse, artist.hierarchy, detail.sessionKey, 0, 100);
+    const loaded = await loadCurrentList(detail.browse, detail.hierarchy, detail.sessionKey, 0, 100);
     return descriptiveText(biography, response, loaded.list, loaded.items);
   }
 
@@ -1858,7 +2033,14 @@ export class RoonMediaService {
     album: MediaReference,
     zoneId: string | undefined,
     count: number
-  ): Promise<{ description: string | null; tracks: MediaResult[] }> {
+  ): Promise<{
+    description: string | null;
+    tracks: MediaResult[];
+    data_origin: MediaDataOrigin;
+    completeness: MediaCompleteness;
+    ordered: boolean;
+    identity_verified: boolean;
+  }> {
     const detail = await this.openReference(album, zoneId, "album-detail", count);
     const overviewSources: unknown[] = [
       detail.item,
@@ -1872,18 +2054,18 @@ export class RoonMediaService {
     );
     if (tracksEntry?.item_key) {
       const response = await browseCall(detail.browse, {
-        hierarchy: album.hierarchy,
+        hierarchy: detail.hierarchy,
         multi_session_key: detail.sessionKey,
         item_key: tracksEntry.item_key,
         ...(zoneId ? { zone_or_output_id: zoneId } : {})
       });
       overviewSources.push(response);
       if (response.action === "list") {
-        const loaded = album.hierarchy === "search"
+        const loaded = detail.hierarchy === "search"
           ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))
           : await loadCurrentList(
               detail.browse,
-              album.hierarchy,
+              detail.hierarchy,
               detail.sessionKey,
               0,
               Math.max(1, Math.min(count, 200))
@@ -1905,32 +2087,55 @@ export class RoonMediaService {
       }
     }
 
-    const tracks = items
-      .filter(isMediaContentItem)
+    const verifiedItems = items.filter(isVerifiedTrackItem);
+    const tracks = verifiedItems
       .slice(0, count)
       .map((item, ordinal) => {
+        const position = parsedTrackPosition(item);
         const rawMedia = objectValue(item.media) || {};
         const enriched: BrowseItem = {
           ...item,
+          title: position.title,
           media: {
             ...rawMedia,
             album: pickString(rawMedia, ["album", "album_name"]) || album.title,
             artist:
               pickString(rawMedia, ["artist", "artist_name"]) ||
-              (typeof item.subtitle === "string" ? item.subtitle : album.artist || album.subtitle)
+              (typeof item.subtitle === "string" ? item.subtitle : album.artist || album.subtitle),
+            track_number: position.track,
+            disc_number: position.disc,
+            source: detail.hierarchy === "albums" ? "library" : pickString(rawMedia, ["source", "provider", "service"])
           }
         };
         return this.registerReference(
           [item.title, item.subtitle, album.title].filter(Boolean).join(" "),
           "track",
           enriched,
-          ordinal
+          ordinal,
+          "search",
+          album.sourcePreference,
+          null,
+          {
+            data_origin: detail.hierarchy === "albums" ? "roon_library" : "roon_search_session",
+            completeness: "unknown",
+            ordered: true,
+            identity_verified: true
+          }
         );
       });
 
+    const selectableNonActions = items.filter((item) =>
+      item.item_key && item.hint !== "header" && item.hint !== "action" && !isEntitySection(item)
+    );
+    const structurallyComplete = tracks.length > 0 && verifiedItems.length === selectableNonActions.length;
+
     return {
       description: descriptiveText(...overviewSources),
-      tracks
+      tracks,
+      data_origin: detail.hierarchy === "albums" ? "roon_library" : "roon_search_session",
+      completeness: structurallyComplete ? "complete" : tracks.length ? "partial" : "unknown",
+      ordered: tracks.length > 0,
+      identity_verified: true
     };
   }
 
@@ -1997,11 +2202,19 @@ export class RoonMediaService {
               pickString(rawMedia, ["artist", "artist_name"]) ||
               (typeof item.subtitle === "string" ? item.subtitle : albumArtist),
             source: pickString(rawMedia, ["source", "provider", "service"]) || album.source,
-            track_number:
-              pickNumber(rawMedia, ["track_number", "track"]) || ordinal + 1
+            track_number: pickNumber(rawMedia, ["track_number", "track"])
           }
         },
-        ordinal
+        ordinal,
+        "search",
+        album.sourcePreference,
+        search.sessionKey,
+        {
+          data_origin: "roon_search_session",
+          completeness: "partial",
+          ordered: false,
+          identity_verified: true
+        }
       );
     });
   }
@@ -2019,29 +2232,29 @@ export class RoonMediaService {
     );
     if (tracksEntry?.item_key) {
       const openedTracks = await browseCall(detail.browse, {
-        hierarchy: album.hierarchy,
+        hierarchy: detail.hierarchy,
         multi_session_key: detail.sessionKey,
         item_key: tracksEntry.item_key,
         ...(zoneId ? { zone_or_output_id: zoneId } : {})
       });
       if (openedTracks.action !== "list") return [];
-      items = album.hierarchy === "search"
+      items = detail.hierarchy === "search"
         ? (await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))).items
-        : (await loadCurrentList(detail.browse, album.hierarchy, detail.sessionKey, 0, Math.max(1, Math.min(count, 200)))).items;
+        : (await loadCurrentList(detail.browse, detail.hierarchy, detail.sessionKey, 0, Math.max(1, Math.min(count, 200)))).items;
     }
     const normalizedDisc = normalize(discTitle);
     const disc = items.find((item) => normalize(String(item.title || "")) === normalizedDisc);
     if (!disc?.item_key) return [];
     const openedDisc = await browseCall(detail.browse, {
-      hierarchy: album.hierarchy,
+      hierarchy: detail.hierarchy,
       multi_session_key: detail.sessionKey,
       item_key: disc.item_key,
       ...(zoneId ? { zone_or_output_id: zoneId } : {})
     });
     if (openedDisc.action !== "list") return [];
-    return album.hierarchy === "search"
+    return detail.hierarchy === "search"
       ? (await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))).items
-      : (await loadCurrentList(detail.browse, album.hierarchy, detail.sessionKey, 0, Math.max(1, Math.min(count, 200)))).items;
+      : (await loadCurrentList(detail.browse, detail.hierarchy, detail.sessionKey, 0, Math.max(1, Math.min(count, 200)))).items;
   }
 
   private async resolveItem(
@@ -2049,6 +2262,17 @@ export class RoonMediaService {
     zoneId: string | undefined,
     sessionKey: string
   ): Promise<BrowseItem> {
+    if (
+      reference.hierarchy === "search" &&
+      reference.originalSessionAvailable &&
+      reference.originalSessionKey === sessionKey &&
+      !this.consumedSearchSessions.has(sessionKey) &&
+      reference.originalItem.item_key
+    ) {
+      reference.originalSessionAvailable = false;
+      this.consumedSearchSessions.add(sessionKey);
+      return reference.originalItem;
+    }
     if (reference.hierarchy === "playlists") {
       const playlistBrowse = await browseLibrary(this.roonClient, {
         hierarchy: "playlists",
@@ -2150,7 +2374,9 @@ export class RoonMediaService {
     artistMode: "catalog" | "radio"
   ): Promise<any> {
     const browse = requireBrowse(this.roonClient);
-    const sessionKey = this.sessionKey(`action-${mode}`);
+    const sessionKey = reference.originalSessionAvailable && reference.originalSessionKey
+      ? reference.originalSessionKey
+      : this.sessionKey(`action-${mode}`);
     const hierarchy = reference.hierarchy;
     let selected = await this.resolveItem(reference, zoneId, sessionKey);
     let lastItems: BrowseItem[] = [];

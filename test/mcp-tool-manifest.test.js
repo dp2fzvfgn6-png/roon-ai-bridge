@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const { createServer } = require("../dist/api/server");
 const { registerBridgeV2Tools } = require("../dist/bridge-v2/mcp/tools");
+const { BRIDGE_V2_INSTRUCTIONS } = require("../dist/bridge-v2/mcp/server");
 const { registerWidgetV2Tools } = require("../dist/bridge-v2/widgets/tools");
 const { createDatabase } = require("../dist/db/database");
 const { PlaylistService } = require("../dist/services/playlistService");
@@ -73,6 +74,14 @@ async function readMcpJson(response) {
   return JSON.parse(text);
 }
 
+test("MCP instructions require cover preflight and authorized file handoff up front", () => {
+  const opening = BRIDGE_V2_INSTRUCTIONS.slice(0, 512);
+  assert.match(opening, /roon_prepare_playlist_cover before image generation/);
+  assert.match(opening, /roon_set_playlist_cover/);
+  assert.match(opening, /image_file/);
+  assert.match(opening, /Never pass an internal sandbox path/);
+});
+
 test("registers the compact MCP v2 intent catalog", () => {
   const tools = new Map();
   const server = {
@@ -88,11 +97,15 @@ test("registers the compact MCP v2 intent catalog", () => {
 
   registerBridgeV2Tools(server, context);
 
-  assert.equal(tools.size, 31);
+  assert.equal(tools.size, 32);
   for (const [name, registration] of tools) {
     assert.match(registration.options.description, /^Use this when/);
     assert.ok(registration.options.outputSchema.status, `${name} should declare status output`);
-    assert.equal(registration.options._meta, undefined, `${name} must not attach a widget`);
+    if (name === "roon_set_playlist_cover") {
+      assert.deepEqual(registration.options._meta, { "openai/fileParams": ["image_file"] });
+    } else {
+      assert.equal(registration.options._meta, undefined, `${name} must not attach widget or file metadata`);
+    }
   }
   for (const name of [
     "roon_get_state",
@@ -102,6 +115,7 @@ test("registers the compact MCP v2 intent catalog", () => {
     "roon_play_media",
     "roon_enqueue_media",
     "roon_edit_playlist_tracks",
+    "roon_prepare_playlist_cover",
     "roon_set_playlist_cover",
     "roon_play_playlist_track",
     "roon_get_configuration",
@@ -109,7 +123,8 @@ test("registers the compact MCP v2 intent catalog", () => {
   ]) assert.ok(tools.has(name), `${name} should be exposed`);
   assert.equal(tools.get("roon_edit_playlist_tracks").options.annotations.destructiveHint, true);
   assert.equal(tools.get("roon_import_playlist").options.annotations.destructiveHint, true);
-  assert.match(tools.get("roon_set_playlist_cover").options.description, /768x768 square sRGB WebP under 750 KB/);
+  assert.match(tools.get("roon_set_playlist_cover").options.description, /1024x1024 square sRGB source/);
+  assert.match(tools.get("roon_prepare_playlist_cover").options.description, /before image generation/);
 
   for (const legacy of ["roon_status", "roon_list_zones", "roon_play_by_query", "roon_get_now_playing_widget"])
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
@@ -130,7 +145,9 @@ test("read-only MCP credentials expose query tools and the three read-only widge
 
   assert.ok(tools.has("roon_get_state"));
   assert.ok(tools.has("roon_search_media"));
+  assert.ok(tools.has("roon_prepare_playlist_cover"));
   assert.equal(tools.has("roon_control_playback"), false);
+  assert.equal(tools.has("roon_set_playlist_cover"), false);
   assert.equal(tools.has("roon_play_media"), false);
   assert.ok(tools.has("roon_show_now_playing"));
   assert.ok(tools.has("roon_show_media"));
@@ -164,12 +181,18 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 34);
+    assert.equal(tools.size, 35);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
     assert.ok(tools.get("roon_set_playlist_cover").inputSchema.properties.image_base64);
+    const coverTool = tools.get("roon_set_playlist_cover");
+    assert.deepEqual(coverTool._meta["openai/fileParams"], ["image_file"]);
+    assert.deepEqual(coverTool.inputSchema.properties.image_file.required, ["download_url", "file_id"]);
+    assert.ok(coverTool.inputSchema.properties.image_file.properties.mime_type);
+    assert.ok(coverTool.inputSchema.properties.image_file.properties.file_name);
+    assert.ok(tools.get("roon_prepare_playlist_cover").inputSchema.properties.playlist);
     const savePlaylist = tools.get("roon_save_playlist");
     assert.ok(savePlaylist.inputSchema.properties.build_id);
     assert.ok(savePlaylist.inputSchema.properties.desired_count);
@@ -182,8 +205,8 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     assert.match(savePlaylist.description, /exactly two replenishment rounds/i);
     assert.match(savePlaylist.description, /result_id never bypasses validation/i);
     assert.ok(savePlaylist.outputSchema.properties.status.enum.includes("needs_input"));
-    assert.match(tools.get("roon_set_playlist_cover").description, /768x768 square sRGB WebP under 750 KB/);
-    assert.match(tools.get("roon_set_playlist_cover").inputSchema.properties.content_type.description, /prefer image\/webp/);
+    assert.match(coverTool.description, /images below 768x768 are rejected/);
+    assert.match(coverTool.inputSchema.properties.image_file.description, /preferred input/);
     const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {

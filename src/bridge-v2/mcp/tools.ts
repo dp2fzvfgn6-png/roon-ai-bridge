@@ -30,6 +30,12 @@ const targetSchema = z.object({
 
 const mediaType = z.enum(["track", "album", "artist", "playlist"]);
 const sourcePreference = z.enum(["highest_quality", "streaming_first", "library_first"]);
+const openAiFile = z.object({
+  download_url: z.string().url(),
+  file_id: z.string().min(1),
+  mime_type: z.string().optional(),
+  file_name: z.string().optional()
+});
 const mediaSelector = z.object({
   result_id: z.string().min(1).optional(),
   query: z.string().min(1).optional(),
@@ -75,6 +81,7 @@ type ToolOptions = {
   description: string;
   inputSchema?: Record<string, z.ZodTypeAny>;
   annotations: Record<string, boolean>;
+  _meta?: Record<string, unknown>;
 };
 
 export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Context): void {
@@ -322,12 +329,26 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
     }
   }, (input) => gateway.editPlaylistTracks(input));
 
+  register("roon_prepare_playlist_cover", {
+    title: "Prepare RoonIA Playlist Cover",
+    description: "Use this when the user wants ChatGPT to create or generate artwork for a virtual playlist. Call it before image generation so the exact playlist, track context, minimum resolution, preferred format, crop and edge-safe requirements are known. After generating the image, call roon_set_playlist_cover with the returned playlist_id and the generated image as image_file.",
+    annotations: readOnly,
+    inputSchema: {
+      playlist: z.object({
+        id: z.string().min(1).optional(),
+        name: z.string().min(1).optional()
+      }).refine((value) => Boolean(value.id || value.name), "id or name is required")
+    }
+  }, (input) => gateway.preparePlaylistCover(input));
+
   register("roon_set_playlist_cover", {
     title: "Set RoonIA Playlist Cover",
-    description: "Use this when a user-supplied or generated image should become a virtual playlist's custom cover. When creating artwork, target a 768x768 square sRGB WebP under 750 KB and keep important subjects or text centered, away from the edges. JPEG and PNG are also accepted. RoonIA auto-rotates, square-crops, strips metadata, resizes and compresses every upload to a lightweight WebP. Provide a data URL, or base64 bytes with content_type; do not use a track artwork key.",
+    description: "Use this when a generated or user-supplied image is ready to become a virtual playlist's custom cover. For generated artwork, call roon_prepare_playlist_cover before generation, then provide the resulting image through image_file. Prefer a 1024x1024 square sRGB source; images below 768x768 are rejected instead of being saved blurry. JPEG, PNG and WebP are accepted. RoonIA auto-rotates, center-crops, strips metadata, resizes up to 1024x1024 and compresses to a verified WebP under 750 KB. Inline Base64 remains available only for legacy clients; never pass an internal sandbox path or track artwork key.",
     annotations: write,
+    _meta: { "openai/fileParams": ["image_file"] },
     inputSchema: {
       playlist_id: z.string().min(1),
+      image_file: openAiFile.optional().describe("Authorized generated or user-selected image file supplied by ChatGPT. This is the preferred input."),
       image_data_url: z.string().min(1).max(8_000_000).optional().describe("Base64 data URL. Optimal generated artwork is a 768x768 square sRGB WebP under 750 KB."),
       image_base64: z.string().min(1).max(8_000_000).optional().describe("Raw base64 image bytes. For generated artwork prefer a 768x768 square WebP under 750 KB."),
       content_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional().describe("Required with image_base64; prefer image/webp for generated artwork.")
