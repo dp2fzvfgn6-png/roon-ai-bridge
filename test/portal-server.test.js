@@ -177,6 +177,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.home-playlist-grid/);
     assert.match(portalStylesText, /\.home-history-list/);
     assert.match(portalStylesText, /\.featured-zone-links button/);
+    assert.match(portalStylesText, /\.home-playlist-card > div:first-child[^}]*position: relative/);
+    assert.match(portalStylesText, /\.featured-title-slot/);
     assert.match(portalStylesText, /\.update-compact/);
     assert.match(portalStylesText, /\.available-update\[hidden\]/);
     assert.match(portalStylesText, /\.service-panel/);
@@ -239,6 +241,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /miniRenderSignature===signature/);
     assert.match(portalScriptText, /homePlaybackSignature===signature/);
+    assert.match(portalScriptText, /function fitFeaturedTitle/);
+    assert.match(portalScriptText, /title\.scrollHeight>slot\.clientHeight/);
     assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
