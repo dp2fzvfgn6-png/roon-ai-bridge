@@ -21,6 +21,8 @@ export type AppConfig = {
   oauthApprovalPin: string | null;
   roonStreamingSource: "tidal" | "qobuz" | null;
   updateChannel: "stable" | "beta";
+  automaticUpdateChecks: boolean;
+  debugMode: boolean;
 };
 
 function boolFromEnv(value: string | undefined, fallback = false): boolean {
@@ -43,6 +45,8 @@ export function loadRuntimePortOverrides(dataDir: string): {
   port?: number;
   portalPort?: number;
   updateChannel?: "stable" | "beta";
+  automaticUpdateChecks?: boolean;
+  debugMode?: boolean;
   publicBaseUrl?: string;
   portalPublicUrl?: string;
 } {
@@ -56,12 +60,22 @@ export function loadRuntimePortOverrides(dataDir: string): {
       parsed.update_channel === "beta" ? "beta" :
         parsed.update_channel === "stable" ? "stable" :
           undefined;
+    const automaticUpdateChecks =
+      typeof parsed.automatic_update_checks === "boolean"
+        ? parsed.automatic_update_checks
+        : undefined;
+    const debugMode =
+      typeof parsed.debug_mode === "boolean"
+        ? parsed.debug_mode
+        : undefined;
     const publicBaseUrl = typeof parsed.public_base_url === "string" ? parsed.public_base_url : undefined;
     const portalPublicUrl = typeof parsed.portal_base_url === "string" ? parsed.portal_base_url : undefined;
     return {
       ...(port ? { port } : {}),
       ...(portalPort ? { portalPort } : {}),
       ...(updateChannel ? { updateChannel } : {}),
+      ...(automaticUpdateChecks !== undefined ? { automaticUpdateChecks } : {}),
+      ...(debugMode !== undefined ? { debugMode } : {}),
       ...(publicBaseUrl ? { publicBaseUrl } : {}),
       ...(portalPublicUrl ? { portalPublicUrl } : {})
     };
@@ -126,6 +140,12 @@ export function loadConfig(): AppConfig {
     oauthIssuer,
     oauthApprovalPin,
     roonStreamingSource,
-    updateChannel: runtimePorts.updateChannel ?? envUpdateChannel
+    updateChannel: runtimePorts.updateChannel ?? envUpdateChannel,
+    automaticUpdateChecks:
+      runtimePorts.automaticUpdateChecks ??
+      boolFromEnv(process.env.AUTOMATIC_UPDATE_CHECKS, true),
+    debugMode:
+      runtimePorts.debugMode ??
+      boolFromEnv(process.env.DEBUG_MODE, false)
   };
 }

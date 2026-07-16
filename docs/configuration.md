@@ -22,6 +22,8 @@ PUBLIC_BASE_URL=https://roonia.ipchome.com
 OAUTH_ISSUER=https://roonia.ipchome.com
 OAUTH_APPROVAL_PIN=
 ROON_STREAMING_SOURCE=TIDAL
+AUTOMATIC_UPDATE_CHECKS=true
+DEBUG_MODE=false
 ```
 
 ## HTTP API Authentication
@@ -82,12 +84,33 @@ From the portal's `Ajustes > Sistema` screen, an administrator can:
 - inspect detected local addresses and change bridge and portal ports;
 - select the stable or beta update channel;
 - compare the installed Git build with the latest build in that channel;
+- enable or disable an automatic update check every 24 hours;
+- enable or disable the portal's additional Debug information;
 - follow update progress and request a controlled restart.
+
+When beta updates are disabled from a beta installation, the portal asks how
+to continue. `Cambiar ahora a estable` installs the latest release from `main`
+and may move to an older version. `Conservar esta beta` stops newer beta
+updates and checks `main` daily until its version is equal or newer; the switch
+to stable is then requested automatically. This transition check remains
+active even if the general automatic-update check is disabled.
 
 Saved values are written to `data/runtime-config.json` and override the
 corresponding environment values on the next process start. The API and portal
 ports must be different. Public URLs must use HTTP or HTTPS and cannot contain
 embedded credentials.
+
+Automatic checks are enabled by default and can also be configured with
+`AUTOMATIC_UPDATE_CHECKS=true|false`. The last result is stored in
+`data/version-status.json`, so an available-update notice survives portal and
+service restarts until the installed build changes or a later check clears it.
+
+Debug mode is disabled by default and can also be initialized with
+`DEBUG_MODE=true|false`. Its selector lives in the separate
+`Diagnóstico y soporte` panel. Enabling it reveals the Registros tab, advanced
+OAuth diagnostics and technical System details such as runtime environment,
+ports, capabilities, channel and build. It does not change `LOG_LEVEL` or make
+unsanitized secrets visible.
 
 ## Safe Update Channel
 

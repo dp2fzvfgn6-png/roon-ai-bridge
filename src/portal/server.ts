@@ -139,10 +139,23 @@ export function createPortalServer(context: ApiContext): express.Express {
   app.use("/api", createObservabilityRouter(context));
 
   app.get("/api/session", (_req, res) => {
+    const systemInfo = context.systemManagementService.getSystemInfo() as any;
+    const versionStatus = systemInfo.version_status;
+    const availableUpdate =
+      versionStatus?.update_available === true && versionStatus.latest_version
+        ? {
+            version: versionStatus.latest_version,
+            build: versionStatus.latest_build || null
+          }
+        : null;
     res.json({
       ok: true,
       version: APP_VERSION,
       build: process.env.GIT_COMMIT?.slice(0, 12) || null,
+      update_channel: systemInfo.update_channel,
+      automatic_update_checks: systemInfo.automatic_update_checks === true,
+      debug_mode: systemInfo.debug_mode === true,
+      available_update: availableUpdate,
       portal_port: context.config.portalPort,
       user: res.locals.portalUser || null
     });
@@ -222,6 +235,7 @@ export function createPortalServer(context: ApiContext): express.Express {
   });
 
   app.get("/api/admin/settings", (_req, res) => {
+    const systemInfo = context.systemManagementService.getSystemInfo() as any;
     res.json({
       version: APP_VERSION,
       build: process.env.GIT_COMMIT?.slice(0, 12) || null,
@@ -236,8 +250,10 @@ export function createPortalServer(context: ApiContext): express.Express {
       public_base_url: context.config.publicBaseUrl,
       portal_base_url: context.config.portalPublicUrl,
       streaming_source: context.config.roonStreamingSource,
-      update_channel: context.config.updateChannel,
-      allow_beta_updates: context.config.updateChannel === "beta"
+      update_channel: systemInfo.update_channel,
+      allow_beta_updates: systemInfo.allow_beta_updates === true,
+      automatic_update_checks: systemInfo.automatic_update_checks === true,
+      debug_mode: systemInfo.debug_mode === true
     });
   });
 
@@ -317,6 +333,31 @@ export function createPortalServer(context: ApiContext): express.Express {
   app.patch("/api/admin/system/ports", (req, res, next) => {
     try {
       res.json(context.systemManagementService.saveRuntimeConfig(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/system/update-preferences", (req, res, next) => {
+    try {
+      res.json(context.systemManagementService.saveUpdatePreferences(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/system/debug-preferences", (req, res, next) => {
+    try {
+      res.json(context.systemManagementService.saveDebugPreferences(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/system/update-channel", (req, res, next) => {
+    try {
+      const result = context.systemManagementService.changeUpdateChannel(req.body || {});
+      res.status(result.update_request ? 202 : 200).json(result);
     } catch (error) {
       next(error);
     }

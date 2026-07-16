@@ -34,6 +34,8 @@ logger.info("Configuration loaded", {
   browseEnabled: config.enableBrowse,
   mcpEnabled: config.enableMcp,
   authEnabled: config.enableAuth,
+  automaticUpdateChecks: config.automaticUpdateChecks,
+  debugMode: config.debugMode,
   apiTokenConfigured: Boolean(config.apiToken),
   roonStreamingSource: config.roonStreamingSource
 });
@@ -104,3 +106,5 @@ if (config.enablePortal) {
     });
   });
 }
+
+systemManagementService.startAutomaticChecks();

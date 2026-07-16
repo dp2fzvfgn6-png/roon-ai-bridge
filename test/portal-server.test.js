@@ -29,7 +29,10 @@ function createConfig(dataDir) {
     publicBaseUrl: "https://example.test",
     oauthIssuer: "https://example.test",
     oauthApprovalPin: "pin",
-    roonStreamingSource: "tidal"
+    roonStreamingSource: "tidal",
+    updateChannel: "stable",
+    automaticUpdateChecks: true,
+    debugMode: false
   };
 }
 
@@ -41,6 +44,36 @@ test("serves portal assets publicly but protects every administration endpoint",
   const toolAccessService = new ToolAccessService(database);
   const portalAuthService = new PortalAuthService(config, database);
   const noop = () => {};
+  let automaticUpdateChecks = true;
+  let debugMode = false;
+  let updateChannel = "stable";
+  const systemManagementService = {
+    getSystemInfo: () => ({
+      version: "0.17.2",
+      update_channel: updateChannel,
+      allow_beta_updates: updateChannel === "beta",
+      beta_exit_policy: null,
+      automatic_update_checks: automaticUpdateChecks,
+      debug_mode: debugMode,
+      version_status: {
+        update_available: true,
+        latest_version: "0.17.3",
+        latest_build: "abcdef123456"
+      }
+    }),
+    saveUpdatePreferences: (input) => {
+      automaticUpdateChecks = input.automatic_update_checks === true;
+      return { automatic_update_checks: automaticUpdateChecks };
+    },
+    saveDebugPreferences: (input) => {
+      debugMode = input.debug_mode === true;
+      return { debug_mode: debugMode };
+    },
+    changeUpdateChannel: (input) => {
+      updateChannel = input.allow_beta_updates ? "beta" : "stable";
+      return { ok: true, update_channel: updateChannel, allow_beta_updates: updateChannel === "beta" };
+    }
+  };
   const context = {
     config,
     logger: { info: noop, warn: noop, error: noop, debug: noop },
@@ -67,7 +100,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     apiKeyService,
     portalAuthService,
     toolAccessService,
-    systemManagementService: { getSystemInfo: () => ({}) },
+    systemManagementService,
     zonePresetService: {},
     outputVolumeSettingsService: {}
   };
@@ -85,11 +118,33 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /roonIA/);
     assert.match(portalPageText, /id="context-modal"/);
     assert.match(portalPageText, /id="confirm-dialog"/);
+    assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260715\.1"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260715\.1"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260716\.5"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260716\.5"/);
+    assert.match(portalPageText, /id="version-badge">v—<\/small>/);
+    assert.doesNotMatch(portalPageText, /id="command-status"/);
+    assert.match(portalPageText, /id="toast-region"[^>]*aria-atomic="true"/);
     assert.match(portalPageText, /id="refresh"[^>]*hidden/);
     assert.match(portalPageText, /id="save-ports"[^>]*hidden/);
+    assert.match(portalPageText, /id="installed-version">v—<\/strong>/);
+    assert.match(portalPageText, /id="installed-build">build —<\/code>/);
+    assert.match(portalPageText, /id="available-update"[^>]*hidden/);
+    assert.match(portalPageText, /id="request-update"[^>]*hidden>Actualizar<\/button>/);
+    assert.match(portalPageText, /id="check-update">Comprobar actualizaciones<\/button>/);
+    assert.match(portalPageText, /id="system-auto-update-checks"[^>]*type="checkbox"/);
+    assert.match(portalPageText, /id="system-debug-mode"[^>]*type="checkbox"/);
+    assert.match(portalPageText, /data-tab="operation" data-debug-only hidden>Registros/);
+    assert.match(portalPageText, /id="admin-operation" data-debug-only hidden/);
+    assert.match(portalPageText, /class="panel connection-advanced" data-debug-only hidden/);
+    assert.match(portalPageText, /id="debug-system-details"[^>]*data-debug-only hidden/);
+    assert.match(portalPageText, /id="beta-exit-status"[^>]*hidden/);
+    assert.match(portalPageText, /Conservar esta beta hasta que estable la alcance/);
+    assert.match(portalPageText, /id="header-update-notice"[^>]*hidden>Nueva actualización disponible<\/button>/);
+    assert.match(portalPageText, /class="panel service-panel"/);
+    assert.doesNotMatch(portalPageText, /La comprobación compara la build instalada/);
+    assert.doesNotMatch(portalPageText, /id="admin-health-badge"/);
+    assert.doesNotMatch(portalPageText, /id="update-state"|id="version-summary"|id="update-message"/);
     assert.match(portalPageText, />library_music<\/span><span>Música<\/span>/);
     assert.match(portalPageText, /data-tab="browse">Mi Música<\/button>/);
     assert.doesNotMatch(portalPageText, /id="browse-hierarchy"/);
@@ -113,6 +168,17 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.library-destination-grid/);
     assert.match(portalStylesText, /\.best-search-result\{width:min\(100%,590px\)/);
     assert.match(portalStylesText, /\.cover-fallback\.artist/);
+    assert.match(portalStylesText, /\.toast\.warning/);
+    assert.match(portalStylesText, /\.toast\.info/);
+    assert.match(portalStylesText, /\.update-compact/);
+    assert.match(portalStylesText, /\.available-update\[hidden\]/);
+    assert.match(portalStylesText, /\.service-panel/);
+    assert.match(portalStylesText, /\.header-update-notice/);
+    assert.match(portalStylesText, /\.update-preferences/);
+    assert.match(portalStylesText, /\.beta-exit-option/);
+    assert.match(portalStylesText, /\[data-debug-only\]\[hidden\]/);
+    assert.match(portalStylesText, /\.debug-panel/);
+    assert.doesNotMatch(portalStylesText, /\.command-status/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
@@ -166,6 +232,26 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);
     assert.match(portalScriptText, /data-queue-setting="shuffle"/);
     assert.match(portalScriptText, /setInterval\(refreshMiniPlayerState,2000\)/);
+    assert.match(portalScriptText, /const ACTION_MESSAGES/);
+    assert.match(portalScriptText, /region\.replaceChildren\(\)/);
+    assert.match(portalScriptText, /}, 3000\)/);
+    assert.match(portalScriptText, /channel==='beta'\?' \(beta\)'/);
+    assert.match(portalScriptText, /channel==='beta'\?' \(beta\)'/);
+    assert.match(portalScriptText, /status\.update_available===true&&Boolean\(status\.latest_version\)/);
+    assert.match(portalScriptText, /\$\("#available-update"\)\.hidden=!hasAvailable/);
+    assert.match(portalScriptText, /\$\("#request-update"\)\.hidden=!hasAvailable/);
+    assert.match(portalScriptText, /function renderAvailableUpdateNotice/);
+    assert.match(portalScriptText, /\/api\/admin\/system\/update-preferences/);
+    assert.match(portalScriptText, /\/api\/admin\/system\/debug-preferences/);
+    assert.match(portalScriptText, /function applyDebugMode/);
+    assert.match(portalScriptText, /function renderDebugSystemDetails/);
+    assert.match(portalScriptText, /\/api\/admin\/system\/update-channel/);
+    assert.match(portalScriptText, /function chooseBetaExitStrategy/);
+    assert.match(portalScriptText, /setInterval\(refreshAvailableUpdateStatus,60000\)/);
+    assert.doesNotMatch(portalScriptText, /#admin-health-badge|#version-summary|#update-message|#update-state/);
+    assert.match(portalScriptText, /Volumen en \$\{zone\} ajustado al \$\{value\} %/);
+    assert.match(portalScriptText, /Se han unido las zonas \$\{zones\}/);
+    assert.doesNotMatch(portalScriptText, /commandStatus/);
     assert.match(portalPageText, /data-tab="users">Usuarios/);
     assert.match(portalPageText, /data-tab="connections">Conexiones/);
     assert.match(portalPageText, /id="system-bridge-url"/);
@@ -183,6 +269,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(previewScriptText, /best_by_type/);
     assert.match(previewScriptText, /groups/);
     assert.match(previewScriptText, /release_type_source:"roon_metadata"/);
+    assert.match(previewScriptText, /\/api\/admin\/system\/check-update/);
+    assert.match(previewScriptText, /\/api\/admin\/system\/update-preferences/);
+    assert.match(previewScriptText, /\/api\/admin\/system\/debug-preferences/);
+    assert.match(previewScriptText, /\/api\/admin\/system\/update-channel/);
+    assert.match(previewScriptText, /update_available:true/);
     assert.doesNotMatch(previewScriptText, /three_line/);
 
     const authStatus = await fetch(`${baseUrl}/api/auth/status`);
@@ -210,7 +301,58 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: "Bearer portal-test-token" }
     });
     assert.equal(session.status, 200);
-    assert.equal((await session.json()).portal_port, 3001);
+    const sessionBody = await session.json();
+    assert.equal(sessionBody.portal_port, 3001);
+    assert.equal(sessionBody.update_channel, "stable");
+    assert.equal(sessionBody.automatic_update_checks, true);
+    assert.equal(sessionBody.debug_mode, false);
+    assert.deepEqual(sessionBody.available_update, {
+      version: "0.17.3",
+      build: "abcdef123456"
+    });
+
+    const updatePreferences = await fetch(`${baseUrl}/api/admin/system/update-preferences`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ automatic_update_checks: false })
+    });
+    assert.equal(updatePreferences.status, 200);
+    assert.equal((await updatePreferences.json()).automatic_update_checks, false);
+
+    const debugPreferences = await fetch(`${baseUrl}/api/admin/system/debug-preferences`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ debug_mode: true })
+    });
+    assert.equal(debugPreferences.status, 200);
+    assert.equal((await debugPreferences.json()).debug_mode, true);
+
+    const debugSession = await fetch(`${baseUrl}/api/session`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await debugSession.json()).debug_mode, true);
+
+    const updateChannelResponse = await fetch(`${baseUrl}/api/admin/system/update-channel`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ allow_beta_updates: true })
+    });
+    assert.equal(updateChannelResponse.status, 200);
+    assert.equal((await updateChannelResponse.json()).update_channel, "beta");
+
+    const betaSession = await fetch(`${baseUrl}/api/session`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await betaSession.json()).update_channel, "beta");
 
     const userSession = await fetch(`${baseUrl}/api/session`, {
       headers: { Authorization: `Bearer ${setupBody.token}` }

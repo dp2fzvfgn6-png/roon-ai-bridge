@@ -651,9 +651,31 @@ The portal on port `3001` uses protected same-origin endpoints:
 - `GET /api/admin/settings`
 - `GET /api/admin/system`
 - `PATCH /api/admin/system/ports`
+- `PATCH /api/admin/system/update-preferences`
+- `PATCH /api/admin/system/debug-preferences`
+- `POST /api/admin/system/update-channel`
 - `POST /api/admin/system/check-update`
 - `POST /api/admin/system/update`
 - `POST /api/admin/system/restart`
+
+`POST /api/admin/system/update-channel` accepts
+`{"allow_beta_updates":true}` to enable beta updates. To leave beta, send
+`allow_beta_updates:false` with one of these strategies:
+
+- `install_stable`: writes an update request targeting `main` immediately. The
+  stable release can be older than the installed beta.
+- `wait_for_stable`: retains the installed beta, blocks newer beta updates and
+  checks `main` daily. When the stable semantic version is equal to or newer
+  than the retained beta, the service requests the `main` update automatically.
+
+While the deferred strategy is active, `GET /api/admin/system` reports the
+current beta channel, `allow_beta_updates:false` and a `beta_exit_policy`
+object describing the retained version.
+
+`PATCH /api/admin/system/debug-preferences` accepts a required boolean
+`debug_mode`. The value is persisted in `data/runtime-config.json` and is
+returned by `/api/session`, `/api/admin/settings` and `/api/admin/system` so the
+portal can apply the same visibility rules immediately and after restart.
 - `GET /api/admin/api-keys`
 - `POST /api/admin/api-keys`
 - `DELETE /api/admin/api-keys/:key_id`

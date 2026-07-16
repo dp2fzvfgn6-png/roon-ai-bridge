@@ -6,6 +6,23 @@ each release lives under [`docs/`](docs/README.md).
 ## 0.17.2 Beta - Unreleased
 
 - Development continues on the `beta` branch from the v0.17.1 stable release.
+- Replaced stacked portal toasts and stale update text in the header with one
+  concise three-second action notification whose newest message takes priority.
+- Added contextual feedback for playback, volume, grouping, queue, playlist,
+  access and administration actions.
+- Simplified the header version to omit the build and identify beta installs as
+  `vX.Y.Z (beta)`.
+- Reorganized System settings with a compact update block, conditional update
+  availability, clearer live status labels and a separate service restart
+  panel.
+- Added a guided beta-exit flow: install the latest stable release immediately
+  or retain the installed beta without receiving newer betas until `main`
+  reaches the same version, then switch automatically to stable.
+- Added configurable daily update checks, persisted version-check results and
+  a permanent available-update notice in the header and System settings.
+- Added a persistent Modo Debug in a separate diagnostics panel. It reveals
+  technical System details, advanced OAuth diagnostics and the Registros tab
+  without changing the service log level.
 
 ## 0.17.1 - 2026-07-16
 
