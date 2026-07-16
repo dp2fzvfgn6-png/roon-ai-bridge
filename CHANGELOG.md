@@ -3,6 +3,10 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
+## 0.17.2 Beta - Unreleased
+
+- Development continues on the `beta` branch from the v0.17.1 stable release.
+
 ## 0.17.1 - 2026-07-16
 
 - Rebuilt the embedded widgets through `ui://roon-ai-bridge/v17/` with the

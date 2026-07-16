@@ -80,7 +80,7 @@ test("compares update builds even when the semantic version is unchanged", async
   const previousCommit = process.env.GIT_COMMIT;
   process.env.GIT_COMMIT = "111111111111aaaaaaaa";
   global.fetch = async (url) => String(url).includes("package.json")
-    ? new Response(JSON.stringify({ version: "0.17.1" }), { status: 200 })
+    ? new Response(JSON.stringify({ version: "0.17.2" }), { status: 200 })
     : new Response(JSON.stringify({ sha: "222222222222bbbbbbbb" }), { status: 200 });
   const noop = () => {};
   const service = new SystemManagementService({
@@ -91,7 +91,7 @@ test("compares update builds even when the semantic version is unchanged", async
   }, { info: noop, warn: noop, error: noop, debug: noop });
   try {
     const status = await service.checkForUpdates({ allow_beta_updates: false });
-    assert.equal(status.current_version, "0.17.1");
+    assert.equal(status.current_version, "0.17.2");
     assert.equal(status.current_build, "111111111111");
     assert.equal(status.latest_build, "222222222222");
     assert.equal(status.update_available, true);
