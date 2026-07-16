@@ -4,6 +4,7 @@ import { BridgeV2Context } from "../context";
 import { failed } from "../contracts";
 import { WIDGET_V2_URIS } from "./resources";
 import { WidgetPayload, WidgetV2ViewService } from "./viewService";
+import { embedWidgetArtwork } from "./artwork";
 
 const referenceSchema = z.object({
   id: z.string().min(1).optional(),
@@ -21,7 +22,8 @@ function descriptorMeta(resourceUri: string): Record<string, unknown> {
   };
 }
 
-function renderResult(operation: string, widget: WidgetPayload) {
+async function renderResult(operation: string, widget: WidgetPayload, context: BridgeV2Context) {
+  const hydratedWidget = await embedWidgetArtwork(context, widget);
   const summary = widget.view === "now_playing"
     ? `${Array.isArray(widget.zones) ? widget.zones.length : 0} zona(s) reproduciendo.`
     : `Mostrando ${widget.title}.`;
@@ -34,7 +36,7 @@ function renderResult(operation: string, widget: WidgetPayload) {
       generated_at: widget.generated_at
     },
     content: [{ type: "text" as const, text: summary }],
-    _meta: { widget }
+    _meta: { widget: hydratedWidget }
   };
 }
 
@@ -66,7 +68,7 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: descriptorMeta(WIDGET_V2_URIS.nowPlaying)
     } as any, async ({ zone }: any) => {
-      try { return renderResult("roon_show_now_playing", views.nowPlaying({ zone })); }
+      try { return await renderResult("roon_show_now_playing", views.nowPlaying({ zone }), context); }
       catch (error) { return errorResult("roon_show_now_playing", error); }
     });
   }
@@ -89,7 +91,7 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: descriptorMeta(WIDGET_V2_URIS.media)
     } as any, async (input: any) => {
-      try { return renderResult("roon_show_media", await views.media(input)); }
+      try { return await renderResult("roon_show_media", await views.media(input), context); }
       catch (error) { return errorResult("roon_show_media", error); }
     });
   }
@@ -110,7 +112,7 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: descriptorMeta(WIDGET_V2_URIS.playlist)
     } as any, async (input: any) => {
-      try { return renderResult("roon_show_playlist", views.playlist(input)); }
+      try { return await renderResult("roon_show_playlist", views.playlist(input), context); }
       catch (error) { return errorResult("roon_show_playlist", error); }
     });
   }

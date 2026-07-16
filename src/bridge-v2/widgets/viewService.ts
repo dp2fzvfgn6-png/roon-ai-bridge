@@ -3,7 +3,6 @@ import { TargetReference } from "../contracts";
 import { TargetResolver } from "../targetResolver";
 import { formatZone } from "../../roon/roonZoneService";
 import type { MediaResult, MediaType, SourcePreference } from "../../roon/roonMediaService";
-import { createWidgetAssetUrl } from "../../services/widgetAssetService";
 import { ApiError } from "../../utils/errors";
 
 export type WidgetView =
@@ -31,11 +30,11 @@ function basePayload(view: WidgetView, title: string): WidgetPayload {
   };
 }
 
-function imageUrl(context: BridgeV2Context, imageKey: unknown): string | null {
-  if (typeof imageKey !== "string" || !imageKey) return null;
-  return imageKey.startsWith("custom:")
-    ? createWidgetAssetUrl(context.config, "playlist-cover", imageKey.slice("custom:".length))
-    : createWidgetAssetUrl(context.config, "roon-image", imageKey);
+function artwork(imageKey: unknown): { image_key: string | null; image_url: null } {
+  return {
+    image_key: typeof imageKey === "string" && imageKey ? imageKey : null,
+    image_url: null
+  };
 }
 
 function normalize(value: string): string {
@@ -74,7 +73,7 @@ export class WidgetV2ViewService {
             title: formatted.now_playing.line1,
             artist: formatted.now_playing.line2,
             album: formatted.now_playing.line3,
-            image_url: imageUrl(this.context, formatted.now_playing.image_key)
+            ...artwork(formatted.now_playing.image_key)
           },
           outputs: formatted.outputs.map((output) => ({
             output_id: output.output_id,
@@ -163,7 +162,7 @@ export class WidgetV2ViewService {
         name: detail.name,
         description: detail.description,
         track_count: detail.track_count,
-        image_url: imageUrl(this.context, coverKey)
+        ...artwork(coverKey)
       },
       tracks: tracks.map((track) => ({
         track_id: track.track_id,
@@ -172,7 +171,7 @@ export class WidgetV2ViewService {
         artist: track.audio_metadata?.artist || track.artist,
         album: track.audio_metadata?.album || track.album,
         duration_seconds: track.audio_metadata?.duration_seconds ?? null,
-        image_url: imageUrl(this.context, track.image_key)
+        ...artwork(track.image_key)
       })),
       pagination: {
         offset: input.offset ?? 0,
@@ -240,7 +239,7 @@ export class WidgetV2ViewService {
       direct_match: media.direct_match,
       is_best_match: media.is_best_match,
       links: media.links,
-      image_url: imageUrl(this.context, media.image_key)
+      ...artwork(media.image_key)
     };
   }
 

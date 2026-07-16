@@ -1,0 +1,299 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const { PlaylistBuildService } = require("../dist/services/playlistBuildService");
+const { PlaylistService } = require("../dist/services/playlistService");
+
+function tempConfig() {
+  return {
+    dataDir: fs.mkdtempSync(path.join(os.tmpdir(), "roonia-playlist-build-")),
+    port: 3000,
+    nodeEnv: "test",
+    logLevel: "silent",
+    roonExtensionName: "RoonIA",
+    roonExtensionId: "test",
+    enableBrowse: true,
+    enableMcp: true,
+    enableAuth: false,
+    apiToken: null,
+    publicBaseUrl: "http://localhost",
+    oauthIssuer: "http://localhost",
+    oauthApprovalPin: null,
+    roonStreamingSource: "tidal"
+  };
+}
+
+function mediaTrack(id, title, artist, options = {}) {
+  return {
+    result_id: id,
+    roon_item_key: `key:${id}`,
+    type: "track",
+    media_type: "track",
+    title,
+    artist,
+    artists: [{ type: "artist", title: artist, artist: null, result_id: null }],
+    album: options.album ?? null,
+    album_artist: options.albumArtist ?? null,
+    version_hint: options.versionHint || "studio",
+    subtitle: artist,
+    image_key: options.imageKey || null,
+    source: options.source || "tidal",
+    source_confidence: "high",
+    quality: options.quality || null,
+    is_library: false,
+    playable: options.playable !== false,
+    is_best_match: true,
+    selection_required: false,
+    match_score: 100,
+    confidence: "high",
+    match_reasons: [],
+    match_penalties: [],
+    version_penalties: [],
+    warnings: [],
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    release_year: options.releaseYear ?? null,
+    duration_seconds: options.durationSeconds ?? null,
+    track_number: options.trackNumber ?? null,
+    disc_number: options.discNumber ?? null,
+    content_count: null,
+    release_type: null,
+    release_type_source: null,
+    roon_rank: options.roonRank || 1,
+    direct_match: true,
+    direct_match_score: 100,
+    links: {
+      artist: null,
+      artists: [],
+      album: options.albumResultId
+        ? { type: "album", title: options.album || "Album", artist, result_id: options.albumResultId }
+        : null
+    },
+    ...(options.extra || {})
+  };
+}
+
+function mediaAlbum(id, title, artist, options = {}) {
+  return {
+    ...mediaTrack(id, title, artist, options),
+    type: "album",
+    media_type: "album",
+    playable: false,
+    roon_item_key: `album:${id}`
+  };
+}
+
+function fakeMedia(searchResults, albumDetails = {}) {
+  return {
+    searches: [],
+    async search(request) {
+      this.searches.push(request);
+      const results = typeof searchResults === "function"
+        ? searchResults(request)
+        : searchResults[request.query] || [];
+      return {
+        query: request.query,
+        source_preference: request.sourcePreference || "streaming_first",
+        results,
+        groups: { artist: [], album: [], ep: [], single_ep: [], single: [], track: results, playlist: [] },
+        best_match: results[0] || null,
+        best_by_type: { track: results[0] || null },
+        ambiguous: false,
+        ambiguity_reason: null,
+        recommended_result_id: results[0]?.result_id || null,
+        selection_required: false,
+        warnings: []
+      };
+    },
+    async getAlbumDetail(resultId) {
+      if (!albumDetails[resultId]) throw new Error("album detail unavailable");
+      return albumDetails[resultId];
+    }
+  };
+}
+
+test("playlist build waits for two replenishment rounds and then saves a safe shorter playlist", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const media = fakeMedia((request) => {
+    if (request.query.includes("First Song")) return [mediaTrack("first", "First Song", "Artist One")];
+    if (request.query.includes("Second Song")) return [mediaTrack("second", "Second Song", "Artist Two")];
+    return [];
+  });
+  const builder = new PlaylistBuildService(playlistService, media);
+
+  const initial = await builder.build({
+    name: "Safe but shorter",
+    desired_count: 3,
+    tracks: [{ candidate_id: "p1", title: "First Song", artist_credit: "Artist One" }]
+  });
+  assert.equal(initial.phase, "needs_candidates");
+  assert.equal(initial.next_round, 1);
+  assert.equal(initial.rounds_remaining, 2);
+  assert.equal(initial.missing_count, 2);
+  assert.equal(playlistService.listPlaylists().total, 0);
+
+  const roundOne = await builder.build({
+    build_id: initial.build_id,
+    tracks: [{ candidate_id: "r1", title: "Unavailable Song", artist_credit: "Nobody" }]
+  });
+  assert.equal(roundOne.phase, "needs_candidates");
+  assert.equal(roundOne.next_round, 2);
+  assert.equal(roundOne.rounds_remaining, 1);
+  assert.equal(playlistService.listPlaylists().total, 0);
+
+  const final = await builder.build({
+    build_id: initial.build_id,
+    tracks: [{ candidate_id: "r2", title: "Second Song", artist_credit: "Artist Two" }]
+  });
+  assert.equal(final.phase, "finalized");
+  assert.equal(final.complete, false);
+  assert.equal(final.desired_count, 3);
+  assert.equal(final.added_count, 2);
+  assert.equal(final.missing_count, 1);
+  assert.equal(final.playlist.tracks_count, 2);
+  assert.deepEqual(final.playlist.tracks.map((track) => track.resolution.status), ["resolved", "resolved"]);
+  assert.equal(playlistService.validatePlaylist(final.playlist.playlist_id).summary.unresolved, 0);
+});
+
+test("playlist build rejects an unintended live result and fills the target from a reserve", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const media = fakeMedia((request) => {
+    if (request.query.includes("Angel")) {
+      return [mediaTrack("angel-live", "Angel (Live)", "Massive Attack", { versionHint: "live" })];
+    }
+    if (request.query.includes("Teardrop")) {
+      return [mediaTrack("teardrop", "Teardrop", "Massive Attack")];
+    }
+    return [];
+  });
+  const result = await new PlaylistBuildService(playlistService, media).build({
+    name: "Reserve replacement",
+    desired_count: 1,
+    tracks: [
+      { candidate_id: "p1", role: "primary", result_id: "angel-live", title: "Angel", artist_credit: "Massive Attack" },
+      { candidate_id: "r1", role: "reserve", title: "Teardrop", artist_credit: "Massive Attack" }
+    ]
+  });
+
+  assert.equal(result.phase, "finalized");
+  assert.equal(result.complete, true);
+  assert.equal(result.playlist.tracks_count, 1);
+  assert.equal(result.playlist.tracks[0].title, "Teardrop");
+  assert.equal(result.rejected[0].candidate_id, "p1");
+  assert.equal(result.rejected[0].status, "missing");
+  assert.equal(result.accepted[0].role, "reserve");
+});
+
+test("playlist build never promotes two indistinguishable strict matches out of ambiguity", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const media = fakeMedia((request) => {
+    if (request.query.includes("Ambiguous Song")) {
+      return [
+        mediaTrack("ambiguous-a", "Ambiguous Song", "Same Artist", { album: "Release A" }),
+        mediaTrack("ambiguous-b", "Ambiguous Song", "Same Artist", { album: "Release B" })
+      ];
+    }
+    if (request.query.includes("Safe Reserve")) {
+      return [mediaTrack("safe-reserve", "Safe Reserve", "Other Artist")];
+    }
+    return [];
+  });
+  const result = await new PlaylistBuildService(playlistService, media).build({
+    name: "No ambiguous recordings",
+    desired_count: 1,
+    tracks: [
+      { candidate_id: "ambiguous", title: "Ambiguous Song", artist_credit: "Same Artist" },
+      { candidate_id: "reserve", role: "reserve", title: "Safe Reserve", artist_credit: "Other Artist" }
+    ]
+  });
+
+  assert.equal(result.phase, "finalized");
+  assert.equal(result.playlist.tracks.length, 1);
+  assert.equal(result.playlist.tracks[0].title, "Safe Reserve");
+  assert.equal(result.rejected.find((item) => item.candidate_id === "ambiguous").status, "needs_enrichment");
+});
+
+test("playlist build reorders the final resolved set so the same artist is never adjacent", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const tracks = {
+    "A One Artist A": [mediaTrack("a1", "A One", "Artist A")],
+    "A Two Artist A": [mediaTrack("a2", "A Two", "Artist A")],
+    "B One Artist B": [mediaTrack("b1", "B One", "Artist B")],
+    "B Two Artist B": [mediaTrack("b2", "B Two", "Artist B")]
+  };
+  const result = await new PlaylistBuildService(playlistService, fakeMedia(tracks)).build({
+    name: "No adjacent artists",
+    desired_count: 4,
+    tracks: [
+      { title: "A One", artist_credit: "Artist A" },
+      { title: "A Two", artist_credit: "Artist A" },
+      { title: "B One", artist_credit: "Artist B" },
+      { title: "B Two", artist_credit: "Artist B" }
+    ]
+  });
+
+  assert.equal(result.complete, true);
+  const artists = result.playlist.tracks.map((track) => track.artist);
+  for (let index = 1; index < artists.length; index += 1) {
+    assert.notEqual(artists[index], artists[index - 1]);
+  }
+});
+
+test("playlist build hydrates the selected track and stores the complete Roon observation separately from LLM hints", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const searchTrack = mediaTrack("search-track", "Hydrated Song", "Hydrated Artist", {
+    albumResultId: "album-result"
+  });
+  const detailedTrack = mediaTrack("detail-track", "Hydrated Song", "Hydrated Artist", {
+    album: "Observed Album",
+    albumArtist: "Hydrated Artist",
+    releaseYear: 1999,
+    durationSeconds: 245,
+    trackNumber: 4,
+    discNumber: 1,
+    quality: { label: "24-bit / 96 kHz / FLAC", bit_depth: 24, sample_rate_hz: 96000, format: "FLAC" },
+    extra: { isrc: "GBTEST990001" }
+  });
+  const album = mediaAlbum("album-result", "Observed Album", "Hydrated Artist", { releaseYear: 1999 });
+  const media = fakeMedia(
+    { "Hydrated Song Hydrated Artist": [searchTrack] },
+    { "album-result": { album, description: null, tracks: [detailedTrack], warnings: [] } }
+  );
+
+  const result = await new PlaylistBuildService(playlistService, media).build({
+    name: "Hydrated",
+    tracks: [{
+      candidate_id: "p1",
+      title: "Hydrated Song",
+      artist_credit: "Hydrated Artist",
+      album_hint: "Hint Album",
+      release_year_hint: 2000
+    }]
+  });
+  const stored = result.playlist.tracks[0];
+  assert.equal(stored.album, "Observed Album");
+  assert.equal(stored.audio_metadata.release_year, 1999);
+  assert.equal(stored.audio_metadata.duration_seconds, 245);
+  assert.equal(stored.audio_metadata.isrc, "GBTEST990001");
+  assert.equal(stored.user_metadata.llm_hints.album, "Hint Album");
+  assert.equal(stored.user_metadata.llm_hints.release_year, 2000);
+  assert.equal(stored.resolution.roon_observation.album_detail.attempted, true);
+  assert.equal(stored.resolution.roon_observation.album_detail.matched_track.isrc, "GBTEST990001");
+  assert.equal(stored.resolution.selection_origin, "automatic");
+  assert.equal(stored.resolution.readiness, "ready");
+});
+
+test("playlist build handles exact non-Latin title and artist identities", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const media = fakeMedia({
+    "背徳の人 ムック": [mediaTrack("jp-track", "背徳の人", "ムック")]
+  });
+  const result = await new PlaylistBuildService(playlistService, media).build({
+    name: "Unicode",
+    tracks: [{ title: "背徳の人", artist_credit: "ムック" }]
+  });
+  assert.equal(result.playlist.tracks_count, 1);
+  assert.equal(result.playlist.tracks[0].title, "背徳の人");
+});

@@ -59,7 +59,7 @@ function output(id, name, value, muted = false) {
 }
 
 function fixture() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v17-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v18-"));
   const config = { dataDir, publicBaseUrl: "https://example.test", enableAuth: false, apiToken: null };
   const database = createDatabase(config);
   const playlists = new PlaylistService(config, database);
@@ -142,10 +142,8 @@ test("now-playing shows only active zones and every grouped output volume", () =
     assert.equal(view.view, "now_playing");
     assert.deepEqual(view.zones.map((item) => item.name), ["Despacho", "Cocina"]);
     assert.equal(view.zones[0].media.title, "Everything In Its Right Place");
-    const artwork = new URL(view.zones[0].media.image_url);
-    assert.equal(artwork.pathname, "/mcp");
-    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
-    assert.equal(artwork.searchParams.get("asset_id"), "now-zone-office");
+    assert.equal(view.zones[0].media.image_key, "now-zone-office");
+    assert.equal(view.zones[0].media.image_url, null);
     assert.deepEqual(view.zones[0].outputs.map((item) => [item.name, item.volume.value, item.volume.muted]), [
       ["Despacho izquierdo", 18, false],
       ["Despacho derecho", 21, true]
@@ -165,19 +163,14 @@ test("now-playing filters a named zone and omits it when it is idle", () => {
   } finally { database.close(); }
 });
 
-test("now-playing uses signed artwork URLs without exposing the API token", () => {
+test("now-playing keeps artwork as a private image reference before hydration", () => {
   const { database, context } = fixture();
   context.config.enableAuth = true;
   context.config.apiToken = "private-test-token";
   try {
     const view = new WidgetV2ViewService(context).nowPlaying({ zone: { id: "zone-office" } });
-    const artwork = new URL(view.zones[0].media.image_url);
-    assert.equal(artwork.pathname, "/mcp");
-    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
-    assert.equal(artwork.searchParams.get("asset_id"), "now-zone-office");
-    assert.ok(artwork.searchParams.get("expires"));
-    assert.ok(artwork.searchParams.get("signature"));
-    assert.equal(artwork.href.includes("private-test-token"), false);
+    assert.equal(view.zones[0].media.image_key, "now-zone-office");
+    assert.equal(view.zones[0].media.image_url, null);
   } finally { database.close(); }
 });
 
@@ -233,13 +226,11 @@ test("playlist view contains cover, description and lightweight track rows", () 
     assert.equal(view.view, "playlist");
     assert.equal(view.playlist.name, "Focus");
     assert.equal(view.playlist.description, "Concentración sin distracciones.");
-    const playlistArtwork = new URL(view.playlist.image_url);
-    assert.equal(playlistArtwork.searchParams.get("widget_asset"), "playlist-cover");
-    assert.equal(playlistArtwork.searchParams.get("asset_id"), "custom-cover");
+    assert.equal(view.playlist.image_key, "custom:custom-cover");
+    assert.equal(view.playlist.image_url, null);
     assert.equal(view.tracks[0].title, "Everything In Its Right Place");
-    const trackArtwork = new URL(view.tracks[0].image_url);
-    assert.equal(trackArtwork.searchParams.get("widget_asset"), "roon-image");
-    assert.equal(trackArtwork.searchParams.get("asset_id"), "cover-1");
+    assert.equal(view.tracks[0].image_key, "cover-1");
+    assert.equal(view.tracks[0].image_url, null);
   } finally { database.close(); }
 });
 
@@ -248,8 +239,7 @@ test("playlist view uses Roon artwork when the playlist has no custom cover", ()
   try {
     context.playlistService.updatePlaylist("focus", { cover_image_key: null });
     const view = new WidgetV2ViewService(context).playlist({ playlist: { id: "focus" } });
-    const artwork = new URL(view.playlist.image_url);
-    assert.equal(artwork.searchParams.get("widget_asset"), "roon-image");
-    assert.equal(artwork.searchParams.get("asset_id"), "cover-1");
+    assert.equal(view.playlist.image_key, "cover-1");
+    assert.equal(view.playlist.image_url, null);
   } finally { database.close(); }
 });

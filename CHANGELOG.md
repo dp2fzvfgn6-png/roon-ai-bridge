@@ -23,6 +23,14 @@ each release lives under [`docs/`](docs/README.md).
 - Added a persistent Modo Debug in a separate diagnostics panel. It reveals
   technical System details, advanced OAuth diagnostics and the Registros tab
   without changing the service log level.
+- Rebuilt model-created playlists as a batched preflight: title and artist are
+  mandatory, confident album/year data act as identity hints, ambiguous or
+  missing recordings are never persisted, reserves and two replenishment
+  rounds can fill the requested size, and any final shortfall is reported.
+- Playlist creation now deduplicates recordings, rejects unintended live,
+  remix, cover and alternate versions, avoids adjacent tracks by the same
+  artist and stores the complete available Roon observation separately from
+  model-supplied metadata.
 
 ## 0.17.1 - 2026-07-16
 

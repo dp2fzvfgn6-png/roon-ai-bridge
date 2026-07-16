@@ -26,12 +26,19 @@ import {
 import { TargetResolver } from "./targetResolver";
 import type { MediaType, SourcePreference } from "../roon/roonMediaService";
 import { APP_VERSION } from "../config/version";
+import { PlaylistBuildService } from "../services/playlistBuildService";
 
 export class IntentGateway {
   readonly targets: TargetResolver;
+  private readonly playlistBuildService: PlaylistBuildService;
 
   constructor(readonly context: BridgeV2Context) {
     this.targets = new TargetResolver(context.roonClient);
+    this.playlistBuildService = context.playlistBuildService || new PlaylistBuildService(
+      context.playlistService,
+      context.mediaService,
+      context.logger
+    );
   }
 
   getState(input: {
@@ -352,32 +359,64 @@ export class IntentGateway {
   }
 
   async savePlaylist(input: {
+    build_id?: string;
     playlist_id?: string;
     name?: string;
     description?: string;
+    desired_count?: number;
+    no_adjacent_same_artist?: boolean;
     tracks?: unknown[];
   }): Promise<OperationResult> {
-    const tracks = input.tracks?.map((track) => this.materializePlaylistTrack(track));
-    let data;
-    if (input.playlist_id) {
-      data = this.context.playlistService.updatePlaylist(input.playlist_id, input);
-      if (tracks) {
-        data = await this.context.playlistService.replaceTracksResolved(input.playlist_id, tracks, {
-          mediaService: this.context.mediaService,
-          logger: this.context.logger
-        });
-      }
-    } else {
-      data = await this.context.playlistService.createPlaylistResolved({ ...input, tracks }, {
-        mediaService: this.context.mediaService,
-        logger: this.context.logger
-      });
+    if (input.playlist_id && input.tracks === undefined && !input.build_id) {
+      const data = this.context.playlistService.updatePlaylist(input.playlist_id, input);
+      return this.playlistMutationResult("roon_save_playlist", "Playlist updated.", data);
     }
-    return this.playlistMutationResult(
+
+    const build = await this.playlistBuildService.build(input);
+    if (build.phase === "needs_candidates") {
+      return {
+        status: "needs_input",
+        operation: "roon_save_playlist",
+        summary: `Playlist preflight needs ${build.missing_count} more verified tracks. Submit candidate round ${build.next_round} with build_id ${build.build_id}.`,
+        verified: false,
+        data: build,
+        references: { build_id: build.build_id, next_round: build.next_round },
+        warnings: ["No playlist has been created or modified yet."]
+      };
+    }
+
+    const mutation = this.playlistMutationResult(
       "roon_save_playlist",
       input.playlist_id ? "Playlist updated." : "Playlist created.",
-      data
+      build.playlist as Record<string, any>
     );
+    const completionWarning = build.complete
+      ? []
+      : [`The playlist was created safely with ${build.missing_count} fewer tracks than requested.`];
+    return {
+      ...mutation,
+      summary: build.desired_count === null
+        ? `${input.playlist_id ? "Playlist updated" : "Playlist created"} with ${build.added_count} verified tracks.`
+        : build.complete
+          ? `${input.playlist_id ? "Playlist updated" : "Playlist created"} with all ${build.desired_count} requested tracks verified.`
+          : `${input.playlist_id ? "Playlist updated" : "Playlist created"} with ${build.added_count} verified tracks; ${build.missing_count} are missing from the requested target.`,
+      data: {
+        ...(mutation.data as Record<string, unknown>),
+        build_summary: {
+          round: build.round,
+          desired_count: build.desired_count,
+          added_count: build.added_count,
+          missing_count: build.missing_count,
+          complete: build.complete,
+          accepted: build.accepted,
+          rejected: build.rejected,
+          not_selected: build.not_selected,
+          unused_reserves: build.unused_reserves,
+          search_summary: build.search_summary
+        }
+      },
+      warnings: [...mutation.warnings, ...completionWarning]
+    };
   }
 
   async editPlaylistTracks(input: {
@@ -402,13 +441,17 @@ export class IntentGateway {
         warnings: []
       };
     }
+    const acceptedCandidates: Array<Record<string, unknown>> = [];
+    const omittedCandidates: Array<Record<string, unknown>> = [];
     for (const operation of input.operations) {
       if (operation.type === "add") {
-        const track = this.materializePlaylistTrack(operation.track || operation.media);
-        await this.context.playlistService.addTrackResolved(input.playlist_id, track, {
-          mediaService: this.context.mediaService,
-          logger: this.context.logger
-        });
+        const prepared = await this.playlistBuildService.prepareCandidate(operation.track || operation.media);
+        if (prepared.accepted) {
+          this.context.playlistService.addTrack(input.playlist_id, prepared.track);
+          acceptedCandidates.push(prepared.candidate);
+        } else {
+          omittedCandidates.push(prepared.rejection);
+        }
       }
       else if (operation.type === "update") {
         const changes = operation.changes || {};
@@ -441,19 +484,33 @@ export class IntentGateway {
       else if (operation.type === "remove") this.context.playlistService.removeTrack(input.playlist_id, operation.track_id);
       else if (operation.type === "reorder") this.context.playlistService.reorderTracks(input.playlist_id, operation.track_ids);
       else if (operation.type === "replace") {
-        await this.context.playlistService.replaceTracksResolved(
-          input.playlist_id,
-          (operation.tracks || []).map((track: unknown) => this.materializePlaylistTrack(track)),
-          { mediaService: this.context.mediaService, logger: this.context.logger }
-        );
+        const build = await this.playlistBuildService.build({
+          playlist_id: input.playlist_id,
+          tracks: operation.tracks || []
+        });
+        acceptedCandidates.push(...build.accepted);
+        omittedCandidates.push(...build.rejected, ...build.not_selected);
       }
       else throw new ApiError("INVALID_PLAYLIST_TRACK", "Unsupported playlist track operation", { type: operation.type });
     }
-    return this.playlistMutationResult(
+    const mutation = this.playlistMutationResult(
       "roon_edit_playlist_tracks",
       "Playlist track operations completed.",
       this.context.playlistService.getPlaylist(input.playlist_id)
     );
+    return {
+      ...mutation,
+      data: {
+        ...(mutation.data as Record<string, unknown>),
+        edit_summary: {
+          accepted: acceptedCandidates,
+          omitted: omittedCandidates
+        }
+      },
+      warnings: omittedCandidates.length > 0
+        ? [...mutation.warnings, `${omittedCandidates.length} unresolved or unsafe track candidates were omitted.`]
+        : mutation.warnings
+    };
   }
 
   async setPlaylistCover(input: {

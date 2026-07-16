@@ -5,7 +5,7 @@ const {
   WIDGET_V2_URIS
 } = require("../dist/bridge-v2/widgets/resources");
 
-test("serves three minimal read-only v17 widget resources", async () => {
+test("serves three minimal read-only v18 widget resources", async () => {
   const resources = new Map();
   const server = {
     registerResource(name, uri, options, handler) {
@@ -15,9 +15,9 @@ test("serves three minimal read-only v17 widget resources", async () => {
 
   registerWidgetV2Resources(server);
   assert.deepEqual([...resources.keys()].sort(), Object.values(WIDGET_V2_URIS).sort());
-  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v17\/now-playing\.html$/);
-  assert.match(WIDGET_V2_URIS.media, /\/v17\/media\.html$/);
-  assert.match(WIDGET_V2_URIS.playlist, /\/v17\/playlist\.html$/);
+  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v18\/now-playing\.html$/);
+  assert.match(WIDGET_V2_URIS.media, /\/v18\/media\.html$/);
+  assert.match(WIDGET_V2_URIS.playlist, /\/v18\/playlist\.html$/);
 
   for (const uri of Object.values(WIDGET_V2_URIS)) {
     const response = await resources.get(uri).handler();
@@ -44,6 +44,7 @@ test("serves three minimal read-only v17 widget resources", async () => {
     assert.doesNotMatch(resource.text, /setInterval|setTimeout/);
     assert.doesNotMatch(resource.text, /<button|<form|<input|<select/);
     assert.doesNotMatch(resource.text, /image_data_url/);
+    assert.match(resource.text, /art-fallback/);
     assert.deepEqual(resource._meta.ui.csp.connectDomains, []);
     assert.deepEqual(resource._meta.ui.csp.resourceDomains, ["https://roonia.ipchome.com"]);
     assert.equal(resource._meta["openai/widgetDomain"], "https://roonia.ipchome.com");

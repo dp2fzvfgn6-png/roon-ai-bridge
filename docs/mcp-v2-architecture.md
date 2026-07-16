@@ -72,6 +72,38 @@ does not mutate Roon.
 uses the selected reference to retrieve artist releases/popular tracks or an
 album track list through Roon Browse.
 
+### Model-created playlist preflight
+
+`roon_save_playlist` accepts one batch containing primary proposals and
+reserves. Every proposal includes `title` and `artist_credit`; `album_hint` and
+`release_year_hint` are optional evidence that the model sends only when it is
+confident and the detail helps distinguish the intended recording. The first
+Roon query remains title plus artist. Album is added only by the controlled
+fallback, and year is used for scoring rather than copied into the query.
+
+The preflight runs before any playlist write. It validates the title, every
+required artist or performance credit, the requested recording family and a
+playable Roon identity. Standard and remastered releases are equivalent for a
+standard request. Live, remix, cover, dub, acoustic and other alternate
+recordings require an explicit matching `recording_intent`. A model-provided
+`result_id` is temporary evidence and never bypasses these checks.
+
+Candidates are resolved with bounded concurrency. Valid reserves fill rejected
+or duplicated primaries, then the final accepted set is reordered so the same
+artist is not adjacent. Only accepted, fully resolved tracks are written, in a
+single transaction. Each stored row separates normalized `audio_metadata`,
+model hints and provenance in `user_metadata`, and the raw search/album-detail
+observation in `resolution.roon_observation`.
+
+When `desired_count` cannot be met, the tool returns `status: "needs_input"`
+with a short-lived `build_id` and does not create or modify a playlist. Server
+instructions tell the model to submit fresh candidates autonomously. Exactly
+two replenishment rounds are accepted. If the target is still not met after
+the second round, the verified shorter playlist is saved and
+`build_summary.missing_count` reports the shortfall. Build sessions live in
+the running process for 30 minutes; after a restart or expiration the model
+must start a new preflight.
+
 ### Batch playlist editing
 
 `roon_edit_playlist_tracks` accepts an ordered batch of add, update, remove,
@@ -79,10 +111,11 @@ reorder or replace operations. This avoids one MCP round trip per track while
 keeping playlist deletion in a separate destructive tool. Its operation
 schemas are explicit so the model does not need to infer field names.
 
-Creation, addition, replacement and identity-changing updates resolve stored
-text against Roon before returning. A playable `result_id` from
-`roon_search_media` is preferred because it records the exact selected track;
-an update with `changes.result_id` repairs one incorrect association manually.
+Add and replace operations use the same strict preflight and complete metadata
+capture as playlist creation; unresolved candidates are reported as omitted
+without being written. Identity-changing updates are resolved before returning.
+An update with `changes.result_id` can repair one incorrect association
+manually.
 `roon_resolve_playlist` can retry unresolved entries, selected `track_ids` or
 the complete playlist. Playlist mutations include `resolution_summary` and are
 only returned with `verified: true` when every track is resolved or explicitly

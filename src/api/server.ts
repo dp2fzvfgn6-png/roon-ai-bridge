@@ -38,6 +38,7 @@ import { TechnicalLogService } from "../services/technicalLogService";
 import { ExtensionManagerService } from "../services/extensionManagerService";
 import { DiagnosticsService } from "../services/diagnosticsService";
 import { ToolAccessService } from "../services/toolAccessService";
+import { PlaylistBuildService } from "../services/playlistBuildService";
 
 export type ApiContext = {
   config: AppConfig;
@@ -61,6 +62,11 @@ export type ApiContext = {
 
 export function createServer(context: ApiContext): express.Express {
   const app = express();
+  const playlistBuildService = new PlaylistBuildService(
+    context.playlistService,
+    context.mediaService,
+    context.logger
+  );
 
   app.use(express.json({ limit: "8mb" }));
   app.use(createHealthRouter(context));
@@ -93,6 +99,7 @@ export function createServer(context: ApiContext): express.Express {
       });
       const server = createBridgeV2McpServer({
         ...context,
+        playlistBuildService,
         activeApiKey: res.locals.apiKey || null
       });
       const transport = new StreamableHTTPServerTransport({

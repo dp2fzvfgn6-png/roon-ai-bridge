@@ -843,6 +843,53 @@ export class PlaylistService {
     return this.getPlaylistById(playlist.playlist_id);
   }
 
+  savePreparedPlaylist(input: {
+    playlist_id?: unknown;
+    name?: unknown;
+    description?: unknown;
+    cover_image_key?: unknown;
+    tracks: unknown[];
+  }): VirtualPlaylist {
+    const playlistId = nonEmptyString(input.playlist_id);
+    if (!playlistId) return this.createPlaylist(input);
+
+    const current = this.getPlaylistById(playlistId);
+    const name = input.name === undefined ? current.name : nonEmptyString(input.name);
+    if (!name) throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
+    const description = input.description === undefined
+      ? current.description
+      : optionalString(input.description);
+    const coverImageKey = input.cover_image_key === undefined
+      ? current.cover_image_key
+      : optionalString(input.cover_image_key);
+    const updatedAt = nowIso();
+
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          `UPDATE virtual_playlists
+           SET name = :name,
+               description = :description,
+               cover_image_key = :cover_image_key,
+               updated_at = :updated_at
+           WHERE playlist_id = :playlist_id`
+        )
+        .run({
+          playlist_id: playlistId,
+          name,
+          description,
+          cover_image_key: coverImageKey,
+          updated_at: updatedAt
+        });
+      this.database.db
+        .prepare("DELETE FROM virtual_playlist_tracks WHERE playlist_id = ?")
+        .run(playlistId);
+      this.insertTracks(playlistId, input.tracks, updatedAt);
+    });
+
+    return this.getPlaylistById(playlistId);
+  }
+
   updatePlaylist(
     playlistId: string,
     input: { name?: unknown; description?: unknown; cover_image_key?: unknown }

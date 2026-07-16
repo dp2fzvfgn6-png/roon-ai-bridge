@@ -2,6 +2,7 @@ import { ApiError } from "../utils/errors";
 
 export type OperationStatus =
   | "completed"
+  | "needs_input"
   | "ambiguous"
   | "confirmation_required"
   | "not_available"

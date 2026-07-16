@@ -8,6 +8,7 @@ import { DiagnosticsService } from "../services/diagnosticsService";
 import { ActionLogService } from "../services/actionLogService";
 import { TechnicalLogService } from "../services/technicalLogService";
 import { ToolAccessService } from "../services/toolAccessService";
+import { PlaylistBuildService } from "../services/playlistBuildService";
 import { ApiKeyRecord } from "../services/apiKeyService";
 import { Logger } from "../utils/logger";
 
@@ -17,6 +18,7 @@ export type BridgeV2Context = {
   roonClient: RoonClient;
   mediaService: RoonMediaService;
   playlistService: PlaylistService;
+  playlistBuildService?: PlaylistBuildService;
   zonePresetService: ZonePresetService;
   volumeLimitService: VolumeLimitService;
   diagnosticsService?: DiagnosticsService;

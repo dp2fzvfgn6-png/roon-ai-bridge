@@ -9,7 +9,7 @@ const write = { readOnlyHint: false, destructiveHint: false, openWorldHint: fals
 const destructive = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 
 const outputSchema = {
-  status: z.enum(["completed", "ambiguous", "confirmation_required", "not_available", "failed"]),
+  status: z.enum(["completed", "needs_input", "ambiguous", "confirmation_required", "not_available", "failed"]),
   operation: z.string(),
   summary: z.string(),
   verified: z.boolean(),
@@ -37,17 +37,23 @@ const mediaSelector = z.object({
   source_preference: sourcePreference.optional()
 }).refine((value) => Boolean(value.result_id || value.query), "result_id or query is required");
 const looseObject = z.object({}).catchall(z.unknown());
-const playlistTrack = z.object({
-  result_id: z.string().min(1).optional().describe("Temporary result_id from roon_search_media for an exact playable track selection."),
-  query: z.string().min(1).optional(),
-  title: z.string().min(1).optional(),
-  artist: z.string().min(1).optional(),
-  album: z.string().min(1).optional(),
+const requiredCredit = z.object({
+  name: z.string().min(1),
+  role: z.enum(["primary", "featured", "performer", "soloist", "conductor", "orchestra", "ensemble", "composer"]).default("primary")
+});
+const playlistBuildCandidate = z.object({
+  candidate_id: z.string().min(1).optional(),
+  role: z.enum(["primary", "reserve"]).default("primary"),
+  result_id: z.string().min(1).optional().describe("Optional temporary search reference. It never bypasses title, credits or recording-version validation."),
+  title: z.string().min(1),
+  artist_credit: z.string().min(1),
+  required_credits: z.array(requiredCredit).min(1).max(12).optional(),
+  album_hint: z.string().min(1).optional().describe("Include only when confidently known and useful for identifying the recording. It is normally a ranking hint, not initial query text."),
+  release_year_hint: z.number().int().min(1000).max(3000).optional().describe("Include only when confidently known. It is a validation/ranking hint, not normal initial query text."),
+  recording_intent: z.enum(["standard", "live", "remix", "cover", "dub", "acoustic", "alternate"]).default("standard"),
+  performance_sensitive: z.boolean().default(false).describe("Set true for jazz, classical or another selection where a particular performance matters."),
   user_metadata: looseObject.optional()
-}).catchall(z.unknown()).refine(
-  (value) => Boolean(value.result_id || value.query || value.title),
-  "result_id, query or title is required"
-);
+});
 const playlistTrackChanges = z.object({
   result_id: z.string().min(1).optional().describe("Use a playable track result_id to repair this entry with an exact manual match."),
   query: z.string().min(1).optional(),
@@ -57,11 +63,11 @@ const playlistTrackChanges = z.object({
   user_metadata: looseObject.optional()
 }).catchall(z.unknown());
 const playlistOperation = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("add"), track: playlistTrack }),
+  z.object({ type: z.literal("add"), track: playlistBuildCandidate }),
   z.object({ type: z.literal("update"), track_id: z.string().min(1), changes: playlistTrackChanges }),
   z.object({ type: z.literal("remove"), track_id: z.string().min(1) }),
   z.object({ type: z.literal("reorder"), track_ids: z.array(z.string().min(1)).min(1) }),
-  z.object({ type: z.literal("replace"), tracks: z.array(playlistTrack).max(500) })
+  z.object({ type: z.literal("replace"), tracks: z.array(playlistBuildCandidate).max(750) })
 ]);
 
 type ToolOptions = {
@@ -292,19 +298,22 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_save_playlist", {
     title: "Save RoonIA Playlist",
-    description: "Use this when a virtual playlist should be created or its metadata and complete track list updated. Omit playlist_id to create it. Prefer track result_id values returned by roon_search_media for explicit selections. Text-only tracks use strict title/artist/version resolution and prefer equivalent TIDAL recordings. Treat the playlist as fully verified only when verified=true and resolution_summary.unresolved is zero.",
+    description: "Use this when the model should create a safe virtual playlist or replace its complete track list. Send title plus artist_credit for every primary and reserve; include album/year hints only when confident. For a requested size, set desired_count and include roughly 50-75% reserves. RoonIA preflights identity, metadata, duplicates and artist adjacency before persistence. If status=needs_input, call this tool again with its build_id and new candidates; RoonIA allows exactly two replenishment rounds, then saves a safe shorter playlist and reports missing_count. A result_id never bypasses validation.",
     annotations: write,
     inputSchema: {
+      build_id: z.string().uuid().optional().describe("Return value from a prior needs_input response. On replenishment calls, submit only build_id and new tracks."),
       playlist_id: z.string().optional(),
       name: z.string().min(1).optional(),
       description: z.string().optional(),
-      tracks: z.array(playlistTrack).max(500).optional()
+      desired_count: z.number().int().min(1).max(500).optional(),
+      no_adjacent_same_artist: z.boolean().default(true),
+      tracks: z.array(playlistBuildCandidate).max(750).optional()
     }
   }, (input) => gateway.savePlaylist(input));
 
   register("roon_edit_playlist_tracks", {
     title: "Edit RoonIA Playlist Tracks",
-    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch. Additions, replacements and identity-changing updates are resolved to playable Roon recordings before completion; prefer result_id for exact selections.",
+    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch. Additions and replacements require title plus artist_credit and use the same strict metadata preflight as playlist creation; unresolved or unsafe candidates are omitted rather than persisted.",
     annotations: destructive,
     inputSchema: {
       playlist_id: z.string().min(1),

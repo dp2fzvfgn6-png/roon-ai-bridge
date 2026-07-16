@@ -170,12 +170,24 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
     assert.ok(tools.get("roon_set_playlist_cover").inputSchema.properties.image_base64);
+    const savePlaylist = tools.get("roon_save_playlist");
+    assert.ok(savePlaylist.inputSchema.properties.build_id);
+    assert.ok(savePlaylist.inputSchema.properties.desired_count);
+    assert.ok(savePlaylist.inputSchema.properties.no_adjacent_same_artist);
+    assert.ok(savePlaylist.inputSchema.properties.tracks.items.properties.artist_credit);
+    assert.ok(savePlaylist.inputSchema.properties.tracks.items.properties.album_hint);
+    assert.ok(savePlaylist.inputSchema.properties.tracks.items.properties.release_year_hint);
+    assert.ok(savePlaylist.inputSchema.properties.tracks.items.properties.recording_intent);
+    assert.ok(savePlaylist.inputSchema.properties.tracks.items.properties.required_credits);
+    assert.match(savePlaylist.description, /exactly two replenishment rounds/i);
+    assert.match(savePlaylist.description, /result_id never bypasses validation/i);
+    assert.ok(savePlaylist.outputSchema.properties.status.enum.includes("needs_input"));
     assert.match(tools.get("roon_set_playlist_cover").description, /768x768 square sRGB WebP under 750 KB/);
     assert.match(tools.get("roon_set_playlist_cover").inputSchema.properties.content_type.description, /prefer image\/webp/);
     const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v17\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v18\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else {
         assert.equal(tool._meta?.["openai/outputTemplate"], undefined);
@@ -195,6 +207,41 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
       "roon_ui_navigate",
       "roon_ui_action"
     ]) assert.equal(tools.has(removed), false);
+
+    const callTool = async (id, args) => {
+      const toolResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name: "roon_save_playlist", arguments: args }
+        })
+      });
+      assert.equal(toolResponse.status, 200);
+      return (await readMcpJson(toolResponse)).result.structuredContent;
+    };
+    const initialBuild = await callTool(2, {
+      name: "HTTP build continuity",
+      desired_count: 1,
+      tracks: [{ title: "Unavailable One", artist_credit: "Unknown Artist" }]
+    });
+    assert.equal(initialBuild.status, "needs_input");
+    const roundOne = await callTool(3, {
+      build_id: initialBuild.data.build_id,
+      tracks: [{ title: "Unavailable Two", artist_credit: "Unknown Artist Two" }]
+    });
+    assert.equal(roundOne.status, "needs_input");
+    const finalBuild = await callTool(4, {
+      build_id: initialBuild.data.build_id,
+      tracks: [{ title: "Unavailable Three", artist_credit: "Unknown Artist Three" }]
+    });
+    assert.equal(finalBuild.status, "completed");
+    assert.equal(finalBuild.data.build_summary.missing_count, 1);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     database.close();

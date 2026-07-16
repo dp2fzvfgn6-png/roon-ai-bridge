@@ -11,9 +11,11 @@ export type TrackResolutionRequest = {
   title?: string | null;
   artist?: string | null;
   album?: string | null;
+  releaseYear?: number | null;
   versionHint?: VersionHint | null;
   sourcePreference?: SourcePreference;
   count?: number;
+  includeExactQuery?: boolean;
 };
 
 export type RankedTrackCandidate = {
@@ -40,11 +42,11 @@ const AMBIGUOUS_IDENTITY_DELTA = 10;
 
 function normalize(value: string | null | undefined): string {
   return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFKD")
+    .replace(/\p{Mark}/gu, "")
     .toLowerCase()
     .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
 }
@@ -133,6 +135,20 @@ function identityScore(result: MediaResult, request: TrackResolutionRequest): { 
     }
   }
 
+  if (request.releaseYear && result.release_year) {
+    const delta = Math.abs(request.releaseYear - result.release_year);
+    if (delta === 0) {
+      score += 6;
+      reasons.push("exact_release_year");
+    } else if (delta <= 1) {
+      score += 3;
+      reasons.push("near_release_year");
+    } else {
+      score -= 3;
+      penalties.push("release_year_mismatch");
+    }
+  }
+
   const requestedVersion = request.versionHint && request.versionHint !== "unknown"
     ? baseVersion(request.versionHint)
     : "studio";
@@ -205,7 +221,10 @@ export class TrackResolutionService {
   async resolve(request: TrackResolutionRequest): Promise<TrackResolution> {
     const sourcePreference = request.sourcePreference || "streaming_first";
     const exactQuery = [request.title, request.artist].filter(Boolean).join(" ").trim();
-    const queries = Array.from(new Set([exactQuery, request.query.trim()].filter(Boolean)));
+    const queries = Array.from(new Set([
+      request.includeExactQuery === false ? "" : exactQuery,
+      request.query.trim()
+    ].filter(Boolean)));
     const results: MediaResult[] = [];
     const seen = new Set<string>();
 

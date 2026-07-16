@@ -18,6 +18,7 @@ This documentation covers the current v0.17.1 repository:
 - [Widget v15 Validation](widget-v15-validation.md)
 - [Widget v16 Search and Discography Validation](widget-v16-validation.md)
 - [Widget v17 Artwork Routing Validation](widget-v17-validation.md)
+- [Widget v18 Embedded Artwork Validation](widget-v18-validation.md)
 - [Deterministic Search Validation](deterministic-search-validation.md)
 - [Strict Track Resolution Validation](strict-track-resolution-validation.md)
 - [Music UX Validation](music-ux-validation.md)
