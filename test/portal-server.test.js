@@ -151,6 +151,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="playlist-sort"/);
     assert.match(portalPageText, /id="home-recent-playlists"/);
     assert.match(portalPageText, /id="home-history"/);
+    assert.match(portalPageText, /Gestionar zonas/);
 
     const logo = await fetch(`${baseUrl}/roonia-logo.svg`);
     assert.equal(logo.status, 200);
@@ -175,6 +176,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.toast\.info/);
     assert.match(portalStylesText, /\.home-playlist-grid/);
     assert.match(portalStylesText, /\.home-history-list/);
+    assert.match(portalStylesText, /\.featured-zone-links button/);
     assert.match(portalStylesText, /\.update-compact/);
     assert.match(portalStylesText, /\.available-update\[hidden\]/);
     assert.match(portalStylesText, /\.service-panel/);

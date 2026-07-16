@@ -196,8 +196,9 @@ select { color-scheme: dark; }
 .activity-row strong, .activity-row small { display: block; font-size: 11px; }
 .activity-row small, .activity-row time { margin-top: 3px; color: var(--text-dim); font-size: 9px; }
 .activity-list.tall { max-height: 520px; overflow: auto; }
-.featured-other-zones { display: inline-flex; align-items: center; gap: 7px; margin-top: 11px; padding: 0; border: 0; color: var(--text-soft); background: transparent; font: inherit; font-size: 11px; }
-.featured-other-zones:hover { color: var(--text); }
+.featured-other-zones { display: inline-flex; align-items: center; gap: 7px; margin-top: 11px; color: var(--text-soft); font-size: 11px; }
+.featured-zone-links button { padding: 0; border: 0; color: var(--text-soft); background: transparent; font: inherit; font-size: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,.28); text-underline-offset: 3px; cursor: pointer; }
+.featured-zone-links button:hover, .featured-zone-links button:focus-visible { color: var(--text); text-decoration-color: currentColor; }
 .home-playlists, .home-history { margin-top: 44px; }
 .home-playlist-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .home-playlist-card { min-width: 0; display: grid; grid-template-columns: 72px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 0; border: 0; color: var(--text); background: transparent; text-align: left; }
@@ -245,6 +246,7 @@ select { color-scheme: dark; }
 .cover-fallback.artist { color: var(--brand-green-light); background: radial-gradient(circle at 50% 36%,rgba(146,171,158,.18),transparent 34%),linear-gradient(145deg,#243029,#111512); }
 .cover-fallback.album { color: var(--brand-orange-light); background: radial-gradient(circle at 65% 28%,rgba(193,96,72,.16),transparent 34%),linear-gradient(145deg,#28231f,#151715); }
 .cover.image-failed img,.cover img[data-image-failed="true"] { display: none; }
+.cover:has(img[data-image-loaded="true"]) .cover-fallback { display: none; }
 .cover-fallback .material-symbols-rounded { font-size: 36px; }
 .track-list { display: grid; border-top: 1px solid var(--line); }
 .track-row { display: grid; grid-template-columns: 34px 44px minmax(0,1.5fr) minmax(120px,1fr) auto; align-items: center; gap: 13px; padding: 9px 6px; border-bottom: 1px solid var(--line); }
