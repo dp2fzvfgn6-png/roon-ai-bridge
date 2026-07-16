@@ -90,6 +90,19 @@ add a fifth search request. The block remains hidden when no category supplies
 a safe direct match. Search editions are deduplicated conservatively with
 source, year, version and artwork in the identity.
 
+The visible category groups preserve Roon's own ordinal order. Local match
+scores remain available to strict playback and playlist consumers through the
+flat `results` collection, but they never reorder the artist, release or track
+sections displayed by the portal. A title-only namesake cannot claim Roon's
+best-result identity: artwork, artist credit or explicit entity type must also
+corroborate it.
+
+Search entities marked `action_list` are action menus, not detail pages. Artist
+and album fichas follow only recognized non-mutating entity-navigation actions
+before reading discography or track content. Roon discography section labels
+and order are retained in `release_sections`; nested sections and flat header
+layouts are both supported.
+
 ## Post-deployment validation
 
 After an explicit deployment, refresh the ChatGPT app and start a new conversation so it loads the v16 widget and changed tool metadata. Then validate through both `/api/roon/media/search` and `roon_search_media`:

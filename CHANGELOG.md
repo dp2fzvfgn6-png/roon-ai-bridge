@@ -56,6 +56,14 @@ each release lives under [`docs/`](docs/README.md).
 - Exact catalog references now take precedence while valid, preserving Roon's
   classified artist discography and complete streaming album contents even
   when individual track rows omit number or duration metadata.
+- Manual result sections now keep Roon's own order rather than promoting local
+  exact-title namesakes. `Mejor resultado` requires corroborating identity
+  evidence, so Disclosure resolves to Roon's artist instead of an unrelated
+  same-title album.
+- Artist and album search results now traverse Roon `action_list` menus through
+  safe entity-navigation actions before reading content. Artist fichas retain
+  Roon's section labels and order, and streaming album fichas load their real
+  ordered tracklists when exposed by Browse.
 - Removed name-only discography fabrication and synthetic album ordering:
   unverified global matches are omitted or displayed separately as related
   results, actions are excluded from tracklists and track numbers are parsed

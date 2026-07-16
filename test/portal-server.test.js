@@ -178,6 +178,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.cover-fallback\.artist/);
     assert.match(portalStylesText, /\.toast\.warning/);
     assert.match(portalStylesText, /\.toast\.info/);
+    assert.match(portalStylesText, /--range-progress: 0%/);
+    assert.match(portalStylesText, /::-webkit-slider-thumb/);
+    assert.match(portalStylesText, /::-moz-range-thumb/);
+    assert.match(portalStylesText, /border-radius: 0; background: transparent/);
     assert.match(portalStylesText, /\.home-playlist-grid/);
     assert.match(portalStylesText, /\.home-history-list/);
     assert.match(portalStylesText, /\.featured-zone-links button/);
@@ -219,6 +223,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /source_preference:"streaming_first"/);
     assert.doesNotMatch(portalScriptText, /source_preference:"library_first"/);
     assert.match(portalScriptText, /artist-detail/);
+    assert.match(portalScriptText, /detail\.release_sections/);
+    assert.match(portalScriptText, /catalogSections\|\|fallbackSections/);
     assert.match(portalScriptText, /album-detail/);
     assert.match(portalScriptText, /entityByline\(np\.line2,np\.line3/);
     assert.match(portalScriptText, /entityByline\(item\.artist,null,item\.subtitle\|\|""\)/);
@@ -262,6 +268,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /miniRenderSignature===signature/);
     assert.match(portalScriptText, /playback:playbackSignature\(zone\),position/);
     assert.match(portalScriptText, /function setMiniPlayerSeekClock/);
+    assert.match(portalScriptText, /function setRangeFill/);
+    assert.match(portalScriptText, /input\.style\.setProperty\('--range-progress'/);
+    assert.match(portalScriptText, /syncMiniRangeFills\(root\)/);
     assert.match(portalScriptText, /input\.dataset\.basePosition=String\(seconds\)/);
     assert.match(portalScriptText, /zone\.now_playing=\{\.\.\.\(zone\.now_playing\|\|\{\}\),seek_position:seconds\}/);
     assert.match(portalScriptText, /catch\(err=>\{state\.miniRenderSignature=null;notifyError/);

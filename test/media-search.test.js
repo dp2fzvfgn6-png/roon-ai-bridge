@@ -467,6 +467,67 @@ test("best match follows Roon direct result and resolves entity priority determi
     assert.equal(search.best_match.artist, "Bad Bunny");
     assert.equal(search.best_match.album, "DeBÍ TiRAR MáS FOToS");
   });
+
+  await t.test("Disclosure keeps Roon's artist best result above a namesake album", async () => {
+    const service = new RoonMediaService(createMultiTypeSearchClient({
+      direct: [{ title: "Disclosure", subtitle: "Artist", item_key: "direct-disclosure", image_key: "disclosure-artist", hint: "action_list" }],
+      artist: [
+        { title: "Disclosure", subtitle: "Disclosure", item_key: "artist-disclosure", image_key: "disclosure-artist", hint: "action_list" },
+        { title: "Disclosure", subtitle: "Disclosure", item_key: "artist-namesake", hint: "action_list" }
+      ],
+      album: [{ title: "Disclosure", subtitle: "The Gathering", item_key: "album-disclosure", image_key: "gathering-cover", hint: "action_list" }]
+    }), "tidal");
+    const search = await service.search({ query: "Disclosure", types: ["artist", "album"] });
+    assert.equal(search.best_match.media_type, "artist");
+    assert.equal(search.best_match.image_key, "disclosure-artist");
+    assert.equal(search.selection_required, false);
+    assert.equal(search.recommended_result_id, search.best_match.result_id);
+  });
+});
+
+test("search sections preserve Roon order instead of promoting an exact-title namesake", async () => {
+  const service = new RoonMediaService(createMultiTypeSearchClient({
+    direct: [{ title: "Disclosure", subtitle: "Artist", item_key: "direct-disclosure", image_key: "disclosure-artist", hint: "action_list" }],
+    album: [
+      { title: "NO CAP", subtitle: "Disclosure & Anderson .Paak", item_key: "no-cap", image_key: "no-cap-cover", hint: "action_list" },
+      { title: "Settle (Deluxe Version)", subtitle: "Disclosure", item_key: "settle", image_key: "settle-cover", hint: "action_list" },
+      { title: "Disclosure Day", subtitle: "John Williams", item_key: "disclosure-day", image_key: "day-cover", hint: "action_list" },
+      { title: "Caracal (Deluxe)", subtitle: "Disclosure", item_key: "caracal", image_key: "caracal-cover", hint: "action_list" },
+      { title: "Disclosure", subtitle: "The Gathering", item_key: "namesake", image_key: "namesake-cover", hint: "action_list" }
+    ]
+  }), "tidal");
+  const search = await service.search({ query: "Disclosure", types: ["album"], count: 10 });
+  assert.deepEqual(search.groups.album.map((album) => album.title), [
+    "NO CAP",
+    "Settle (Deluxe Version)",
+    "Disclosure Day",
+    "Caracal (Deluxe)",
+    "Disclosure"
+  ]);
+  assert.equal(search.groups.album[4].match_score > search.groups.album[0].match_score, true);
+});
+
+test("Bad Bunny album results keep the same leading order returned by Roon", async () => {
+  const service = new RoonMediaService(createMultiTypeSearchClient({
+    album: [
+      { title: "DeBÍ TiRAR MáS FOToS (Dolby Atmos)", subtitle: "Bad Bunny", item_key: "debi", image_key: "debi-cover", hint: "action_list" },
+      { title: "Un Verano Sin Ti", subtitle: "Bad Bunny", item_key: "verano", image_key: "verano-cover", hint: "action_list" },
+      { title: "nadie sabe lo que va a pasar mañana", subtitle: "Bad Bunny", item_key: "nadie", image_key: "nadie-cover", hint: "action_list" },
+      { title: "EL ÚLTIMO TOUR DEL MUNDO", subtitle: "Bad Bunny", item_key: "tour", image_key: "tour-cover", hint: "action_list" },
+      { title: "Bad Bunny", subtitle: "Maleigh Zan", item_key: "namesake", image_key: "namesake-cover", hint: "action_list" },
+      { title: "YHLQMDLG", subtitle: "Bad Bunny", item_key: "yhlqmdlg", image_key: "yhlqmdlg-cover", hint: "action_list" }
+    ]
+  }), "tidal");
+  const search = await service.search({ query: "Bad Bunny", types: ["album"], count: 10 });
+  assert.deepEqual(search.groups.album.map((album) => album.title), [
+    "DeBÍ TiRAR MáS FOToS (Dolby Atmos)",
+    "Un Verano Sin Ti",
+    "nadie sabe lo que va a pasar mañana",
+    "EL ÚLTIMO TOUR DEL MUNDO",
+    "Bad Bunny",
+    "YHLQMDLG"
+  ]);
+  assert.equal(search.results[0].title, "Bad Bunny");
 });
 
 function createAlbumDetailClient() {
@@ -564,12 +625,20 @@ function createStreamingAlbumWithoutTrackMetadataClient() {
     browse(opts, callback) {
       if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
       if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
-      if (opts.item_key === "caracal-key") { stage = "caracal"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "caracal-key") { stage = "caracal-actions"; callback(false, { action: "list", list: { title: "Caracal (Deluxe)", hint: "action_list" } }); return; }
+      if (opts.item_key === "go-to-caracal") { stage = "caracal"; callback(false, { action: "list" }); return; }
       callback(false, { action: "none" });
     },
     load(opts, callback) {
       if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
       if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Caracal (Deluxe)", subtitle: "Disclosure", item_key: "caracal-key", hint: "action_list", media: { source: "tidal" } }] }); return; }
+      if (stage === "caracal-actions") {
+        callback(false, { list: { title: "Caracal (Deluxe)", count: 2, hint: "action_list" }, items: [
+          { title: "Play Album", item_key: "play-caracal", hint: "action" },
+          { title: "Go to Album", item_key: "go-to-caracal", hint: "list" }
+        ] });
+        return;
+      }
       const tracks = ["Nocturnal", "Omen", "Holding On"].map((title, index) => ({
         title,
         subtitle: "Disclosure",
@@ -843,6 +912,8 @@ test("artist discography follows nested Roon sections, separates releases and re
   assert.deepEqual(detail.releases.map((release) => release.title).sort(), ["EL BAIFO", "One Song", "Short Release"]);
   assert.equal(detail.releases.find((release) => release.title === "One Song").release_type, "single");
   assert.equal(detail.releases.find((release) => release.title === "Short Release").release_type, "ep");
+  assert.equal(detail.releases.find((release) => release.title === "EL BAIFO").release_section, "Main Albums");
+  assert.equal(detail.releases.find((release) => release.title === "One Song").release_section, "Singles & EPs");
   assert.equal(detail.releases.some((release) => release.artist === "Gabriella Quevedo"), false);
 });
 
@@ -854,7 +925,8 @@ function createCatalogAndLibraryArtistClient() {
       const session = opts.multi_session_key || "default";
       if (opts.hierarchy === "search" && opts.input) { stages.set(session, "search-root"); callback(false, { action: "list" }); return; }
       if (opts.item_key === "artists-category") { stages.set(session, "search-artists"); callback(false, { action: "list" }); return; }
-      if (opts.item_key === "disclosure-catalog") { stages.set(session, "catalog-artist"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "disclosure-catalog") { stages.set(session, "catalog-artist-actions"); callback(false, { action: "list", list: { title: "Disclosure", hint: "action_list" } }); return; }
+      if (opts.item_key === "go-to-disclosure") { stages.set(session, "catalog-artist"); callback(false, { action: "list" }); return; }
       if (opts.item_key === "discography-key") { stages.set(session, "discography"); callback(false, { action: "list" }); return; }
       if (opts.item_key === "main-albums-key") { stages.set(session, "main-albums"); callback(false, { action: "list" }); return; }
       if (opts.hierarchy === "artists" && !opts.item_key) { libraryLoads += 1; stages.set(session, "library-artists"); callback(false, { action: "list" }); return; }
@@ -864,6 +936,7 @@ function createCatalogAndLibraryArtistClient() {
       const stage = stages.get(opts.multi_session_key || "default");
       if (stage === "search-root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
       if (stage === "search-artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Disclosure", subtitle: "8 Albums", image_key: "disclosure-image", item_key: "disclosure-catalog", hint: "action_list" }] }); return; }
+      if (stage === "catalog-artist-actions") { callback(false, { list: { title: "Disclosure", count: 3, hint: "action_list" }, items: [{ title: "Play Artist", item_key: "play-disclosure", hint: "action" }, { title: "Start Radio", item_key: "radio-disclosure", hint: "action" }, { title: "Go to Artist", item_key: "go-to-disclosure", hint: "list" }] }); return; }
       if (stage === "catalog-artist") { callback(false, { list: { title: "Disclosure", count: 1 }, items: [{ title: "Discography", item_key: "discography-key", hint: "list" }] }); return; }
       if (stage === "discography") { callback(false, { list: { title: "Discography", count: 1 }, items: [{ title: "Main Albums (2)", item_key: "main-albums-key", hint: "list" }] }); return; }
       if (stage === "main-albums") { callback(false, { list: { title: "Main Albums", count: 2 }, items: [{ title: "Settle", subtitle: "Disclosure", item_key: "settle", hint: "action_list", media: { artist: "Disclosure", release_year: 2013 } }, { title: "Caracal", subtitle: "Disclosure", item_key: "caracal", hint: "action_list", media: { artist: "Disclosure", release_year: 2015 } }] }); return; }
@@ -883,6 +956,7 @@ test("artist discography prefers the exact catalog session over the smaller loca
   const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
 
   assert.deepEqual(detail.releases.map((release) => release.title), ["Settle", "Caracal"]);
+  assert.deepEqual(detail.releases.map((release) => release.release_section), ["Main Albums", "Main Albums"]);
   assert.equal(detail.releases.every((release) => release.data_origin === "roon_search_session"), true);
   assert.equal(detail.releases.every((release) => release.completeness === "complete"), true);
   assert.equal(mock.libraryLoads(), 0);
@@ -920,8 +994,8 @@ test("artist detail groups albums and singles and keeps biography optional", asy
   const service = new RoonMediaService(createArtistSearchClient(), "tidal");
   const search = await service.search({ query: "Radiohead", types: ["artist"], count: 1 });
   const artist = search.results[0];
-  const media = (title, media_type, subtitle, release_type = null) => ({ ...artist, result_id: `media-${title}`, title, type: media_type, media_type, subtitle, release_type, artist: media_type === "track" ? "Radiohead" : null });
-  service.listArtistReleases = async () => ({ artist, list_title: "Radiohead", releases: [media("Kid A", "album", "2000", "album"), media("Burn the Witch", "album", "Single · 2016", "single")] });
+  const media = (title, media_type, subtitle, release_type = null, release_section = null) => ({ ...artist, result_id: `media-${title}`, title, type: media_type, media_type, subtitle, release_type, release_section, artist: media_type === "track" ? "Radiohead" : null });
+  service.listArtistReleases = async () => ({ artist, list_title: "Radiohead", releases: [media("Kid A", "album", "2000", "album", "Main Albums"), media("Burn the Witch", "album", "Single · 2016", "single", "Singles & EPs")] });
   service.search = async (request) => ({ query: request.query, source_preference: "library_first", results: request.types[0] === "track" ? [media("Paranoid Android", "track", "Radiohead")] : [], ambiguous: false, ambiguity_reason: null, recommended_result_id: null, selection_required: true, warnings: [] });
   service.readArtistBio = async () => null;
 
@@ -930,6 +1004,7 @@ test("artist detail groups albums and singles and keeps biography optional", asy
   assert.deepEqual(detail.popular_tracks.map((track) => track.title), ["Paranoid Android"]);
   assert.deepEqual(detail.albums.map((album) => album.title), ["Kid A"]);
   assert.deepEqual(detail.singles_eps.map((album) => album.title), ["Burn the Witch"]);
+  assert.deepEqual(detail.release_sections.map((section) => [section.title, section.releases.map((release) => release.title)]), [["Main Albums", ["Kid A"]], ["Singles & EPs", ["Burn the Witch"]]]);
 });
 
 test("artist detail never turns a global name search into an official discography", async () => {
