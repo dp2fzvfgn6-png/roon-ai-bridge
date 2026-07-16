@@ -74,6 +74,13 @@ each release lives under [`docs/`](docs/README.md).
 - Album detail recognizes counted English and Spanish track sections such as
   `3 Tracks` and `3 pistas`, and no longer presents long linked artist-credit
   lists as editorial descriptions.
+- Artist detail now recovers streaming releases from Roon's Albums search when
+  the artist object exposes only the local `0/1 Albums` count. Raw Roon-linked
+  artist IDs are retained for exact attribution, homonyms are excluded and
+  secondary-credit releases are separated as appearances.
+- Catalog album detail follows bounded, identity-matched repeated list wrappers
+  before reading tracks, matching the native Browse path used by releases such
+  as `Caracal (Deluxe)` and `The Complete Animals`.
 - Removed name-only discography fabrication and synthetic album ordering:
   unverified global matches are omitted or displayed separately as related
   results, actions are excluded from tracklists and track numbers are parsed

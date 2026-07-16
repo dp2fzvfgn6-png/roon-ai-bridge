@@ -74,10 +74,21 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
   context.
 - Linked artist-credit subtitles remain metadata and are never promoted to an
   editorial album description merely because their rendered text is long.
+- Roon-linked entity IDs are retained before visible text is cleaned. If the
+  native artist object reports only its local `0/1 Albums` list, an Albums
+  category search may contribute releases only when one exact linked artist ID
+  can be selected and is present on each accepted result. Primary-credit
+  releases and appearances remain separate, homonyms are rejected and the
+  recovered catalog is reported as partial.
+- An album search result may contain one or more repeated `list` wrappers with
+  the same title. Detail traversal follows them only while title, artist and
+  available artwork still match, stops on repeated item keys and is bounded to
+  five navigation levels before ordered tracks are accepted.
 - A global track search can populate `related_tracks`, but it cannot populate
   the ordered `tracks` collection or synthesize track numbers.
-- A global artist-name album search is never promoted to a discography. If
-  Roon exposes no verified releases, the response is intentionally partial.
+- A name-only global album search is never promoted to a discography. If no
+  exact linked artist identity is available, the response remains empty or
+  partial instead of accepting substring matches.
 
 ## Portal latency contract
 

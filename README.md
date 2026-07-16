@@ -112,10 +112,11 @@ PORTAL_ADMIN_TOKEN=
 
 When `PORTAL_ADMIN_TOKEN` is empty, it falls back to `API_TOKEN`.
 
-The portal home prioritizes current multiroom playback, zones, recently played
-virtual playlists and a local history of the last 100 portal searches and
-playback actions. This listening history is separate from the technical audit
-log and remains on the local installation.
+The portal home prioritizes current multiroom playback, zones and recently
+played virtual playlists. Its activity section separates the newest 500 track
+starts (including artwork and Roon zone) from the newest 100 portal searches.
+Both histories are stored locally in SQLite, load progressively and remain
+separate from the technical audit log.
 
 ## Environment
 

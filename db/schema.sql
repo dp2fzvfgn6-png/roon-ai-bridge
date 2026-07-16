@@ -158,6 +158,9 @@ CREATE INDEX IF NOT EXISTS idx_play_history_zone_started
 CREATE INDEX IF NOT EXISTS idx_home_history_created
   ON home_history (created_at);
 
+CREATE INDEX IF NOT EXISTS idx_home_history_type_created
+  ON home_history (event_type, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_search_cache_query
   ON search_cache (query);
 

@@ -748,6 +748,41 @@ test("streaming album detail trusts the ordered album list even when rows omit t
   assert.deepEqual(detail.related_tracks, []);
 });
 
+function createNestedCatalogAlbumClient() {
+  let stage = "root";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "caracal-key") { stage = "album-wrapper"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "caracal-wrapper") { stage = "album-tracks"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Caracal (Deluxe)", subtitle: "[[1673338|Disclosure]]", image_key: "caracal-cover", item_key: "caracal-key", hint: "list" }] }); return; }
+      if (stage === "album-wrapper") { callback(false, { list: { level: 2, title: "Caracal (Deluxe)", subtitle: "[[1673338|Disclosure]]", count: 1 }, items: [{ title: "Caracal (Deluxe)", subtitle: "[[1673338|Disclosure]]", image_key: "caracal-cover", item_key: "caracal-wrapper", hint: "list" }] }); return; }
+      callback(false, { list: { level: 3, title: "Caracal (Deluxe)", subtitle: "[[1673338|Disclosure]]", count: 4 }, items: [
+        { title: "Play Album", item_key: "play-caracal", hint: "action_list" },
+        { title: "1. Nocturnal", subtitle: "Disclosure", item_key: "track-1", hint: "action_list" },
+        { title: "2. Omen", subtitle: "Disclosure", item_key: "track-2", hint: "action_list" },
+        { title: "3. Holding On", subtitle: "Disclosure", item_key: "track-3", hint: "action_list" }
+      ] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("catalog album detail follows Roon's repeated list wrapper before reading tracks", async () => {
+  const service = new RoonMediaService(createNestedCatalogAlbumClient(), "tidal");
+  const search = await service.search({ query: "Caracal Deluxe Disclosure", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Nocturnal", "Omen", "Holding On"]);
+  assert.deepEqual(detail.tracks.map((track) => track.track_number), [1, 2, 3]);
+  assert.equal(detail.ordered, true);
+});
+
 function createRoonAlbumSearchTracklistClient() {
   let stage = "root";
   const browse = {
@@ -1100,6 +1135,79 @@ test("catalog albums discovered through an artist are re-resolved with album and
   assert.deepEqual(detail.tracks.map((track) => track.title), ["Opening Track", "Closing Track"]);
   assert.equal(detail.data_origin, "roon_search_session");
   assert.equal(detail.ordered, true);
+});
+
+function createLinkedCatalogArtistClient({ artist, reportedAlbums, localReleases, catalogItems }) {
+  const stages = new Map();
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.hierarchy === "search" && opts.input) { stages.set(session, "root"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artists-category") { stages.set(session, "artists"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stages.set(session, "albums"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artist-key") { stages.set(session, "artist-detail"); callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 2 }, items: [
+        { title: "Artists", subtitle: "Results", item_key: "artists-category", hint: "list" },
+        { title: "Albums", subtitle: `${catalogItems.length} Results`, item_key: "albums-category", hint: "list" }
+      ] }); return; }
+      if (stage === "artists") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: artist, subtitle: `${reportedAlbums} Albums`, item_key: "artist-key", hint: "list", image_key: "artist-cover" }] }); return; }
+      if (stage === "artist-detail") { callback(false, { list: { title: artist, subtitle: `${reportedAlbums} Albums`, count: localReleases.length + 1 }, items: [
+        { title: "Play Artist", item_key: "play-artist", hint: "action_list" },
+        ...localReleases
+      ] }); return; }
+      callback(false, { list: { title: "Albums", count: catalogItems.length }, items: catalogItems });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("artist releases recover Disclosure's linked streaming catalog instead of stopping at one library album", async () => {
+  const service = new RoonMediaService(createLinkedCatalogArtistClient({
+    artist: "Disclosure",
+    reportedAlbums: 1,
+    localReleases: [{ title: "NO CAP", subtitle: "Disclosure & Anderson .Paak", item_key: "no-cap", hint: "list" }],
+    catalogItems: [
+      { title: "NO CAP", subtitle: "Disclosure & Anderson .Paak", item_key: "no-cap-search", hint: "list" },
+      { title: "Settle (Deluxe Version)", subtitle: "[[1673338|Disclosure]]", item_key: "settle", hint: "list" },
+      { title: "Disclosure Day", subtitle: "[[145786|John Williams]]", item_key: "wrong-soundtrack", hint: "list" },
+      { title: "Caracal (Deluxe)", subtitle: "[[1673338|Disclosure]]", item_key: "caracal", hint: "list" },
+      { title: "ENERGY (Deluxe)", subtitle: "[[1673338|Disclosure]]", item_key: "energy", hint: "list" },
+      { title: "Disclosure", subtitle: "[[10638202|The Gathering]]", item_key: "wrong-homonym", hint: "list" },
+      { title: "Together", subtitle: "[[1476730|Sam Smith]], [[296058|Nile Rodgers]], [[1673338|Disclosure]]", item_key: "together", hint: "list" }
+    ]
+  }), "tidal");
+  const search = await service.search({ query: "Disclosure", types: ["artist"], count: 5 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+
+  assert.deepEqual(detail.releases.map((release) => release.title), ["NO CAP", "Settle (Deluxe Version)", "Caracal (Deluxe)", "ENERGY (Deluxe)", "Together"]);
+  assert.equal(detail.releases.some((release) => release.title === "Disclosure Day"), false);
+  assert.equal(detail.releases.some((release) => release.title === "Disclosure"), false);
+  assert.equal(detail.releases.find((release) => release.title === "Together").release_section, "Appearances");
+  assert.equal(detail.releases.filter((release) => release.title !== "NO CAP").every((release) => release.completeness === "partial"), true);
+});
+
+test("artist releases recover The Animals catalog even when Roon's artist result reports zero albums", async () => {
+  const service = new RoonMediaService(createLinkedCatalogArtistClient({
+    artist: "The Animals",
+    reportedAlbums: 0,
+    localReleases: [],
+    catalogItems: [
+      { title: "The Animals (Greatest Hits)", subtitle: "[[499066|The Animals]]", item_key: "greatest", hint: "list" },
+      { title: "God Save The Animals", subtitle: "[[10881658|Alex G]]", item_key: "alex-g", hint: "list" },
+      { title: "The Complete Animals", subtitle: "[[499066|The Animals]]", item_key: "complete", hint: "list" },
+      { title: "Animal Tracks", subtitle: "[[499066|The Animals]]", item_key: "animal-tracks", hint: "list" }
+    ]
+  }), "tidal");
+  const search = await service.search({ query: "The Animals", types: ["artist"], count: 5 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+
+  assert.deepEqual(detail.releases.map((release) => release.title), ["The Animals (Greatest Hits)", "The Complete Animals", "Animal Tracks"]);
+  assert.equal(detail.releases.every((release) => release.data_origin === "roon_search_session"), true);
+  assert.equal(detail.releases.every((release) => release.completeness === "partial"), true);
 });
 
 function createCatalogAndLibraryArtistClient() {

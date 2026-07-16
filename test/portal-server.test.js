@@ -120,8 +120,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260716\.5"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260716\.5"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.1"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.1"/);
     assert.match(portalPageText, /id="version-badge">v—<\/small>/);
     assert.doesNotMatch(portalPageText, /id="command-status"/);
     assert.match(portalPageText, /id="toast-region"[^>]*aria-atomic="true"/);
@@ -151,6 +151,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="playlist-sort"/);
     assert.match(portalPageText, /id="home-recent-playlists"/);
     assert.match(portalPageText, /id="home-history"/);
+    assert.match(portalPageText, /id="home-listening-history"/);
+    assert.match(portalPageText, /id="home-search-history"/);
+    assert.match(portalPageText, /data-history-more="play"/);
+    assert.match(portalPageText, /data-history-more="search"/);
     assert.match(portalPageText, /Gestionar zonas/);
 
     const logo = await fetch(`${baseUrl}/roonia-logo.svg`);
@@ -185,12 +189,17 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /border-radius: 0; background: transparent/);
     assert.match(portalStylesText, /\.home-playlist-grid/);
     assert.match(portalStylesText, /\.home-history-list/);
+    assert.match(portalStylesText, /\.home-activity-grid/);
+    assert.match(portalStylesText, /\.search-history-row strong[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/);
     assert.match(portalStylesText, /\.featured-zone-links button/);
     assert.match(portalStylesText, /\.home-playlist-card > div:first-child[^}]*position: relative/);
     assert.match(portalStylesText, /\.featured-title-slot/);
     assert.match(portalStylesText, /\.home-idle-cloud/);
     assert.match(portalStylesText, /@keyframes home-zone-float/);
     assert.match(portalStylesText, /::view-transition-group\(home-zone-cover-0\)/);
+    assert.match(portalStylesText, /animation-duration: 1\.35s/);
+    assert.match(portalStylesText, /\.home-idle-zone-tag/);
+    assert.match(portalStylesText, /\.home-idle-track/);
     assert.match(portalStylesText, /\.update-compact/);
     assert.match(portalStylesText, /\.available-update\[hidden\]/);
     assert.match(portalStylesText, /\.service-panel/);
@@ -219,6 +228,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /function finalizeSearchBestMatch/);
     assert.match(portalScriptText, /direct_match&&item\?\.roon_item_key/);
     assert.match(portalScriptText, /SEARCH_EXPAND_STEPS/);
+    assert.match(portalScriptText, /HOME_HISTORY_PAGE_SIZE=10/);
+    assert.match(portalScriptText, /\/api\/history\?type=\$\{encodeURIComponent\(type\)\}/);
+    assert.doesNotMatch(portalScriptText, /recordPlayedMedia/);
     assert.match(portalScriptText, /search-section-spinner/);
     assert.match(portalScriptText, /Sin tracklist verificada/);
     assert.match(portalScriptText, /Resultados relacionados/);
@@ -284,6 +296,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /title\.scrollHeight>slot\.clientHeight/);
     assert.match(portalScriptText, /function beginHomeZonePreview/);
     assert.match(portalScriptText, /data-preview-zone/);
+    assert.match(portalScriptText, /home-idle-zone-tag/);
     assert.match(portalScriptText, /document\.startViewTransition/);
     assert.match(portalScriptText, /},5000\)/);
     assert.match(portalScriptText, /if\(state\.view==='home'\)renderHomePlayback\(\)/);

@@ -53,6 +53,19 @@ test("classifies Roon linked catalog results using configured streaming source",
   );
 });
 
+test("preserves Roon linked entity ids while cleaning visible catalog credits", () => {
+  const item = enrichBrowseItem({
+    title: "Caracal (Deluxe)",
+    subtitle: "[[1673338|Disclosure]] & [[1476730|Sam Smith]]"
+  });
+
+  assert.equal(item.subtitle, "Disclosure & Sam Smith");
+  assert.deepEqual(item.roon_linked_entities, [
+    { id: "1673338", name: "Disclosure", field: "subtitle" },
+    { id: "1476730", name: "Sam Smith", field: "subtitle" }
+  ]);
+});
+
 test("keeps artist catalog playback separate from artist radio", () => {
   const actions = [
     { title: "Shuffle", item_key: "1:0", hint: "action" },

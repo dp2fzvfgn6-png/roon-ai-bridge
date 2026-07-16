@@ -36,7 +36,8 @@ export type RoonClient = {
 export function createRoonClient(
   config: AppConfig,
   logger: Logger,
-  systemManagement?: SystemManagementService
+  systemManagement?: SystemManagementService,
+  onZonesChanged?: (zones: RoonZone[]) => void
 ): RoonClient {
   const stateFile = path.join(config.dataDir, "roonstate.json");
   let currentCore: any | null = null;
@@ -160,6 +161,15 @@ export function createRoonClient(
 
       transport.subscribe_zones((event: string | false, data: any) => {
         mergeZoneChanges(event, data);
+        if (event !== "Unsubscribed" && onZonesChanged) {
+          try {
+            onZonesChanged(Array.from(zonesById.values()));
+          } catch (error) {
+            logger.error("Listening history update failed", {
+              message: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
         const seekOnly = event === "Changed" &&
           Array.isArray(data?.zones_seek_changed) &&
           !data?.zones_added?.length &&

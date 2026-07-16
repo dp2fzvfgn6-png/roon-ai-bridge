@@ -44,6 +44,24 @@ const media = [
   { result_id:"track-repetition",media_type:"track",title:"Repetition",artist:"Max Cooper, Tom Hodge",artists:[{type:"artist",title:"Max Cooper",artist:null,result_id:"artist-cooper"},{type:"artist",title:"Tom Hodge",artist:null,result_id:null}],album:"Yearning for the Infinite",image_key:"cooper",source:"qobuz",quality:{label:"24-bit / 96 kHz"} },
   { result_id:"playlist-roon",media_type:"playlist",title:"Late Night Focus",subtitle:"Roon playlist · 42 tracks",image_key:"eno",source:"playlist" }
 ];
+const listeningHistory = [
+  ["La femme d'argent","AIR","moon","Salón"],
+  ["Weird Fishes / Arpeggi","Radiohead","radio","Despacho"],
+  ["Red Right Hand","Nick Cave & The Bad Seeds","cave","Cocina"],
+  ["Repetition","Max Cooper, Tom Hodge","cooper","Despacho"],
+  ["Teardrop","Massive Attack","massive","Salón"],
+  ["The Robots","Kraftwerk","kraft","Cocina"],
+  ["An Ending (Ascent)","Brian Eno","eno","Despacho"]
+].map(([title,subtitle,image_key,zone_name],index)=>({history_id:`play-${index}`,event_type:"play",media_type:"track",title,subtitle,image_key,zone_name,created_at:new Date(Date.parse("2026-07-17T09:30:00Z")-index*540000).toISOString()}));
+const searchHistory = [
+  "discografía completa de Nick Cave & The Bad Seeds en orden cronológico",
+  "álbumes de Radiohead en alta resolución disponibles en mi biblioteca",
+  "AIR Moon Safari",
+  "música ambient para trabajar sin voces",
+  "Max Cooper Repetition",
+  "Massive Attack Mezzanine",
+  "electrónica francesa de los años noventa"
+].map((query,index)=>({history_id:`search-${index}`,event_type:"search",title:query,query,created_at:new Date(Date.parse("2026-07-17T09:26:00Z")-index*480000).toISOString()}));
 media.push(
   ...[["artist-cave","Nick Cave & The Bad Seeds","cave"],["artist-cooper","Max Cooper","cooper"],["artist-massive","Massive Attack","massive"],["artist-kraft","Kraftwerk","kraft"],["artist-eno","Brian Eno","eno"],["artist-moderat","Moderat",null]].map(([result_id,title,image_key])=>({result_id,media_type:"artist",title,subtitle:"Artista",artist:title,image_key,source:"qobuz"})),
   ...[["album-cave","Push the Sky Away","Nick Cave & The Bad Seeds","cave","album"],["album-cooper","Unspoken Words","Max Cooper","cooper","album"],["album-massive","Mezzanine","Massive Attack","massive","album"],["album-kraft","The Man-Machine","Kraftwerk","kraft","album"],["album-eno","Ambient 1","Brian Eno","eno","ep"],["album-moderat","II","Moderat","moderat","single"]].map(([result_id,title,artist,image_key,release_type])=>({result_id,media_type:"album",title,subtitle:`${artist} · ${release_type==="ep"?"EP":release_type==="single"?"Single":"Álbum"}`,artist,image_key,source:"qobuz",release_type,release_type_source:"roon_metadata"})),
@@ -91,7 +109,8 @@ app.post("/api/auth/login", (_req,res)=>res.json({token:"preview"}));
 app.post("/api/auth/logout", (_req,res)=>res.json({ok:true}));
 app.use("/api", (req,res,next)=>{res.setHeader("Cache-Control","no-store");next();});
 app.get("/api/session", (_req,res)=>res.json({ok:true,version:previewVersion,build:previewBuild,update_channel:previewUpdateChannel,automatic_update_checks:previewAutomaticUpdateChecks,debug_mode:previewDebugMode,available_update:previewVersionStatus.update_available?{version:previewVersionStatus.latest_version,build:previewVersionStatus.latest_build}:null,user:{user_id:"iago",username:"iago"}}));
-app.get("/api/dashboard", (_req,res)=>res.json({version:previewVersion,status:{core_connected:true,core_name:"Roon Server · Nucleus",transport_ready:true,browse_ready:true},counts:{zones:3,playing_zones:1,playlists:4,playlist_tracks:146,active_api_keys:2,mcp_tools:14,recent_errors:0},recent_actions:[{tool_or_endpoint:"roon_play_media",source:"mcp",timestamp:"2026-07-10T08:19:00Z"},{tool_or_endpoint:"/zones/salon/volume",source:"portal",timestamp:"2026-07-10T08:16:00Z"}],now_playing:[]}));
+app.get("/api/dashboard", (_req,res)=>res.json({version:previewVersion,status:{core_connected:true,core_name:"Roon Server · Nucleus",transport_ready:true,browse_ready:true},counts:{zones:3,playing_zones:1,playlists:4,playlist_tracks:146,active_api_keys:2,mcp_tools:14,recent_errors:0},recent_actions:[{tool_or_endpoint:"roon_play_media",source:"mcp",timestamp:"2026-07-10T08:19:00Z"},{tool_or_endpoint:"/zones/salon/volume",source:"portal",timestamp:"2026-07-10T08:16:00Z"}],recent_playlists:playlists.filter(item=>item.last_played_at),recent_listening_history:listeningHistory.slice(0,5),recent_search_history:searchHistory.slice(0,5),history_totals:{play:listeningHistory.length,search:searchHistory.length},now_playing:[]}));
+app.get("/api/history", (req,res)=>{const entries=req.query.type==="play"?listeningHistory:searchHistory;const offset=Number(req.query.offset)||0;const limit=Number(req.query.limit)||10;res.json({ok:true,entries:entries.slice(offset,offset+limit),total:entries.length,limit,offset,event_type:req.query.type});});
 app.get("/api/roon/zones",(_req,res)=>res.json(zones));
 app.get("/api/roon/outputs",(_req,res)=>res.json(zones.flatMap(z=>z.outputs)));
 app.get("/api/roon/media/search",(req,res)=>{const types=String(req.query.types||"").split(",").filter(Boolean);const delay={artist:80,album:180,track:320,playlist:480}[types[0]]||80;setTimeout(()=>res.json(previewSearchPayload(req.query.q,types)),delay);});

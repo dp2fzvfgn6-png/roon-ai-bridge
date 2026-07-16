@@ -202,7 +202,14 @@ export function createPortalServer(context: ApiContext): express.Express {
       .filter((playlist: any) => playlist.last_played_at)
       .sort((left: any, right: any) => String(right.last_played_at).localeCompare(String(left.last_played_at)))
       .slice(0, 6);
-    const history = context.homeHistoryService?.list(8) as any;
+    const listeningHistory = context.homeHistoryService?.list({
+      eventType: "play",
+      limit: 5
+    }) as any;
+    const searchHistory = context.homeHistoryService?.list({
+      eventType: "search",
+      limit: 5
+    }) as any;
 
     res.json({
       version: APP_VERSION,
@@ -229,7 +236,12 @@ export function createPortalServer(context: ApiContext): express.Express {
       recent_actions: actions?.actions || [],
       recent_errors: errors?.errors || [],
       recent_playlists: recentPlaylists,
-      recent_history: history?.entries || [],
+      recent_listening_history: listeningHistory?.entries || [],
+      recent_search_history: searchHistory?.entries || [],
+      history_totals: {
+        play: listeningHistory?.total || 0,
+        search: searchHistory?.total || 0
+      },
       now_playing: zones
         .filter((zone) => zone.state === "playing")
         .map((zone) => ({
@@ -242,8 +254,18 @@ export function createPortalServer(context: ApiContext): express.Express {
   });
 
   app.get("/api/history", (req, res) => {
-    res.json(context.homeHistoryService?.list(Number(req.query.limit) || 100) || {
-      ok: true, entries: [], total: 0, limit: 100, max_entries: 100
+    const eventType = req.query.type;
+    if (eventType !== undefined && eventType !== "search" && eventType !== "play") {
+      throw new ApiError("VALIDATION_ERROR", "type must be search or play");
+    }
+    const limit = Number(req.query.limit) || 100;
+    const offset = Number(req.query.offset) || 0;
+    res.json(context.homeHistoryService?.list({
+      eventType: eventType as "search" | "play" | undefined,
+      limit,
+      offset
+    }) || {
+      ok: true, entries: [], total: 0, limit, offset, max_entries: { search: 100, play: 500 }
     });
   });
 

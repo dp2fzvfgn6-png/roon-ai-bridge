@@ -1,5 +1,5 @@
 import { ApiError } from "../utils/errors";
-import { cleanRoonDisplayText, hasRoonDisplayLink } from "./roonText";
+import { cleanRoonDisplayText, extractRoonDisplayLinks, hasRoonDisplayLink } from "./roonText";
 import { RoonClient } from "./roonClient";
 import { getZoneOrThrow } from "./roonZoneService";
 import { RoonBrowseApi, roonSdkCall } from "./roonSdk";
@@ -185,6 +185,31 @@ function coverPayload(imageKey: string | null): Record<string, unknown> | null {
 export function enrichBrowseItem(item: BrowseItem): BrowseItem {
   const raw = asObject(item) || {};
   const rawMedia = asObject(raw.media) || {};
+  const linkedFields: Array<[string, unknown]> = [
+    ["title", raw.title],
+    ["subtitle", raw.subtitle],
+    ["artist", raw.artist],
+    ["album", raw.album],
+    ["album_artist", raw.album_artist],
+    ["media.artist", rawMedia.artist],
+    ["media.album", rawMedia.album],
+    ["media.album_artist", rawMedia.album_artist]
+  ];
+  const existingLinkedEntities = Array.isArray(raw.roon_linked_entities)
+    ? raw.roon_linked_entities.filter((entry) => entry && typeof entry === "object")
+    : [];
+  const roonLinkedEntities = [
+    ...existingLinkedEntities,
+    ...linkedFields.flatMap(([field, value]) =>
+      extractRoonDisplayLinks(value).map((link) => ({ ...link, field }))
+    )
+  ].filter((entry, index, entries) => {
+    const record = entry as Record<string, unknown>;
+    return entries.findIndex((candidate) => {
+      const other = candidate as Record<string, unknown>;
+      return other.id === record.id && other.name === record.name && other.field === record.field;
+    }) === index;
+  });
   const roonLinkedMetadata = raw.roon_linked_metadata === true || [
     raw.title,
     raw.subtitle,
@@ -228,6 +253,7 @@ export function enrichBrowseItem(item: BrowseItem): BrowseItem {
     title: title || item.title,
     subtitle,
     roon_linked_metadata: roonLinkedMetadata,
+    roon_linked_entities: roonLinkedEntities,
     image_key: imageKey || item.image_key || null,
     media
   };

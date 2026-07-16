@@ -408,6 +408,50 @@ function artistNamesForItem(item: BrowseItem, primary: string | null): string[] 
   return structured.length ? structured : splitArtistCredit(primary);
 }
 
+type RoonLinkedEntity = {
+  id: string;
+  name: string;
+  field: string;
+};
+
+function roonLinkedEntities(item: BrowseItem): RoonLinkedEntity[] {
+  if (!Array.isArray(item.roon_linked_entities)) return [];
+  return item.roon_linked_entities.flatMap((value) => {
+    const record = objectValue(value);
+    const id = record ? pickString(record, ["id"]) : null;
+    const name = record ? pickString(record, ["name"]) : null;
+    const field = record ? pickString(record, ["field"]) : null;
+    return id && name && field ? [{ id, name, field }] : [];
+  });
+}
+
+function linkedArtistEntities(item: BrowseItem, artist: string): RoonLinkedEntity[] {
+  const target = normalize(artist);
+  return roonLinkedEntities(item).filter((entity) =>
+    normalize(entity.name) === target &&
+    ["subtitle", "artist", "album_artist", "media.artist", "media.album_artist"].includes(entity.field)
+  );
+}
+
+function preferredLinkedArtistId(items: BrowseItem[], artist: string): string | null {
+  const candidates = new Map<string, { count: number; rankScore: number; firstRank: number }>();
+  items.forEach((item, rank) => {
+    const ids = Array.from(new Set(linkedArtistEntities(item, artist).map((entity) => entity.id)));
+    for (const id of ids) {
+      const current = candidates.get(id) || { count: 0, rankScore: 0, firstRank: rank };
+      current.count += 1;
+      current.rankScore += 1 / (rank + 1);
+      current.firstRank = Math.min(current.firstRank, rank);
+      candidates.set(id, current);
+    }
+  });
+  return Array.from(candidates.entries()).sort((left, right) =>
+    right[1].count - left[1].count ||
+    right[1].rankScore - left[1].rankScore ||
+    left[1].firstRank - right[1].firstRank
+  )[0]?.[0] || null;
+}
+
 function mediaBelongsToArtist(result: MediaResult, artist: string): boolean {
   const credits = [
     ...result.artists.map((entry) => entry.title),
@@ -1812,6 +1856,57 @@ export class RoonMediaService {
       typeof detail.current.list?.title === "string" ? detail.current.list.title : null
     );
 
+    if (
+      detail.hierarchy === "search" &&
+      (artist.content_count !== null || collected.length === 0)
+    ) {
+      try {
+        const catalogSearch = await this.searchGlobalCategory(
+          artist.title,
+          "album",
+          zoneId,
+          Math.max(count, 100)
+        );
+        const artistId = preferredLinkedArtistId(catalogSearch.items, artist.title);
+        if (artistId) {
+          for (const candidate of catalogSearch.items) {
+            const linked = roonLinkedEntities(candidate).filter((entity) =>
+              ["subtitle", "artist", "album_artist", "media.artist", "media.album_artist"].includes(entity.field)
+            );
+            const artistPosition = linked.findIndex((entity) => entity.id === artistId);
+            if (artistPosition < 0) continue;
+            const primaryArtist = linked[0]?.name || artist.title;
+            const inferred = inferReleaseType(candidate).type;
+            const context: ReleaseType = inferred === "unknown" ? "album" : inferred;
+            const sectionTitle = artistPosition === 0 ? "Albums" : "Appearances";
+            const rawMedia = objectValue(candidate.media) || {};
+            collected.push({
+              item: {
+                ...candidate,
+                release_type_context: context,
+                media: {
+                  ...rawMedia,
+                  artists: linked.map((entity) => entity.name),
+                  artist: primaryArtist,
+                  album_artist: primaryArtist,
+                  release_section: sectionTitle
+                }
+              },
+              context,
+              sectionTitle,
+              ordinal: collected.length
+            });
+          }
+          catalogComplete = false;
+        }
+      } catch (error) {
+        artist.warnings = Array.from(new Set([
+          ...artist.warnings,
+          `catalog_release_search: ${error instanceof Error ? error.message : String(error)}`
+        ]));
+      }
+    }
+
     if (collected.length > count) catalogComplete = false;
     const releaseCompleteness: MediaCompleteness = detail.hierarchy === "artists" || (collected.length > 0 && catalogComplete)
       ? "complete"
@@ -2260,15 +2355,26 @@ export class RoonMediaService {
           Math.max(1, Math.min(count, 200))
         );
 
-    for (let depth = 0; depth < 3; depth += 1) {
+    const visitedNavigationKeys = new Set<string>();
+    for (let depth = 0; depth < 5; depth += 1) {
       const actionList = current.list?.hint === "action_list" || (depth === 0 && item.hint === "action_list");
-      if (!actionList || !["artist", "album"].includes(reference.media_type)) break;
+      if (!["artist", "album"].includes(reference.media_type)) break;
       const navigation = this.chooseEntityDetailNavigation(
         current.items,
         reference.media_type as "artist" | "album",
         reference.title
       );
       if (!navigation?.item_key) break;
+      const identityContinuation =
+        reference.media_type === "album" &&
+        navigation.hint === "list" &&
+        normalize(String(navigation.title || "")) === normalize(reference.title) &&
+        normalize(String(current.list?.title || "")) === normalize(reference.title) &&
+        (!reference.image_key || !navigation.image_key || navigation.image_key === reference.image_key) &&
+        (!reference.artist || artistCreditIncludes(String(navigation.subtitle || ""), reference.artist));
+      if (!actionList && !identityContinuation) break;
+      if (visitedNavigationKeys.has(navigation.item_key)) break;
+      visitedNavigationKeys.add(navigation.item_key);
       const response = await browseCall(browse, {
         hierarchy: reference.hierarchy,
         multi_session_key: sessionKey,

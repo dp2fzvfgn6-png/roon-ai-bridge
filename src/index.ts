@@ -42,7 +42,16 @@ logger.info("Configuration loaded", {
 });
 
 const systemManagementService = new SystemManagementService(config, logger);
-const roonClient = createRoonClient(config, logger, systemManagementService);
+const homeHistoryService = new HomeHistoryService(database);
+const roonClient = createRoonClient(
+  config,
+  logger,
+  systemManagementService,
+  (zones) => {
+    const recorded = homeHistoryService.observeZones(zones);
+    if (recorded > 0) logger.info("Listening history updated", { recorded });
+  }
+);
 const playlistService = new PlaylistService(config, database);
 const oauthService = new OAuthService(config);
 const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
@@ -56,7 +65,6 @@ const outputVolumeSettingsService = new OutputVolumeSettingsService(
 );
 const volumeLimitService = new VolumeLimitService(config, database);
 const actionLogService = new ActionLogService(database);
-const homeHistoryService = new HomeHistoryService(database);
 const extensionManagerService = new ExtensionManagerService(config, technicalLogService);
 const context = {
   config,

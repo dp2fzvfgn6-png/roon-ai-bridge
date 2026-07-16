@@ -22,6 +22,21 @@ El portal reduce la navegación principal a cuatro espacios:
 Las vistas antiguas de Widgets se eliminan de la navegación. Sus contratos HTTP
 siguen activos y el nuevo portal reutiliza los mismos datos enriquecidos.
 
+## Actividad de Inicio
+
+La sección «Tu actividad» separa el historial de escucha y el historial de
+búsqueda en dos columnas. Cada una muestra cinco entradas inicialmente y carga
+diez más con su propio control «Mostrar más»; en pantallas estrechas se apilan.
+
+El historial de escucha se alimenta de los cambios reales publicados por la
+suscripción de zonas de Roon, no de la aceptación de un botón del portal. Cada
+entrada conserva carátula, canción, artista, zona y fecha. Los cambios de
+posición y las pausas no generan duplicados. SQLite conserva las 500 escuchas
+más recientes de forma independiente a las 100 búsquedas del portal.
+
+Las búsquedas se presentan sin carátula ni una etiqueta redundante de tipo. La
+consulta puede ocupar varias líneas para que se muestre completa.
+
 ## Búsqueda y acciones contextuales
 
 La búsqueda usa `/api/roon/media/search` y separa artistas, álbumes, pistas y

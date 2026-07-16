@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { SqliteDatabase } from "../db/database";
+import { RoonZone } from "../roon/roonTypes";
 
 export type HomeHistoryEvent = {
   event_type: "search" | "play";
@@ -14,8 +15,21 @@ export type HomeHistoryEvent = {
   zone_name?: string | null;
 };
 
+export type HomeHistoryListOptions = {
+  eventType?: HomeHistoryEvent["event_type"];
+  limit?: number;
+  offset?: number;
+};
+
+type ObservedZonePlayback = {
+  fingerprint: string;
+  seekPosition: number | null;
+  recorded: boolean;
+};
+
 export class HomeHistoryService {
-  private readonly maxEntries = 100;
+  private readonly maxEntries = { search: 100, play: 500 } as const;
+  private readonly observedZones = new Map<string, ObservedZonePlayback>();
 
   constructor(private readonly database: SqliteDatabase) {}
 
@@ -44,20 +58,112 @@ export class HomeHistoryService {
       )
     `).run(event);
     this.database.db.prepare(`
-      DELETE FROM home_history WHERE history_id NOT IN (
-        SELECT history_id FROM home_history ORDER BY created_at DESC LIMIT :max_entries
+      DELETE FROM home_history
+      WHERE event_type = :event_type AND history_id NOT IN (
+        SELECT history_id FROM home_history
+        WHERE event_type = :event_type
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT :max_entries
       )
-    `).run({ max_entries: this.maxEntries });
+    `).run({
+      event_type: event.event_type,
+      max_entries: this.maxEntries[event.event_type]
+    });
     return event;
   }
 
-  list(limit = 8): Record<string, unknown> {
-    const safeLimit = Math.max(1, Math.min(Number(limit) || 8, this.maxEntries));
+  list(options: number | HomeHistoryListOptions = 8): Record<string, unknown> {
+    const normalized = typeof options === "number" ? { limit: options } : options;
+    const eventType = normalized.eventType;
+    const maximum = eventType
+      ? this.maxEntries[eventType]
+      : this.maxEntries.search + this.maxEntries.play;
+    const safeLimit = Math.max(1, Math.min(Number(normalized.limit) || 8, maximum));
+    const safeOffset = Math.max(0, Math.floor(Number(normalized.offset) || 0));
+    const where = eventType ? "WHERE event_type = :event_type" : "";
+    const listParameters = eventType
+      ? { event_type: eventType, limit: safeLimit, offset: safeOffset }
+      : { limit: safeLimit, offset: safeOffset };
     const rows = this.database.db.prepare(`
-      SELECT * FROM home_history ORDER BY created_at DESC LIMIT :limit
-    `).all({ limit: safeLimit });
-    const total = this.database.db.prepare("SELECT COUNT(*) AS count FROM home_history").get()?.count || 0;
-    return { ok: true, entries: rows, total, limit: safeLimit, max_entries: this.maxEntries };
+      SELECT * FROM home_history ${where}
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT :limit OFFSET :offset
+    `).all(listParameters);
+    const countStatement = this.database.db.prepare(`
+      SELECT COUNT(*) AS count FROM home_history ${where}
+    `);
+    const total = (eventType
+      ? countStatement.get({ event_type: eventType })
+      : countStatement.get())?.count || 0;
+    return {
+      ok: true,
+      entries: rows,
+      total,
+      limit: safeLimit,
+      offset: safeOffset,
+      event_type: eventType || null,
+      max_entries: eventType ? maximum : this.maxEntries
+    };
+  }
+
+  observeZones(zones: RoonZone[]): number {
+    const currentZoneIds = new Set(zones.map((zone) => zone.zone_id));
+    for (const zoneId of this.observedZones.keys()) {
+      if (!currentZoneIds.has(zoneId)) this.observedZones.delete(zoneId);
+    }
+
+    let recorded = 0;
+    for (const zone of zones) {
+      const nowPlaying = zone.now_playing;
+      const title = this.text(nowPlaying?.three_line?.line1, 300);
+      if (!title) {
+        this.observedZones.delete(zone.zone_id);
+        continue;
+      }
+
+      const artist = this.text(nowPlaying?.three_line?.line2, 500);
+      const album = this.text(nowPlaying?.three_line?.line3, 500);
+      const imageKey = this.text(nowPlaying?.image_key, 2000);
+      const fingerprint = JSON.stringify([title, artist, album, imageKey]);
+      const seekPosition = typeof nowPlaying?.seek_position === "number"
+        ? nowPlaying.seek_position
+        : null;
+      const previous = this.observedZones.get(zone.zone_id);
+      const sameTrack = previous?.fingerprint === fingerprint;
+      const restarted = Boolean(
+        sameTrack &&
+        seekPosition !== null &&
+        seekPosition <= 5 &&
+        previous?.seekPosition !== null &&
+        previous?.seekPosition !== undefined &&
+        previous.seekPosition - seekPosition > 15
+      );
+      const shouldRecord = zone.state === "playing" && (
+        !sameTrack ||
+        previous?.recorded !== true ||
+        restarted
+      );
+
+      if (shouldRecord) {
+        this.record({
+          event_type: "play",
+          media_type: "track",
+          title,
+          subtitle: artist || album,
+          image_key: imageKey,
+          zone_id: zone.zone_id,
+          zone_name: zone.display_name
+        });
+        recorded += 1;
+      }
+
+      this.observedZones.set(zone.zone_id, {
+        fingerprint,
+        seekPosition,
+        recorded: shouldRecord || (sameTrack && previous?.recorded === true)
+      });
+    }
+    return recorded;
   }
 
   private text(value: unknown, maxLength: number): string | null {

@@ -116,12 +116,20 @@ complete, so the portal does not stop at the first visible row. Releases found
 inside an artist page are re-resolved with the exact album title plus artist
 when their original browse session has already been consumed. If a retained
 catalog session has expired, detail resolution performs one fresh catalog
-search before considering a verified local-library identity. Album detail
-follows counted English and Spanish track-list and disc levels, including
-labels such as `3 Tracks` and `3 pistas`, and paginates until the requested
-limit, so the `tracks` array represents the complete Roon list rather than its
-first page. Long linked artist-credit subtitles are metadata, not editorial
-album descriptions.
+search before considering a verified local-library identity. When Roon's
+artist object exposes only its local `0/1 Albums` count, the service may recover
+catalog releases from the Albums category only after correlating the raw
+Roon-linked artist ID. Exact linked identity, rather than a name substring,
+excludes homonyms; releases where that ID is not the primary credit are kept in
+an `Appearances` section. This recovery remains `partial` because the Browse
+search does not expose Roon Desktop's formal discography classification.
+
+Album detail follows counted English and Spanish track-list and disc levels,
+including labels such as `3 Tracks` and `3 pistas`, and bounded repeated album
+wrappers whose title, artist and artwork still match. It paginates until the
+requested limit, so the `tracks` array represents the complete Roon list rather
+than its first page. Long linked artist-credit subtitles are metadata, not
+editorial album descriptions.
 When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category
 using the exact album title, artist ownership and shared cover fingerprint.
