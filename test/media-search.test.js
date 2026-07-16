@@ -76,6 +76,23 @@ test("search_media returns stable result ids and details for mocked Roon results
   assert.deepEqual(details, search.results[0]);
 });
 
+test("repeating the same media search starts a fresh Roon browse session instead of reusing persisted results", async () => {
+  let searchInputs = 0;
+  const client = createSearchClient();
+  const originalBrowse = client.getBrowse().browse;
+  client.getBrowse().browse = (opts, callback) => {
+    if (opts.input) searchInputs += 1;
+    originalBrowse(opts, callback);
+  };
+  const service = new RoonMediaService(client, "tidal");
+
+  const first = await service.search({ query: "Radiohead", types: ["track"], count: 5 });
+  const second = await service.search({ query: "Radiohead", types: ["track"], count: 5 });
+
+  assert.equal(searchInputs, 2);
+  assert.notEqual(first.results[0].result_id, second.results[0].result_id);
+});
+
 test("search_media reports and can index more than the initial portal result window", async () => {
   let stage = "root";
   const allTracks = Array.from({ length: 40 }, (_, index) => ({
@@ -619,6 +636,71 @@ test("album detail follows counted track sections and loads every page", async (
   assert.deepEqual(detail.tracks.map((track) => track.title), ["Track One", "Track Two", "Track Three"]);
 });
 
+function createLocalizedAlbumDetailClient() {
+  let stage = "root";
+  const tracks = ["Primera", "Segunda", "Tercera"].map((title, index) => ({
+    title,
+    subtitle: "Artista de prueba",
+    item_key: `localized-track-${index + 1}`,
+    hint: "action_list",
+    track_number: index + 1
+  }));
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "localized-album") { stage = "album-detail"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "localized-tracklist") { stage = "album-tracks"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Buscar", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Album localizado", subtitle: "Artista de prueba", item_key: "localized-album", hint: "list" }] }); return; }
+      if (stage === "album-detail") { callback(false, { list: { title: "Album localizado", count: 1 }, items: [{ title: "1 disco, 3 pistas", item_key: "localized-tracklist", hint: "list" }] }); return; }
+      const offset = opts.offset || 0;
+      callback(false, { list: { title: "Pistas", count: tracks.length }, items: tracks.slice(offset, offset + (opts.count || tracks.length)) });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail follows a Spanish counted pistas section and returns its ordered tracks", async () => {
+  const service = new RoonMediaService(createLocalizedAlbumDetailClient(), "tidal");
+  const search = await service.search({ query: "Album localizado Artista de prueba", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.deepEqual(detail.tracks.map((track) => track.title), ["Primera", "Segunda", "Tercera"]);
+  assert.equal(detail.ordered, true);
+});
+
+function createAlbumCreditSubtitleClient() {
+  let stage = "root";
+  const credits = "[[27126650|Aitana]] / [[4092026|Alejandro Sanz]] / [[25486714|Antonio Jose]] / [[5166202|Antonio Orozco]] / [[19507806|Pablo Lopez]] / [[4947834|Alejandro Lerner]] / [[4213370|Alessia Cara]] / [[4265594|Alex Ubago]] / [[20588126|Ana Mena]] / [[4863866|Andres Calamaro]] / [[20588382|Andres Dvicio]] / [[293242|Brian May]] / [[25687674|Camilo]] / [[22395770|Carlos Rivera]] / [[27405178|David Bisbal]]";
+  const browse = {
+    browse(opts, callback) {
+      if (opts.input) { stage = "root"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "albums-category") { stage = "albums"; callback(false, { action: "list" }); return; }
+      if (opts.item_key === "credit-album") { stage = "album-detail"; callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(_opts, callback) {
+      if (stage === "root") { callback(false, { list: { title: "Buscar", count: 1 }, items: [{ title: "Albums", item_key: "albums-category", hint: "list" }] }); return; }
+      if (stage === "albums") { callback(false, { list: { title: "Albums", count: 1 }, items: [{ title: "Himno A La Alegria", subtitle: credits, item_key: "credit-album", hint: "list" }] }); return; }
+      callback(false, { list: { title: "Himno A La Alegria", count: 1 }, items: [{ title: "Artistas", subtitle: credits, hint: "header" }] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("album detail does not expose Roon linked artist credits as an editorial description", async () => {
+  const service = new RoonMediaService(createAlbumCreditSubtitleClient(), "tidal");
+  const search = await service.search({ query: "Himno A La Alegria", types: ["album"], count: 5 });
+  const detail = await service.getAlbumDetail(search.results[0].result_id, undefined, 100);
+
+  assert.deepEqual(detail.warnings, []);
+  assert.equal(detail.description, null);
+});
+
 function createStreamingAlbumWithoutTrackMetadataClient() {
   let stage = "root";
   const browse = {
@@ -1063,6 +1145,63 @@ test("artist discography prefers the exact catalog session over the smaller loca
   assert.equal(detail.releases.every((release) => release.data_origin === "roon_search_session"), true);
   assert.equal(detail.releases.every((release) => release.completeness === "complete"), true);
   assert.equal(mock.libraryLoads(), 0);
+});
+
+function createCatalogRetryBeforeLibraryClient() {
+  const stages = new Map();
+  let searchCount = 0;
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.hierarchy === "search" && opts.input) {
+        searchCount += 1;
+        stages.set(session, "search-root");
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "artists-category") { stages.set(session, "search-artists"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "artist-original") { callback(false, { action: "none" }); return; }
+      if (opts.item_key === "artist-fresh") { stages.set(session, "catalog-artist"); callback(false, { action: "list" }); return; }
+      if (opts.hierarchy === "artists" && !opts.item_key) { stages.set(session, "library-index"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "library-artist") { stages.set(session, "library-artist"); callback(false, { action: "list" }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "search-root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Artists", item_key: "artists-category", hint: "list" }] }); return; }
+      if (stage === "search-artists") {
+        callback(false, { list: { title: "Artists", count: 1 }, items: [{
+          title: "Disclosure",
+          subtitle: "Artist",
+          image_key: "disclosure-image",
+          item_key: searchCount === 1 ? "artist-original" : "artist-fresh",
+          hint: "list"
+        }] });
+        return;
+      }
+      if (stage === "catalog-artist") { callback(false, { list: { title: "Disclosure", count: 2 }, items: [
+        { title: "Main Albums (1)", hint: "header" },
+        { title: "Catalog Album", subtitle: "Disclosure", item_key: "catalog-album", hint: "action_list", media: { artist: "Disclosure", source: "tidal" } }
+      ] }); return; }
+      if (stage === "library-index") { callback(false, { list: { title: "Artists", count: 1 }, items: [{ title: "Disclosure", subtitle: "1 Album", image_key: "disclosure-image", item_key: "library-artist", hint: "list" }] }); return; }
+      callback(false, { list: { title: "Disclosure", count: 1 }, items: [{ title: "Library Album", subtitle: "Disclosure", item_key: "library-album", hint: "action_list", media: { artist: "Disclosure" } }] });
+    }
+  };
+  return {
+    client: { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse },
+    searchCount: () => searchCount
+  };
+}
+
+test("artist detail retries a fresh catalog session before falling back to the local library", async () => {
+  const mock = createCatalogRetryBeforeLibraryClient();
+  const service = new RoonMediaService(mock.client, "tidal");
+  const search = await service.search({ query: "Disclosure", types: ["artist"], count: 5 });
+  const detail = await service.listArtistReleases(search.results[0].result_id, undefined, 200);
+
+  assert.equal(mock.searchCount(), 2);
+  assert.deepEqual(detail.releases.map((release) => release.title), ["Catalog Album"]);
+  assert.equal(detail.releases[0].data_origin, "roon_search_session");
 });
 
 function createArtistSearchClient(items = [{ title: "Radiohead", subtitle: "Artist", item_key: "artist-key", hint: "action_list" }]) {

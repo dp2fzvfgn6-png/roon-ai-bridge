@@ -535,6 +535,23 @@ function sortGroup(results: MediaResult[]): MediaResult[] {
 
 type SearchTypeResult = { items: BrowseItem[]; directItems: BrowseItem[]; sessionKey: string | null; total: number };
 
+const TRACK_SECTION_TITLES = [
+  "tracks",
+  "songs",
+  "pistas",
+  "canciones",
+  "tracklist",
+  "lista de canciones",
+  "lista de pistas"
+];
+
+function isTrackSection(item: BrowseItem): boolean {
+  const title = normalize(String(item.title || ""));
+  if (TRACK_SECTION_TITLES.some((candidate) => title === normalize(candidate))) return true;
+  if (["track", "song", "pista", "cancion"].includes(title)) return true;
+  return /\b\d+\s*(?:tracks?|songs?|pistas?|cancion(?:es)?)\b/u.test(title);
+}
+
 const ENTITY_SECTION_TITLES = [
   "albums",
   "albumes",
@@ -546,14 +563,10 @@ const ENTITY_SECTION_TITLES = [
   "singles & eps",
   "sencillos",
   "eps",
-  "tracks",
-  "songs",
-  "canciones",
+  ...TRACK_SECTION_TITLES,
   "popular tracks",
   "top tracks",
   "popular",
-  "tracklist",
-  "lista de canciones",
   "discography",
   "discografia",
   "main albums",
@@ -567,7 +580,7 @@ const ENTITY_SECTION_TITLES = [
 
 function isEntitySection(item: BrowseItem): boolean {
   const title = normalize(String(item.title || ""));
-  return sectionTitleMatches(item, ENTITY_SECTION_TITLES) || isDiscSection(item);
+  return sectionTitleMatches(item, ENTITY_SECTION_TITLES) || isTrackSection(item) || isDiscSection(item);
 }
 
 function isDiscSection(item: BrowseItem): boolean {
@@ -625,6 +638,15 @@ function isVerifiedTrackItem(item: BrowseItem): boolean {
 function descriptiveText(...sources: unknown[]): string | null {
   const preferredKeys = ["biography", "bio", "description", "summary", "overview", "text"];
   const candidates: string[] = [];
+  const addCandidate = (value: unknown, minimumLength: number): void => {
+    if (typeof value !== "string") return;
+    const cleaned = cleanRoonDisplayText(value)?.trim() || "";
+    if (cleaned.length >= minimumLength) candidates.push(cleaned);
+  };
+  const looksLikeCreditList = (value: string): boolean => {
+    const credits = value.split(/\s+\/\s+/u).map((credit) => credit.trim()).filter(Boolean);
+    return credits.length >= 4 && credits.every((credit) => credit.length <= 80);
+  };
   const visit = (value: unknown, depth = 0): void => {
     if (!value || depth > 3) return;
     if (Array.isArray(value)) {
@@ -634,12 +656,17 @@ function descriptiveText(...sources: unknown[]): string | null {
     const record = objectValue(value);
     if (!record) return;
     for (const key of preferredKeys) {
-      const text = record[key];
-      if (typeof text === "string" && text.trim().length >= 40) candidates.push(text.trim());
+      addCandidate(record[key], 40);
     }
     const title = normalize(typeof record.title === "string" ? record.title : "");
-    const subtitle = typeof record.subtitle === "string" ? record.subtitle.trim() : "";
-    if (subtitle.length >= 120) candidates.push(subtitle);
+    const subtitle = cleanRoonDisplayText(typeof record.subtitle === "string" ? record.subtitle : null)?.trim() || "";
+    if (
+      subtitle.length >= 120 &&
+      record.roon_linked_metadata !== true &&
+      !looksLikeCreditList(subtitle)
+    ) {
+      candidates.push(subtitle);
+    }
     if (["biography", "biografia", "bio", "about", "acerca de"].includes(title) && subtitle.length >= 40) {
       candidates.push(subtitle);
     }
@@ -2167,17 +2194,26 @@ export class RoonMediaService {
     opened: any;
     current: BrowseResponse;
   }> {
-    if (
-      reference.hierarchy === "search" &&
-      reference.originalSessionAvailable &&
-      reference.originalSessionKey
-    ) {
+    if (reference.hierarchy === "search") {
+      const retainedSessionAvailable = Boolean(
+        reference.originalSessionAvailable && reference.originalSessionKey
+      );
+      let catalogError: unknown;
       try {
         return await this.openSearchReference(reference, zoneId, purpose, count);
-      } catch {
-        // The exact catalog session is preferred, but Roon may expire it. A
-        // verified native-library identity remains a safe fallback.
+      } catch (error) {
+        catalogError = error;
       }
+      if (retainedSessionAvailable) {
+        try {
+          return await this.openSearchReference(reference, zoneId, purpose, count);
+        } catch (error) {
+          catalogError = error;
+        }
+      }
+      const library = await this.openLibraryReference(reference, zoneId, purpose, count);
+      if (library) return library;
+      throw catalogError;
     }
     const library = await this.openLibraryReference(reference, zoneId, purpose, count);
     if (library) return library;
@@ -2331,9 +2367,7 @@ export class RoonMediaService {
     let currentList = detail.current;
     let items = currentList.items;
     let explicitTrackContext = false;
-    const tracksEntry = items.find((item) =>
-      sectionTitleMatches(item, ["tracks", "songs", "canciones", "tracklist", "lista de canciones"])
-    );
+    const tracksEntry = items.find(isTrackSection);
     if (tracksEntry?.item_key) {
       const response = await browseCall(detail.browse, {
         hierarchy: detail.hierarchy,
@@ -2516,9 +2550,7 @@ export class RoonMediaService {
   ): Promise<BrowseItem[]> {
     const detail = await this.openReference(album, zoneId, "album-disc", count);
     let items = detail.current.items;
-    const tracksEntry = items.find((item) =>
-      sectionTitleMatches(item, ["tracks", "songs", "canciones", "tracklist", "lista de canciones"])
-    );
+    const tracksEntry = items.find(isTrackSection);
     if (tracksEntry?.item_key) {
       const openedTracks = await browseCall(detail.browse, {
         hierarchy: detail.hierarchy,

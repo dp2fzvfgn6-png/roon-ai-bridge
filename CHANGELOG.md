@@ -68,6 +68,12 @@ each release lives under [`docs/`](docs/README.md).
   stopping at Roon's preview shelf. Catalog releases are reopened with their
   exact album-and-artist identity so albums outside the local library retain
   access to their ordered streaming tracklists.
+- Expired catalog detail sessions now retry through a fresh Roon search before
+  considering a verified local-library fallback, preserving the complete
+  streaming discography on repeated artist and album opens.
+- Album detail recognizes counted English and Spanish track sections such as
+  `3 Tracks` and `3 pistas`, and no longer presents long linked artist-credit
+  lists as editorial descriptions.
 - Removed name-only discography fabrication and synthetic album ordering:
   unverified global matches are omitted or displayed separately as related
   results, actions are excluded from tracklists and track numbers are parsed

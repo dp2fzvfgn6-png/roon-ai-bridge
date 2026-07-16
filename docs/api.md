@@ -114,9 +114,14 @@ instead of accepting surname/substring search matches. Preview shelves are
 expanded through Roon's native `View All` list before the response is marked
 complete, so the portal does not stop at the first visible row. Releases found
 inside an artist page are re-resolved with the exact album title plus artist
-when their original browse session has already been consumed. Album detail
-follows counted track-list and disc levels and paginates until the requested limit, so
-the `tracks` array represents the complete Roon list rather than its first page.
+when their original browse session has already been consumed. If a retained
+catalog session has expired, detail resolution performs one fresh catalog
+search before considering a verified local-library identity. Album detail
+follows counted English and Spanish track-list and disc levels, including
+labels such as `3 Tracks` and `3 pistas`, and paginates until the requested
+limit, so the `tracks` array represents the complete Roon list rather than its
+first page. Long linked artist-credit subtitles are metadata, not editorial
+album descriptions.
 When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category
 using the exact album title, artist ownership and shared cover fingerprint.

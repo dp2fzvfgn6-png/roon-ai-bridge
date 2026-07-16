@@ -56,8 +56,9 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
   resolve a fresh, fingerprint-checked candidate.
 - Album and artist details first reopen the exact retained search reference
   when it is still valid, preserving the selected streaming-catalog entity and
-  its Roon action tree. Cached `albums` and `artists` root indexes are the
-  verified fallback. Their item keys are never reused because they are
+  its Roon action tree. An expired retained session is retried once through a
+  fresh catalog search before cached `albums` and `artists` root indexes become
+  the verified fallback. Their item keys are never reused because they are
   session-local; only normalized identity and absolute ordinal are cached for
   ten minutes. A fresh session loads that ordinal and verifies title, artist
   and artwork before opening it. Index drift triggers one refresh and retry.
@@ -65,10 +66,14 @@ Release classification uses explicit Roon metadata first, then the Roon discogra
   traversal reports `roon_search_session`. `completeness`, `ordered` and
   `identity_verified` make uncertainty explicit.
 - A tracklist contains only rows inside a verified album contents or Tracks
-  list. Playback actions and album entities are excluded. Native `1. Title`
-  and `1-2 Title` prefixes are parsed and removed from the visible title, but
-  streaming rows do not require numbers or durations when the enclosing Roon
-  list already establishes their album context.
+  list. Counted English and Spanish section titles such as `3 Tracks` and
+  `3 pistas` establish that context. Playback actions and album entities are
+  excluded. Native `1. Title` and `1-2 Title` prefixes are parsed and removed
+  from the visible title, but streaming rows do not require numbers or
+  durations when the enclosing Roon list already establishes their album
+  context.
+- Linked artist-credit subtitles remain metadata and are never promoted to an
+  editorial album description merely because their rendered text is long.
 - A global track search can populate `related_tracks`, but it cannot populate
   the ordered `tracks` collection or synthesize track numbers.
 - A global artist-name album search is never promoted to a discography. If
