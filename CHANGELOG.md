@@ -3,12 +3,20 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.17.1 Beta - Unreleased
+## 0.17.1 - 2026-07-16
 
-- Development continues on the `beta` branch from the validated v0.17.0 tag.
-- Rebuilt the embedded widgets under `ui://roon-ai-bridge/v12/` using the
-  portal visual system, app-only verified actions and flicker-free state reconciliation.
-- Added a locally advancing playback clock with seek support between live Roon snapshots.
+- Rebuilt the embedded widgets through `ui://roon-ai-bridge/v17/` with the
+  portal visual system, app-only verified actions, stable state reconciliation
+  and signed artwork delivery through the public MCP route.
+- Added deterministic media search, richer artist discographies and complete
+  multi-disc album track lists while preserving Roon's preferred result.
+- Added strict playlist track resolution that prefers the intended recording,
+  reports ambiguity and chooses TIDAL or the best known quality only among
+  equivalent recordings.
+- Added playlist artwork management, paginated widget views, recent-playback
+  ordering and a clearer `Mi Música` portal experience.
+- Added a locally advancing playback clock with seek support between live Roon
+  snapshots.
 
 ## 0.17.0 - 2026-07-13
 

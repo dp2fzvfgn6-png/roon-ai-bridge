@@ -1,12 +1,12 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. The current package is v0.17.1 and builds on the v0.17.0
-stable line with the canonical MCP v2 intent facade, redesigned widgets and portal, connection
-management, persistent playlist identity and hardened Roon/update handling.
+administration portal. The current stable package is v0.17.1. It extends the
+canonical MCP v2 surface with deterministic media discovery, strict playlist
+track resolution, richer music navigation and cache-busted v17 widgets.
 
-See the [changelog](CHANGELOG.md), [v0.17.0 release notes](docs/v0.17.0-release-notes.md)
-and [release validation](docs/v0.17.0-validation.md).
+See the [changelog](CHANGELOG.md), [v0.17.1 release notes](docs/v0.17.1-release-notes.md)
+and [release validation](docs/v0.17.1-validation.md).
 
 This project does not expose anything to the internet by itself. It does not
 implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
@@ -32,11 +32,11 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.17.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.17.1 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.17.0 Scope
+## v0.17.1 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -609,6 +609,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
 - v0.16.0: operational diagnostics, audit logs and extension visibility.
 - v0.17.0: MCP v2, focused widgets, portal redesign, connection management,
   persistent playlist identity and reliability improvements.
+- v0.17.1: deterministic catalog navigation, strict track resolution, richer
+  playlist UX and signed artwork for v17 widgets.
 
 ## Security
 

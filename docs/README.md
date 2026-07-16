@@ -21,6 +21,8 @@ This documentation covers the current v0.17.1 repository:
 - [Strict Track Resolution Validation](strict-track-resolution-validation.md)
 - [Music UX Validation](music-ux-validation.md)
 - [Connections and OAuth](connections.md)
+- [v0.17.1 Release Notes](v0.17.1-release-notes.md)
+- [v0.17.1 Validation](v0.17.1-validation.md)
 - [v0.17.0 Release Notes](v0.17.0-release-notes.md)
 - [v0.17.0 Validation](v0.17.0-validation.md)
 - [v0.1 Validation](v0.1-validation.md)
