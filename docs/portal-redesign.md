@@ -24,6 +24,18 @@ siguen activos y el nuevo portal reutiliza los mismos datos enriquecidos.
 
 ## Actividad de Inicio
 
+Cuando ninguna zona está reproduciendo, la cabecera de Inicio convierte toda su
+superficie en un mosaico con una región por zona. Las `n - 1` separaciones son
+bordes de recorte compartidos, no líneas visibles: se desplazan e inclinan de
+forma lenta y continua sin dejar huecos entre carátulas. Al señalar o enfocar
+una zona, su región se expande y las demás se comprimen; solo entonces aparecen
+la canción y el artista, con un tono claro u oscuro calculado a partir de la
+carátula. El nombre de zona permanece visible y el clic conserva la vista previa
+desde la que se puede reanudar la reproducción. En este estado las imágenes se
+solicitan a 1400 px para tolerar la expansión y pantallas de alta densidad. La
+preferencia de movimiento reducido elimina la deriva ambiental y conserva una
+distribución estática.
+
 La sección «Tu actividad» separa el historial de escucha y el historial de
 búsqueda en dos columnas. Cada una muestra cinco entradas inicialmente y carga
 diez más con su propio control «Mostrar más»; en pantallas estrechas se apilan.

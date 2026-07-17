@@ -9,7 +9,7 @@ const state = {
   imageCache: new Map(), searchExpanded: {}, modalSearch: null, playerScrubbing: false,
   searchGeneration: 0, searchController: null,
   playerControlPointer: false, playerPendingUpdates: 0,
-  miniRenderSignature: null, homePlaybackSignature: null, homePreviewZoneId: null, homePreviewTimer: null,
+  miniRenderSignature: null, homePlaybackSignature: null, homePreviewZoneId: null, homePreviewTimer: null, homeIdleMosaicCleanup: null,
   homeHistory: { play: [], search: [], totals: { play: 0, search: 0 }, loading: null },
   playlistSort: localStorage.getItem("roonia.portal.playlist-sort") || "recent",
   browse: { hierarchy: "albums", session: "portal-music-albums", trail: [], previews: null }
@@ -375,10 +375,42 @@ function homeZoneTransitionName(zoneId){const index=state.zones.findIndex((zone)
 function clearHomePreview(){if(state.homePreviewTimer)clearTimeout(state.homePreviewTimer);state.homePreviewTimer=null;state.homePreviewZoneId=null;}
 function runHomeTransition(update){if(document.startViewTransition&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches)return document.startViewTransition(update);update();return null;}
 function scheduleHomePreviewReturn(zoneId){if(state.homePreviewTimer)clearTimeout(state.homePreviewTimer);state.homePreviewTimer=setTimeout(()=>{if(state.homePreviewZoneId!==zoneId||state.zones.some((item)=>item.state==="playing"))return;runHomeTransition(()=>{state.homePreviewZoneId=null;state.homePreviewTimer=null;state.homePlaybackSignature=null;renderHomePlayback(true);});},5000);}
+function homeIdleLayoutEdges(count,activeIndex=null){
+  if(count<=1)return [0,1];
+  if(activeIndex===null||activeIndex<0||activeIndex>=count)return Array.from({length:count+1},(_,index)=>index/count);
+  const expanded=Math.min(.64,Math.max(.46,(1/count)+.22));
+  const compressed=(1-expanded)/(count-1);
+  const widths=Array.from({length:count},(_,index)=>index===activeIndex?expanded:compressed);
+  return widths.reduce((edges,width)=>{edges.push(edges[edges.length-1]+width);return edges;},[0]);
+}
+function stopHomeIdleMosaic(){if(state.homeIdleMosaicCleanup)state.homeIdleMosaicCleanup();state.homeIdleMosaicCleanup=null;}
+function applyHomeIdleArtworkContrast(zone){
+  const image=$("img[data-image-key]",zone);zone.dataset.textTone="light";if(!image)return;
+  const sample=()=>{if(!image.naturalWidth||!image.naturalHeight)return;try{const canvas=document.createElement("canvas");canvas.width=12;canvas.height=12;const context=canvas.getContext("2d",{willReadFrequently:true});if(!context)return;context.drawImage(image,0,0,12,12);const pixels=context.getImageData(0,0,12,12).data;let luminance=0;let count=0;for(let index=0;index<pixels.length;index+=4){if(pixels[index+3]<128)continue;luminance+=(pixels[index]*.2126+pixels[index+1]*.7152+pixels[index+2]*.0722)/255;count+=1;}zone.dataset.textTone=count&&luminance/count>.58?"dark":"light";}catch{zone.dataset.textTone="light";}};
+  if(image.complete&&image.naturalWidth)sample();else image.addEventListener("load",sample,{once:true});
+}
+function initHomeIdleMosaic(root){
+  stopHomeIdleMosaic();
+  const cloud=$(".home-idle-cloud",root);if(!cloud)return;const zones=$$(".home-idle-zone",cloud);const count=zones.length;if(!count)return;
+  const motion=window.matchMedia("(prefers-reduced-motion: reduce)");let activeIndex=null;let frame=null;let previousTime=performance.now();let edges=homeIdleLayoutEdges(count);let stopped=false;
+  zones.forEach((zone,index)=>{const art=$(".home-idle-art",zone);if(art)art.style.viewTransitionName=homeZoneTransitionName(zone.dataset.previewZone);zone.addEventListener("pointerenter",()=>setActive(index));zone.addEventListener("focus",()=>setActive(index));applyHomeIdleArtworkContrast(zone);});
+  function draw(time,immediate=false){
+    const targets=homeIdleLayoutEdges(count,activeIndex);const elapsed=Math.min(64,Math.max(0,time-previousTime));previousTime=time;const blend=immediate||motion.matches?1:1-Math.exp(-elapsed/420);edges=edges.map((edge,index)=>index===0||index===count?edge:edge+(targets[index]-edge)*blend);
+    const spacing=1/count;const driftAmplitude=motion.matches?0:Math.min(.018,spacing*.08);const angleAmplitude=motion.matches?0:Math.min(.035,spacing*.14);const boundaries=edges.map((edge,index)=>{if(index===0)return {top:0,bottom:0};if(index===count)return {top:1,bottom:1};const phase=index*1.73;const drift=Math.sin(time/(8800+index*650)+phase)*driftAmplitude;const angle=Math.sin(time/(7200+index*520)+phase*.67)*angleAmplitude;return {top:edge+drift+angle,bottom:edge+drift-angle};});
+    zones.forEach((zone,index)=>{const left=boundaries[index];const right=boundaries[index+1];zone.style.clipPath=`polygon(${left.top*100}% 0,${right.top*100}% 0,${right.bottom*100}% 100%,${left.bottom*100}% 100%)`;const art=$(".home-idle-art",zone);if(!art)return;const artLeft=Math.max(0,Math.min(left.top,left.bottom)-.008);const artRight=Math.min(1,Math.max(right.top,right.bottom)+.008);art.style.left=`${artLeft*100}%`;art.style.right=`${(1-artRight)*100}%`;zone.classList.toggle("is-expanded",index===activeIndex);});
+  }
+  function setActive(index){activeIndex=index;draw(performance.now(),motion.matches);}
+  function clearActive(){if(cloud.contains(document.activeElement))return;activeIndex=null;draw(performance.now(),motion.matches);}
+  function tick(time){if(stopped)return;draw(time);frame=requestAnimationFrame(tick);}
+  function handleMotionChange(){draw(performance.now(),true);if(!motion.matches&&!frame)frame=requestAnimationFrame(tick);if(motion.matches&&frame){cancelAnimationFrame(frame);frame=null;}}
+  cloud.addEventListener("pointerleave",clearActive);cloud.addEventListener("focusout",()=>requestAnimationFrame(clearActive));motion.addEventListener?.("change",handleMotionChange);draw(previousTime,true);cloud.classList.add("is-ready");if(!motion.matches)frame=requestAnimationFrame(tick);
+  state.homeIdleMosaicCleanup=()=>{stopped=true;if(frame)cancelAnimationFrame(frame);motion.removeEventListener?.("change",handleMotionChange);};
+}
 function renderIdleHomeHero(online){
   const root=$("#home-hero");
   root.classList.add("home-hero-idle");
-  root.innerHTML=`<div class="home-idle-ambient"></div><div class="home-idle-shell"><div class="home-idle-copy"><span class="overline">Tus zonas están en pausa</span><h1>Elige dónde seguir escuchando</h1><p>Selecciona una carátula para recuperar sus controles.</p></div><div class="home-idle-cloud">${state.zones.map((zone,index)=>{const np=zone.now_playing||{};const song=np.line1||"Nada en reproducción";const artist=np.line2||"Roon";return `<button type="button" class="home-idle-zone" data-preview-zone="${esc(zone.zone_id)}" aria-label="Abrir ${esc(zone.display_name)}: ${esc(song)}" style="--float-delay:-${index*1.7}s;--float-duration:${12+(index%4)*2.1}s"><div class="home-idle-art" style="view-transition-name:${homeZoneTransitionName(zone.zone_id)}">${cover(np.image_key,np.line1)}<span class="home-idle-zone-tag">${esc(zone.display_name)}</span><span class="home-idle-track"><strong>${esc(song)}</strong><small>${esc(artist)}</small></span></div></button>`;}).join("")}</div></div><div class="featured-meta"><span>${online?esc(state.dashboard?.status?.core_name||"Roon Core"):"Core desconectado"}</span><span>${state.dashboard?.counts?.playlists||0} playlists · ${state.dashboard?.counts?.playlist_tracks||0} pistas</span></div>`;
+  root.innerHTML=`<div class="home-idle-ambient"></div><div class="home-idle-shell"><div class="home-idle-copy"><span class="overline">Tus zonas están en pausa</span><h1>Elige dónde seguir escuchando</h1><p>Selecciona una carátula para recuperar sus controles.</p></div><div class="home-idle-cloud">${state.zones.map((zone)=>{const np=zone.now_playing||{};const song=np.line1||"Nada en reproducción";const artist=np.line2||"Roon";return `<button type="button" class="home-idle-zone" data-preview-zone="${esc(zone.zone_id)}" aria-label="Abrir ${esc(zone.display_name)}: ${esc(song)}"><div class="home-idle-art"><div class="cover" data-fallback-kind="track"><div class="cover-fallback track">${icon("music_note")}</div>${imageTag(np.image_key,np.line1,1400)}</div><span class="home-idle-zone-tag">${esc(zone.display_name)}</span><span class="home-idle-track"><strong>${esc(song)}</strong><small>${esc(artist)}</small></span></div></button>`;}).join("")}</div></div><div class="featured-meta"><span>${online?esc(state.dashboard?.status?.core_name||"Roon Core"):"Core desconectado"}</span><span>${state.dashboard?.counts?.playlists||0} playlists · ${state.dashboard?.counts?.playlist_tracks||0} pistas</span></div>`;
+  initHomeIdleMosaic(root);
 }
 function beginHomeZonePreview(zoneId){
   const zone=state.zones.find((item)=>item.zone_id===zoneId);if(!zone)return;
@@ -393,6 +425,7 @@ function renderHomePlayback(force=false) {
   if(!force&&state.homePlaybackSignature===signature)return;state.homePlaybackSignature=signature;
   const online=Boolean(dashboard?.status?.core_connected);const selected=syncActiveZone();
   if(!playingZones.length&&!state.homePreviewZoneId&&state.zones.length){$("#home-hero").classList.remove("skeleton-block");renderIdleHomeHero(online);renderHomeNow();return;}
+  stopHomeIdleMosaic();
   const preview=state.homePreviewZoneId?state.zones.find((zone)=>zone.zone_id===state.homePreviewZoneId):null;
   const featured=preview||(selected?.state==="playing"?selected:playingZones[0]||selected);const np=featured?.now_playing||{};const isPreview=Boolean(preview&&!playingZones.length);
   const otherPlaying=playingZones.filter((zone)=>zone.zone_id!==featured?.zone_id);
