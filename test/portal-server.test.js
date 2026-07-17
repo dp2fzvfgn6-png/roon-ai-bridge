@@ -128,8 +128,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.5"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.5"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.6"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.6"/);
     assert.match(portalPageText, /id="version-badge">v—<\/small>/);
     assert.doesNotMatch(portalPageText, /id="command-status"/);
     assert.match(portalPageText, /id="toast-region"[^>]*aria-atomic="true"/);
@@ -209,6 +209,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /will-change: clip-path/);
     assert.match(portalStylesText, /\.home-idle-zone\[data-text-tone="dark"\] \.home-idle-track/);
     assert.match(portalStylesText, /\.home-idle-zone\.is-expanded \.home-idle-track/);
+    assert.match(portalStylesText, /\.home-idle-art \.cover \{[^}]*position: absolute;[^}]*transform: translate\(-50%,-50%\);/);
+    assert.doesNotMatch(portalStylesText, /\.home-idle-art \.cover img \{[^}]*transform:/);
     assert.doesNotMatch(portalStylesText, /@keyframes home-zone-float/);
     assert.match(portalStylesText, /::view-transition-group\(home-zone-cover-0\)/);
     assert.match(portalStylesText, /animation-duration: 1\.35s/);
@@ -311,10 +313,15 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /title\.scrollHeight>slot\.clientHeight/);
     assert.match(portalScriptText, /function beginHomeZonePreview/);
     assert.match(portalScriptText, /function homeIdleLayoutEdges/);
+    assert.match(portalScriptText, /function homeIdleArtworkShare/);
+    assert.match(portalScriptText, /function homeIdleImageRequestSize/);
     assert.match(portalScriptText, /function initHomeIdleMosaic/);
     assert.match(portalScriptText, /style\.clipPath=`polygon/);
+    assert.match(portalScriptText, /tag\.style\.left=/);
+    assert.match(portalScriptText, /track\.style\.left=/);
     assert.match(portalScriptText, /applyHomeIdleArtworkContrast/);
-    assert.match(portalScriptText, /imageTag\(np\.image_key,np\.line1,1400\)/);
+    assert.match(portalScriptText, /imageTag\(np\.image_key,np\.line1,1024\)/);
+    assert.doesNotMatch(portalScriptText, /imageTag\(np\.image_key,np\.line1,1400\)/);
     assert.match(portalScriptText, /data-preview-zone/);
     assert.match(portalScriptText, /home-idle-zone-tag/);
     assert.match(portalScriptText, /document\.startViewTransition/);

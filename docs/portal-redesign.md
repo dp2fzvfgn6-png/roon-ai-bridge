@@ -31,10 +31,13 @@ forma lenta y continua sin dejar huecos entre carátulas. Al señalar o enfocar
 una zona, su región se expande y las demás se comprimen; solo entonces aparecen
 la canción y el artista, con un tono claro u oscuro calculado a partir de la
 carátula. El nombre de zona permanece visible y el clic conserva la vista previa
-desde la que se puede reanudar la reproducción. En este estado las imágenes se
-solicitan a 1400 px para tolerar la expansión y pantallas de alta densidad. La
-preferencia de movimiento reducido elimina la deriva ambiental y conserva una
-distribución estática.
+desde la que se puede reanudar la reproducción. Las carátulas permanecen
+estáticas bajo los recortes y las etiquetas se anclan a la posición real de las
+divisiones para no invadir la región vecina. El tamaño solicitado a Roon se
+calcula desde la mayor superficie que puede ocupar cada imagen y la densidad de
+pantalla, con un máximo de 2× y límites de 640 a 1920 px. La preferencia de
+movimiento reducido elimina la deriva ambiental y conserva una distribución
+estática.
 
 La sección «Tu actividad» separa el historial de escucha y el historial de
 búsqueda en dos columnas. Cada una muestra cinco entradas inicialmente y carga
