@@ -35,9 +35,11 @@ desde la que se puede reanudar la reproducción. Las carátulas permanecen
 estáticas bajo los recortes y las etiquetas se anclan a la posición real de las
 divisiones para no invadir la región vecina. El tamaño solicitado a Roon se
 calcula desde la mayor superficie que puede ocupar cada imagen y la densidad de
-pantalla, con un máximo de 2× y límites de 640 a 1920 px. La preferencia de
-movimiento reducido elimina la deriva ambiental y conserva una distribución
-estática.
+pantalla, con un máximo de 1,75× y límites de 512 a 1600 px. La entrada y salida
+de la vista previa se hace sin View Transitions para evitar que el navegador
+superponga copias ampliadas de las carátulas del mosaico. La deriva ambiental
+usa una velocidad 1,2×. La preferencia de movimiento reducido elimina esa
+deriva y conserva una distribución estática.
 
 La sección «Tu actividad» separa el historial de escucha y el historial de
 búsqueda en dos columnas. Cada una muestra cinco entradas inicialmente y carga

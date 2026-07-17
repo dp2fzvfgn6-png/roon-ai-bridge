@@ -53,8 +53,8 @@ test("static artwork covers every resting and expanded boundary position", () =>
 
 test("idle artwork requests follow rendered pixels with bounded density", () => {
   const { imageSize } = loadMosaicGeometry();
-  assert.equal(imageSize(500, 1), 640);
-  assert.equal(imageSize(700, 2), 1408);
-  assert.equal(imageSize(1200, 3), 1920);
-  assert.equal(imageSize(100, 0.5), 640);
+  assert.equal(imageSize(500, 1), 512);
+  assert.equal(imageSize(700, 2), 1280);
+  assert.equal(imageSize(1200, 3), 1600);
+  assert.equal(imageSize(100, 0.5), 512);
 });
