@@ -126,8 +126,10 @@ main() {
   log "Rebuilding and restarting Docker Compose service"
   update_status updating "Instalando y compilando la actualización"
   BUILD_COMMIT="$(git rev-parse HEAD)"
+  INSTALLED_CHANNEL="stable"
+  [[ "${GIT_REF}" == "beta" ]] && INSTALLED_CHANNEL="beta"
   update_status restarting "Reiniciando el bridge y el portal"
-  GIT_COMMIT="${BUILD_COMMIT}" docker compose up -d --build
+  GIT_COMMIT="${BUILD_COMMIT}" INSTALLED_CHANNEL="${INSTALLED_CHANNEL}" docker compose up -d --build
 
   update_status verifying "Verificando que el servicio está operativo"
   for _ in $(seq 1 30); do

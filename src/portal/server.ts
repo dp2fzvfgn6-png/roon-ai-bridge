@@ -143,9 +143,10 @@ export function createPortalServer(context: ApiContext): express.Express {
     const versionStatus = systemInfo.version_status;
     const availableUpdate =
       versionStatus?.update_available === true && versionStatus.latest_version
-        ? {
+          ? {
             version: versionStatus.latest_version,
-            build: versionStatus.latest_build || null
+            build: versionStatus.latest_build || null,
+            channel: versionStatus.channel === "beta" ? "beta" : "stable"
           }
         : null;
     res.json({
@@ -153,6 +154,7 @@ export function createPortalServer(context: ApiContext): express.Express {
       version: APP_VERSION,
       build: process.env.GIT_COMMIT?.slice(0, 12) || null,
       update_channel: systemInfo.update_channel,
+      installed_channel: systemInfo.installed_channel,
       automatic_update_checks: systemInfo.automatic_update_checks === true,
       debug_mode: systemInfo.debug_mode === true,
       available_update: availableUpdate,
@@ -298,6 +300,7 @@ export function createPortalServer(context: ApiContext): express.Express {
       portal_base_url: context.config.portalPublicUrl,
       streaming_source: context.config.roonStreamingSource,
       update_channel: systemInfo.update_channel,
+      installed_channel: systemInfo.installed_channel,
       allow_beta_updates: systemInfo.allow_beta_updates === true,
       automatic_update_checks: systemInfo.automatic_update_checks === true,
       debug_mode: systemInfo.debug_mode === true

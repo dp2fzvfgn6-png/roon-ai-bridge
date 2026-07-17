@@ -82,13 +82,16 @@ From the portal's `Ajustes > Sistema` screen, an administrator can:
 
 - configure the public bridge/MCP URL and the public portal URL;
 - inspect detected local addresses and change bridge and portal ports;
-- select the stable or beta update channel;
+- allow or disallow beta updates without changing the identity of the installed
+  build until an update is actually applied;
 - compare the installed Git build with the latest build in that channel;
 - enable or disable an automatic update check every 24 hours;
 - enable or disable the portal's additional Debug information;
 - follow update progress and request a controlled restart.
 
-When beta updates are disabled from a beta installation, the portal asks how
+When beta updates are disabled from a stable installation that has not yet
+installed a beta, the preference returns directly to stable. When they are
+disabled from an installed beta, the portal asks how
 to continue. `Cambiar ahora a estable` installs the latest release from `main`
 and may move to an older version. `Conservar esta beta` stops newer beta
 updates and checks `main` daily until its version is equal or newer; the switch

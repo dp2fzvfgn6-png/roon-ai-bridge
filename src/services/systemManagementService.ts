@@ -24,6 +24,8 @@ type BetaExitPolicy = {
   installed_build: string | null;
 };
 
+type UpdateChannel = "stable" | "beta";
+
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TEMPORARY_PLAYLIST_EXPIRY_DAYS = 7;
 
@@ -146,12 +148,14 @@ export class SystemManagementService {
   }
 
   getSystemInfo(): Record<string, unknown> {
+    const updateStatus = this.readUpdateStatus();
     return {
       version: APP_VERSION,
       build: currentBuild(),
       api_port: this.config.port,
       portal_port: this.config.portalPort,
       update_channel: this.currentChannel(),
+      installed_channel: this.installedChannel(updateStatus),
       allow_beta_updates: this.currentChannel() === "beta" && !this.betaExitPolicy,
       beta_exit_policy: this.betaExitPolicy,
       automatic_update_checks: this.automaticUpdateChecks,
@@ -159,7 +163,7 @@ export class SystemManagementService {
       temporary_playlist_expiry_days: this.temporaryPlaylistExpiryDays,
       addresses: serviceAddresses(this.config.port, this.config.portalPort),
       version_status: this.versionStatus,
-      update_status: this.readUpdateStatus()
+      update_status: updateStatus
     };
   }
 
@@ -329,6 +333,7 @@ export class SystemManagementService {
       return {
         ok: true,
         update_channel: "beta",
+        installed_channel: this.installedChannel(),
         allow_beta_updates: true,
         beta_exit_policy: null
       };
@@ -338,6 +343,22 @@ export class SystemManagementService {
         "INVALID_SYSTEM_CONFIG",
         "The beta channel is not currently enabled"
       );
+    }
+    if (this.installedChannel() !== "beta") {
+      this.selectedUpdateChannel = "stable";
+      this.betaExitPolicy = null;
+      this.resetVersionStatus("stable");
+      this.persistChannelState();
+      this.stopAutomaticChecks();
+      this.startAutomaticChecks();
+      this.logger.info("Beta update channel disabled from a stable installation");
+      return {
+        ok: true,
+        update_channel: "stable",
+        installed_channel: "stable",
+        allow_beta_updates: false,
+        beta_exit_policy: null
+      };
     }
     if (!['install_stable', 'wait_for_stable'].includes(String(input.strategy))) {
       throw new ApiError(
@@ -357,6 +378,7 @@ export class SystemManagementService {
       return {
         ok: true,
         update_channel: "stable",
+        installed_channel: this.installedChannel(),
         allow_beta_updates: false,
         beta_exit_policy: null,
         update_request: updateRequest
@@ -379,6 +401,7 @@ export class SystemManagementService {
     return {
       ok: true,
       update_channel: "beta",
+      installed_channel: this.installedChannel(),
       allow_beta_updates: false,
       beta_exit_policy: this.betaExitPolicy
     };
@@ -713,6 +736,23 @@ export class SystemManagementService {
 
   private currentChannel(): "stable" | "beta" {
     return this.selectedUpdateChannel;
+  }
+
+  private installedChannel(updateStatus: Record<string, unknown> | null = this.readUpdateStatus()): UpdateChannel {
+    const installedBuild = currentBuild();
+    if (
+      updateStatus?.state === "completed" &&
+      typeof updateStatus.build === "string" &&
+      installedBuild !== null &&
+      updateStatus.build.slice(0, 12) === installedBuild
+    ) {
+      if (updateStatus.target === "beta") return "beta";
+      if (updateStatus.target === "main") return "stable";
+    }
+    if (this.betaExitPolicy) return "beta";
+    if (process.env.INSTALLED_CHANNEL === "beta") return "beta";
+    if (process.env.INSTALLED_CHANNEL === "stable") return "stable";
+    return "stable";
   }
 
   private readUpdateStatus(): Record<string, unknown> | null {

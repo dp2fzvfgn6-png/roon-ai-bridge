@@ -52,12 +52,14 @@ test("serves portal assets publicly but protects every administration endpoint",
     getSystemInfo: () => ({
       version: "0.17.2",
       update_channel: updateChannel,
+      installed_channel: "stable",
       allow_beta_updates: updateChannel === "beta",
       beta_exit_policy: null,
       automatic_update_checks: automaticUpdateChecks,
       debug_mode: debugMode,
       temporary_playlist_expiry_days: temporaryPlaylistExpiryDays,
       version_status: {
+        channel: "beta",
         update_available: true,
         latest_version: "0.17.3",
         latest_build: "abcdef123456"
@@ -330,6 +332,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /function renderDebugSystemDetails/);
     assert.match(portalScriptText, /\/api\/admin\/system\/update-channel/);
     assert.match(portalScriptText, /function chooseBetaExitStrategy/);
+    assert.match(portalScriptText, /state\.installedChannel!=='beta'/);
+    assert.match(portalScriptText, /status\.channel==='beta'\?' \(beta\)'/);
     assert.match(portalScriptText, /setInterval\(refreshAvailableUpdateStatus,60000\)/);
     assert.doesNotMatch(portalScriptText, /#admin-health-badge|#version-summary|#update-message|#update-state/);
     assert.match(portalScriptText, /Volumen en \$\{zone\} ajustado al \$\{value\} %/);
@@ -387,11 +391,13 @@ test("serves portal assets publicly but protects every administration endpoint",
     const sessionBody = await session.json();
     assert.equal(sessionBody.portal_port, 3001);
     assert.equal(sessionBody.update_channel, "stable");
+    assert.equal(sessionBody.installed_channel, "stable");
     assert.equal(sessionBody.automatic_update_checks, true);
     assert.equal(sessionBody.debug_mode, false);
     assert.deepEqual(sessionBody.available_update, {
       version: "0.17.3",
-      build: "abcdef123456"
+      build: "abcdef123456",
+      channel: "beta"
     });
 
     const updatePreferences = await fetch(`${baseUrl}/api/admin/system/update-preferences`, {
@@ -452,6 +458,10 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     assert.equal((await betaSession.json()).update_channel, "beta");
+    const stableInstallBetaSession = await fetch(`${baseUrl}/api/session`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await stableInstallBetaSession.json()).installed_channel, "stable");
 
     const userSession = await fetch(`${baseUrl}/api/session`, {
       headers: { Authorization: `Bearer ${setupBody.token}` }

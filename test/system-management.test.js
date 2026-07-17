@@ -136,7 +136,7 @@ test("compares update builds even when the semantic version is unchanged", async
   const previousCommit = process.env.GIT_COMMIT;
   process.env.GIT_COMMIT = "111111111111aaaaaaaa";
   global.fetch = async (url) => String(url).includes("package.json")
-    ? new Response(JSON.stringify({ version: "0.18.0" }), { status: 200 })
+    ? new Response(JSON.stringify({ version: "0.17.3" }), { status: 200 })
     : new Response(JSON.stringify({ sha: "222222222222bbbbbbbb" }), { status: 200 });
   const noop = () => {};
   const service = new SystemManagementService({
@@ -148,7 +148,7 @@ test("compares update builds even when the semantic version is unchanged", async
   }, { info: noop, warn: noop, error: noop, debug: noop });
   try {
     const status = await service.checkForUpdates({ allow_beta_updates: false });
-    assert.equal(status.current_version, "0.18.0");
+    assert.equal(status.current_version, "0.17.3");
     assert.equal(status.current_build, "111111111111");
     assert.equal(status.latest_build, "222222222222");
     assert.equal(status.update_available, true);
@@ -169,7 +169,7 @@ test("runs automatic update checks once per day and restores their persisted res
   global.fetch = async (url) => {
     fetchCount += 1;
     return String(url).includes("package.json")
-      ? new Response(JSON.stringify({ version: "0.18.0" }), { status: 200 })
+      ? new Response(JSON.stringify({ version: "0.17.3" }), { status: 200 })
       : new Response(JSON.stringify({ sha: "bbbbbbbbbbbb22222222" }), { status: 200 });
   };
   const noop = () => {};
@@ -196,7 +196,7 @@ test("runs automatic update checks once per day and restores their persisted res
     const status = service.getSystemInfo().version_status;
     assert.equal(fetchCount, 2);
     assert.equal(status.channel, "beta");
-    assert.equal(status.latest_version, "0.18.0");
+    assert.equal(status.latest_version, "0.17.3");
     assert.equal(status.update_available, true);
     assert.equal(fs.existsSync(path.join(dataDir, "version-status.json")), true);
 
@@ -228,6 +228,8 @@ test("runs automatic update checks once per day and restores their persisted res
 
 test("switches immediately from beta to the stable update target", () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-stable-now-"));
+  const previousInstalledChannel = process.env.INSTALLED_CHANNEL;
+  process.env.INSTALLED_CHANNEL = "beta";
   const noop = () => {};
   const service = new SystemManagementService({
     port: 3000,
@@ -258,6 +260,8 @@ test("switches immediately from beta to the stable update target", () => {
     assert.equal(runtime.beta_exit_policy, null);
   } finally {
     service.stopAutomaticChecks();
+    if (previousInstalledChannel === undefined) delete process.env.INSTALLED_CHANNEL;
+    else process.env.INSTALLED_CHANNEL = previousInstalledChannel;
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
@@ -266,7 +270,9 @@ test("keeps the installed beta until main catches up, then requests stable autom
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-stable-wait-"));
   const previousFetch = global.fetch;
   const previousCommit = process.env.GIT_COMMIT;
+  const previousInstalledChannel = process.env.INSTALLED_CHANNEL;
   process.env.GIT_COMMIT = "aaaaaaaaaaaa11111111";
+  process.env.INSTALLED_CHANNEL = "beta";
   let stableVersion = "0.17.1";
   let fetchCount = 0;
   global.fetch = async (url) => {
@@ -322,7 +328,7 @@ test("keeps the installed beta until main catches up, then requests stable autom
     assert.equal(restored.beta_exit_policy.mode, "wait_for_stable");
     restoredService.stopAutomaticChecks();
 
-    stableVersion = "0.18.0";
+    stableVersion = "0.17.3";
     const caughtUp = await service.checkForUpdates();
     assert.equal(caughtUp.update_available, true);
     const switched = service.getSystemInfo();
@@ -347,6 +353,70 @@ test("keeps the installed beta until main catches up, then requests stable autom
     global.fetch = previousFetch;
     if (previousCommit === undefined) delete process.env.GIT_COMMIT;
     else process.env.GIT_COMMIT = previousCommit;
+    if (previousInstalledChannel === undefined) delete process.env.INSTALLED_CHANNEL;
+    else process.env.INSTALLED_CHANNEL = previousInstalledChannel;
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("enables and disables beta updates without treating the installed stable build as beta", () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-stable-beta-preference-"));
+  const previousInstalledChannel = process.env.INSTALLED_CHANNEL;
+  process.env.INSTALLED_CHANNEL = "stable";
+  const noop = () => {};
+  const service = new SystemManagementService({
+    port: 3000,
+    portalPort: 3001,
+    dataDir,
+    updateChannel: "stable",
+    automaticUpdateChecks: false
+  }, { info: noop, warn: noop, error: noop, debug: noop });
+  try {
+    const enabled = service.changeUpdateChannel({ allow_beta_updates: true });
+    assert.equal(enabled.update_channel, "beta");
+    assert.equal(enabled.installed_channel, "stable");
+    assert.equal(service.getSystemInfo().installed_channel, "stable");
+
+    const disabled = service.changeUpdateChannel({ allow_beta_updates: false });
+    assert.equal(disabled.update_channel, "stable");
+    assert.equal(disabled.installed_channel, "stable");
+    assert.equal(disabled.beta_exit_policy, null);
+    assert.equal(fs.existsSync(path.join(dataDir, "update-request.json")), false);
+  } finally {
+    service.stopAutomaticChecks();
+    if (previousInstalledChannel === undefined) delete process.env.INSTALLED_CHANNEL;
+    else process.env.INSTALLED_CHANNEL = previousInstalledChannel;
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("restores the installed channel from a matching completed legacy update", () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-installed-channel-"));
+  const previousCommit = process.env.GIT_COMMIT;
+  const previousInstalledChannel = process.env.INSTALLED_CHANNEL;
+  process.env.GIT_COMMIT = "abcdef1234567890";
+  delete process.env.INSTALLED_CHANNEL;
+  fs.writeFileSync(path.join(dataDir, "update-status.json"), JSON.stringify({
+    state: "completed",
+    target: "beta",
+    build: "abcdef123456"
+  }));
+  const noop = () => {};
+  const service = new SystemManagementService({
+    port: 3000,
+    portalPort: 3001,
+    dataDir,
+    updateChannel: "beta",
+    automaticUpdateChecks: false
+  }, { info: noop, warn: noop, error: noop, debug: noop });
+  try {
+    assert.equal(service.getSystemInfo().installed_channel, "beta");
+  } finally {
+    service.stopAutomaticChecks();
+    if (previousCommit === undefined) delete process.env.GIT_COMMIT;
+    else process.env.GIT_COMMIT = previousCommit;
+    if (previousInstalledChannel === undefined) delete process.env.INSTALLED_CHANNEL;
+    else process.env.INSTALLED_CHANNEL = previousInstalledChannel;
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });

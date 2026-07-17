@@ -3,7 +3,7 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.18.0 Beta - Unreleased
+## 0.17.3 Beta - Unreleased
 
 - Added temporary working playlists for activity, mood and occasion requests.
   They use the same strict batched recording preflight as saved playlists, stay
@@ -18,8 +18,6 @@ each release lives under [`docs/`](docs/README.md).
   while Modo Debug is enabled.
 - Added ordered, paginated track reads for playlists selected from the native
   Roon catalog, allowing a model to compare them with saved RoonIA playlists.
-
-## 0.17.3 Beta - Unreleased
 
 - Development continues on the `beta` branch from the v0.17.2 stable release.
 

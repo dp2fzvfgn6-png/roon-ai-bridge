@@ -698,7 +698,10 @@ The portal on port `3001` uses protected same-origin endpoints:
 - `POST /api/admin/system/restart`
 
 `POST /api/admin/system/update-channel` accepts
-`{"allow_beta_updates":true}` to enable beta updates. To leave beta, send
+`{"allow_beta_updates":true}` to enable beta updates. This does not change the
+`installed_channel` reported by the system until an update is installed. A
+stable installation can disable the preference again with
+`{"allow_beta_updates":false}` and no strategy. To leave an installed beta, send
 `allow_beta_updates:false` with one of these strategies:
 
 - `install_stable`: writes an update request targeting `main` immediately. The
@@ -708,7 +711,8 @@ The portal on port `3001` uses protected same-origin endpoints:
   than the retained beta, the service requests the `main` update automatically.
 
 While the deferred strategy is active, `GET /api/admin/system` reports the
-current beta channel, `allow_beta_updates:false` and a `beta_exit_policy`
+current beta update channel, `installed_channel:"beta"`,
+`allow_beta_updates:false` and a `beta_exit_policy`
 object describing the retained version.
 
 `PATCH /api/admin/system/debug-preferences` accepts a required boolean
