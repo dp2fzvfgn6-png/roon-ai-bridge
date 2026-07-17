@@ -27,6 +27,62 @@ function tempConfig() {
   };
 }
 
+test("temporary playlists stay out of saved listings and promote in place", () => {
+  const service = new PlaylistService(tempConfig());
+  const saved = service.createPlaylist({ name: "Saved", tracks: [{ query: "saved track" }] });
+  const temporary = service.savePreparedTemporaryPlaylist({
+    name: "Cooking session",
+    description: "A working mix",
+    intent: "relaxed electronic music for cooking",
+    expiry_days: 7,
+    tracks: [
+      { query: "Tycho Awake", title: "Awake", artist: "Tycho" },
+      { query: "Bonobo Kerala", title: "Kerala", artist: "Bonobo" }
+    ]
+  });
+
+  assert.equal(temporary.lifecycle.type, "temporary");
+  assert.equal(temporary.lifecycle.intent, "relaxed electronic music for cooking");
+  assert.ok(Date.parse(temporary.lifecycle.expires_at) > Date.now());
+  assert.deepEqual(service.listPlaylists().playlists.map((item) => item.playlist_id), [saved.playlist_id]);
+  assert.deepEqual(
+    service.listPlaylists({ scope: "temporary" }).playlists.map((item) => item.playlist_id),
+    [temporary.playlist_id]
+  );
+  assert.equal(service.listPlaylists({ scope: "all" }).total, 2);
+
+  const originalTrackIds = temporary.tracks.map((track) => track.track_id);
+  const promoted = service.promoteTemporaryPlaylist(temporary.playlist_id, {
+    name: "Cooking electronics"
+  });
+  assert.equal(promoted.playlist_id, temporary.playlist_id);
+  assert.equal(promoted.name, "Cooking electronics");
+  assert.equal(promoted.lifecycle.type, "saved");
+  assert.deepEqual(promoted.tracks.map((track) => track.track_id), originalTrackIds);
+  assert.equal(service.listPlaylists({ scope: "temporary" }).total, 0);
+  assert.equal(service.listPlaylists().total, 2);
+  assert.throws(
+    () => service.promoteTemporaryPlaylist(promoted.playlist_id),
+    (error) => error.code === "PLAYLIST_NOT_TEMPORARY"
+  );
+});
+
+test("expired temporary playlists are purged with their tracks", () => {
+  const service = new PlaylistService(tempConfig());
+  const temporary = service.savePreparedTemporaryPlaylist({
+    name: "Short lived",
+    intent: "test expiry",
+    expiry_days: 1,
+    tracks: [{ query: "one song", title: "One Song", artist: "Artist" }]
+  });
+  assert.equal(service.purgeExpiredTemporaryPlaylists(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)), 1);
+  assert.equal(service.listPlaylists({ scope: "temporary" }).total, 0);
+  assert.throws(
+    () => service.getPlaylist(temporary.playlist_id),
+    (error) => error.code === "PLAYLIST_NOT_FOUND"
+  );
+});
+
 test("migrates legacy JSON playlists to SQLite and supports full track management", () => {
   const config = tempConfig();
   fs.writeFileSync(
@@ -1490,4 +1546,30 @@ test("play_now leaves the current queue untouched when the first identity is amb
   assert.equal(result.failures[1].error.code, "PLAYLIST_START_ABORTED");
   assert.equal(playCalls, 0);
   assert.equal(controlCalls, 0);
+});
+
+test("playlist duplicate lookup matches existing recording identity before an add", () => {
+  const service = new PlaylistService(tempConfig());
+  const playlist = service.createPlaylist({
+    name: "Existing recordings",
+    tracks: [{
+      query: "Teardrop Massive Attack",
+      title: "Teardrop",
+      artist: "Massive Attack",
+      album: "Mezzanine"
+    }]
+  });
+
+  const duplicate = service.findDuplicateTrack(playlist.playlist_id, {
+    query: "Teardrop Massive Attack",
+    title: "Teardrop",
+    artist: "Massive Attack",
+    album: "Collected"
+  });
+  assert.equal(duplicate.track_id, playlist.tracks[0].track_id);
+  assert.equal(service.findDuplicateTrack(playlist.playlist_id, {
+    query: "Angel Massive Attack",
+    title: "Angel",
+    artist: "Massive Attack"
+  }), null);
 });

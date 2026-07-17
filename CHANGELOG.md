@@ -3,6 +3,22 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
+## 0.18.0 Beta - Unreleased
+
+- Added temporary working playlists for activity, mood and occasion requests.
+  They use the same strict batched recording preflight as saved playlists, stay
+  out of normal playlist listings and can replace or extend the Roon queue.
+- Added explicit MCP intents to create, inspect and promote temporary playlists.
+  Promotion preserves the playlist ID, verified tracks, ordering and artwork.
+- Added per-playlist expiration with automatic database and custom-cover
+  cleanup. New temporary playlists use the configurable 1-365 day lifetime;
+  changing it does not rewrite existing expiration dates.
+- Added the expiration setting under Portal > Ajustes > Sistema and a dedicated
+  temporary-playlist manager under Música > Playlists that is visible only
+  while Modo Debug is enabled.
+- Added ordered, paginated track reads for playlists selected from the native
+  Roon catalog, allowing a model to compare them with saved RoonIA playlists.
+
 ## 0.17.3 Beta - Unreleased
 
 - Development continues on the `beta` branch from the v0.17.2 stable release.

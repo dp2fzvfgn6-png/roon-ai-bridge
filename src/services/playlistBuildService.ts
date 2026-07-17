@@ -50,7 +50,12 @@ export type PlaylistBuildRequest = {
   desired_count?: unknown;
   no_adjacent_same_artist?: unknown;
   tracks?: unknown;
+  purpose?: unknown;
+  intent?: unknown;
+  expiry_days?: unknown;
 };
+
+type PlaylistBuildPurpose = "saved_playlist" | "temporary_playlist";
 
 type RequiredCredit = {
   name: string;
@@ -129,6 +134,9 @@ type BuildSession = {
   seenIdentityKeys: Set<string>;
   createdAt: number;
   updatedAt: number;
+  purpose: PlaylistBuildPurpose;
+  intent: string | null;
+  expiryDays: number | null;
 };
 
 export type PlaylistBuildResult = {
@@ -433,6 +441,9 @@ export class PlaylistBuildService {
   async build(request: PlaylistBuildRequest): Promise<PlaylistBuildResult> {
     this.purgeExpiredSessions();
     const buildId = optionalString(request.build_id);
+    const requestedPurpose: PlaylistBuildPurpose = request.purpose === "temporary_playlist"
+      ? "temporary_playlist"
+      : "saved_playlist";
     let session: BuildSession;
     if (buildId) {
       const existing = this.sessions.get(buildId);
@@ -446,6 +457,13 @@ export class PlaylistBuildService {
           build_id: buildId
         });
       }
+      if (existing.purpose !== requestedPurpose) {
+        throw new ApiError("PLAYLIST_BUILD_PURPOSE_MISMATCH", "Playlist build belongs to a different workflow", {
+          build_id: buildId,
+          expected: existing.purpose,
+          received: requestedPurpose
+        });
+      }
       existing.round += 1;
       existing.updatedAt = Date.now();
       session = existing;
@@ -457,6 +475,19 @@ export class PlaylistBuildService {
       const playlistId = optionalString(request.playlist_id);
       const name = optionalString(request.name);
       if (!playlistId && !name) throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
+      if (requestedPurpose === "temporary_playlist" && playlistId) {
+        throw new ApiError("INVALID_PLAYLIST", "Temporary playlist builds cannot replace an existing playlist");
+      }
+      const expiryDays = optionalInteger(request.expiry_days);
+      if (
+        requestedPurpose === "temporary_playlist" &&
+        (expiryDays === null || expiryDays < 1 || expiryDays > 365)
+      ) {
+        throw new ApiError(
+          "INVALID_TEMPORARY_PLAYLIST_EXPIRY",
+          "expiry_days must be an integer from 1 to 365"
+        );
+      }
       session = {
         buildId: crypto.randomUUID(),
         playlistId,
@@ -470,7 +501,10 @@ export class PlaylistBuildService {
         seenProposalKeys: new Set(),
         seenIdentityKeys: new Set(),
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        purpose: requestedPurpose,
+        intent: optionalString(request.intent),
+        expiryDays
       };
       if (desiredCount !== null) this.sessions.set(session.buildId, session);
     }
@@ -503,12 +537,21 @@ export class PlaylistBuildService {
       return this.result(session, "needs_candidates", null, scheduled, missing);
     }
 
-    const playlist = this.playlistService.savePreparedPlaylist({
-      playlist_id: session.playlistId || undefined,
-      name: session.name || undefined,
-      description: session.description === null ? undefined : session.description,
-      tracks: scheduled.selected.map((candidate) => candidate.storedTrack)
-    });
+    const preparedTracks = scheduled.selected.map((candidate) => candidate.storedTrack);
+    const playlist = session.purpose === "temporary_playlist"
+      ? this.playlistService.savePreparedTemporaryPlaylist({
+          name: session.name || undefined,
+          description: session.description === null ? undefined : session.description,
+          tracks: preparedTracks,
+          intent: session.intent,
+          expiry_days: session.expiryDays
+        })
+      : this.playlistService.savePreparedPlaylist({
+          playlist_id: session.playlistId || undefined,
+          name: session.name || undefined,
+          description: session.description === null ? undefined : session.description,
+          tracks: preparedTracks
+        });
     this.sessions.delete(session.buildId);
     this.logger?.info("Playlist preflight finalized", {
       buildId: session.buildId,

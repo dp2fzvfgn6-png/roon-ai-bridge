@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-25..0&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=20260717.1">
+  <link rel="stylesheet" href="/styles.css?v=20260717.2">
 </head>
 <body>
   <div id="auth-screen" class="auth-screen">
@@ -122,6 +122,10 @@
           <div class="tab-page" id="music-playlists">
             <div class="playlist-toolbar"><div><span class="overline">Colecciones personales</span><h2>Tus playlists</h2><p id="playlist-summary">Organiza y recupera tus selecciones.</p></div><label class="sort-control"><span>Ordenar por</span><select id="playlist-sort"><option value="recent">Reproducidas recientemente</option><option value="alphabetical">Alfabéticamente</option></select></label></div>
             <div id="playlist-grid" class="playlist-grid"></div>
+            <section id="temporary-playlists-section" class="temporary-playlists-section" data-debug-only hidden>
+              <div class="playlist-toolbar compact"><div><span class="overline">Modo Debug</span><h2>Playlists temporales</h2><p id="temporary-playlist-summary">Listas de trabajo creadas por los asistentes.</p></div></div>
+              <div id="temporary-playlist-grid" class="playlist-grid"></div>
+            </section>
           </div>
         </section>
 
@@ -165,7 +169,8 @@
             </section>
             <section class="panel connectivity-panel"><div class="panel-head"><div><span class="overline">Conectividad</span><h3>Red y direcciones públicas</h3><p>Las direcciones se usan para enlaces MCP, OAuth y acceso externo al portal.</p></div></div><div class="form-grid"><label>Dirección pública del bridge<input id="system-bridge-url" type="url" placeholder="https://roonia.example.com"></label><label>Dirección pública del portal<input id="system-portal-url" type="url" placeholder="https://portal.example.com"></label><label>Puerto del bridge<input id="system-api-port" type="number" min="1" max="65535"></label><label>Puerto del portal<input id="system-portal-port" type="number" min="1" max="65535"></label></div><div id="service-addresses" class="address-list"></div><div class="inline-actions wrap"><button class="btn primary" id="save-system">Guardar configuración</button><span class="subtle">Los cambios requieren reiniciar el servicio.</span></div></section>
             <section class="panel service-panel"><div class="panel-head"><div><span class="overline">Servicio</span><h3>Bridge y portal</h3><p>Reinicia la aplicación para aplicar cambios de red o recuperar el servicio. La reproducción de Roon no se detendrá.</p></div></div><div class="service-actions"><button class="btn danger" id="restart-service">Reiniciar servicio</button></div></section>
-            <section class="panel debug-panel"><div class="panel-head"><div><span class="overline">Interfaz</span><h3>Diagnóstico y soporte</h3><p>Controla la cantidad de información técnica que muestra el portal.</p></div></div><label class="toggle-row"><span><strong>Modo Debug</strong><small>Muestra registros, diagnóstico avanzado y detalles técnicos. No modifica el nivel de logs del servicio.</small></span><input id="system-debug-mode" type="checkbox" class="switch"></label><div id="debug-system-details" class="settings-grid debug-system-details" data-debug-only hidden></div></section>
+            <section class="panel temporary-playlist-settings"><div class="panel-head"><div><span class="overline">Automatización musical</span><h3>Playlists temporales</h3><p>Configura cuánto tiempo se conservan las nuevas listas de trabajo creadas por los asistentes.</p></div></div><div class="form-grid"><label>Días hasta la caducidad<input id="system-temporary-playlist-expiry-days" type="number" min="1" max="365" step="1"></label></div><div class="inline-actions wrap"><button class="btn primary" id="save-playlist-preferences">Guardar caducidad</button><span class="subtle">El cambio se aplica a las nuevas playlists temporales y no requiere reiniciar.</span></div></section>
+            <section class="panel debug-panel"><div class="panel-head"><div><span class="overline">Interfaz</span><h3>Diagnóstico y soporte</h3><p>Controla la cantidad de información técnica que muestra el portal.</p></div></div><label class="toggle-row"><span><strong>Modo Debug</strong><small>Muestra registros, playlists temporales, diagnóstico avanzado y detalles técnicos. No modifica el nivel de logs del servicio.</small></span><input id="system-debug-mode" type="checkbox" class="switch"></label><div id="debug-system-details" class="settings-grid debug-system-details" data-debug-only hidden></div></section>
             <section class="panel state-panel"><div class="panel-head"><div><span class="overline">Estado real</span><h3>Conexión con Roon</h3><p>Comprobaciones obtenidas directamente del bridge.</p></div></div><div id="settings-grid" class="settings-grid"></div></section>
           </div></div>
         </section>
@@ -195,6 +200,6 @@
   </dialog>
   <dialog id="playback-actions-dialog" class="action-dialog"><div id="playback-actions-content"></div></dialog>
   <dialog id="secret-dialog" class="compact-dialog"><div class="modal-head"><div><span class="overline">API key creada</span><h2>Guárdala ahora</h2></div><button class="icon-btn" data-close><span class="material-symbols-rounded">close</span></button></div><p>Por seguridad no podremos volver a mostrar el secreto completo.</p><div class="secret-field"><code id="new-secret"></code><button class="btn primary" id="copy-secret"><span class="material-symbols-rounded">content_copy</span>Copiar</button></div></dialog>
-  <script src="/app.js?v=20260717.1" defer></script>
+  <script src="/app.js?v=20260717.2" defer></script>
 </body>
 </html>

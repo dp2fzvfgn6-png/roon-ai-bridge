@@ -1411,3 +1411,109 @@ test("artist detail omits unmatched global releases without opening them", async
   assert.deepEqual(detail.albums, []);
   assert.deepEqual(detail.singles_eps, []);
 });
+
+function createCatalogPlaylistClient(trackCount = 175) {
+  const stages = new Map();
+  const tracks = Array.from({ length: trackCount }, (_, index) => ({
+    title: `Track ${index + 1}`,
+    subtitle: `Artist ${index + 1}`,
+    item_key: `track-${index + 1}`,
+    hint: "action_list",
+    media: {
+      artist: `Artist ${index + 1}`,
+      album: `Album ${Math.floor(index / 10) + 1}`,
+      duration_seconds: 180 + index,
+      source: "tidal"
+    }
+  }));
+  const playlistItems = [
+    { title: "Play Playlist", item_key: "play-playlist", hint: "action" },
+    ...tracks
+  ];
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.input) {
+        stages.set(session, "root");
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "playlist-category") {
+        stages.set(session, "results");
+        callback(false, { action: "list" });
+        return;
+      }
+      if (opts.item_key === "catalog-playlist") {
+        stages.set(session, "playlist");
+        callback(false, { action: "list" });
+        return;
+      }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "root") {
+        callback(false, {
+          list: { title: "Search", count: 1 },
+          items: [{ title: "Playlists", item_key: "playlist-category", hint: "list" }]
+        });
+        return;
+      }
+      if (stage === "results") {
+        callback(false, {
+          list: { title: "Playlists", count: 1 },
+          items: [{
+            title: "Reference Mix",
+            subtitle: `${trackCount} Tracks`,
+            item_key: "catalog-playlist",
+            hint: "list",
+            media: { source: "tidal" }
+          }]
+        });
+        return;
+      }
+      const offset = opts.offset || 0;
+      const count = opts.count || 100;
+      callback(false, {
+        list: { title: "Reference Mix", count: trackCount },
+        items: playlistItems.slice(offset, offset + count),
+        offset
+      });
+    }
+  };
+  return {
+    isCoreConnected: () => true,
+    isBrowseReady: () => true,
+    getBrowse: () => browse
+  };
+}
+
+test("catalog playlist detail returns ordered paginated tracks beyond the first page", async () => {
+  const service = new RoonMediaService(createCatalogPlaylistClient(), "tidal");
+  const search = await service.search({
+    query: "Reference Mix",
+    types: ["playlist"],
+    count: 5
+  });
+  const playlist = search.groups.playlist[0];
+  assert.equal(playlist.content_count, 175);
+
+  const first = await service.getPlaylistDetail(playlist.result_id, undefined, 100, 0);
+  assert.equal(first.pagination.total, 175);
+  assert.equal(first.pagination.returned, 100);
+  assert.equal(first.pagination.has_more, true);
+  assert.equal(first.tracks[0].playlist_position, 1);
+  assert.equal(first.tracks[99].playlist_position, 100);
+  assert.equal(first.tracks[0].title, "Track 1");
+  assert.equal(first.tracks[0].artist, "Artist 1");
+  assert.equal(first.tracks[0].album, "Album 1");
+
+  const second = await service.getPlaylistDetail(playlist.result_id, undefined, 100, 100);
+  assert.equal(second.pagination.total, 175);
+  assert.equal(second.pagination.returned, 75);
+  assert.equal(second.pagination.has_more, false);
+  assert.equal(second.tracks[0].playlist_position, 101);
+  assert.equal(second.tracks[74].playlist_position, 175);
+  assert.equal(second.completeness, "complete");
+  assert.equal(second.identity_verified, true);
+});

@@ -401,6 +401,14 @@ export function createPortalServer(context: ApiContext): express.Express {
     }
   });
 
+  app.patch("/api/admin/system/playlist-preferences", (req, res, next) => {
+    try {
+      res.json(context.systemManagementService.savePlaylistPreferences(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/admin/system/update-channel", (req, res, next) => {
     try {
       const result = context.systemManagementService.changeUpdateChannel(req.body || {});

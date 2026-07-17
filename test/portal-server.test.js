@@ -47,6 +47,7 @@ test("serves portal assets publicly but protects every administration endpoint",
   let automaticUpdateChecks = true;
   let debugMode = false;
   let updateChannel = "stable";
+  let temporaryPlaylistExpiryDays = 7;
   const systemManagementService = {
     getSystemInfo: () => ({
       version: "0.17.2",
@@ -55,6 +56,7 @@ test("serves portal assets publicly but protects every administration endpoint",
       beta_exit_policy: null,
       automatic_update_checks: automaticUpdateChecks,
       debug_mode: debugMode,
+      temporary_playlist_expiry_days: temporaryPlaylistExpiryDays,
       version_status: {
         update_available: true,
         latest_version: "0.17.3",
@@ -68,6 +70,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     saveDebugPreferences: (input) => {
       debugMode = input.debug_mode === true;
       return { debug_mode: debugMode };
+    },
+    savePlaylistPreferences: (input) => {
+      temporaryPlaylistExpiryDays = input.temporary_playlist_expiry_days;
+      return { temporary_playlist_expiry_days: temporaryPlaylistExpiryDays };
     },
     changeUpdateChannel: (input) => {
       updateChannel = input.allow_beta_updates ? "beta" : "stable";
@@ -120,8 +126,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.1"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.1"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.2"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.2"/);
     assert.match(portalPageText, /id="version-badge">v—<\/small>/);
     assert.doesNotMatch(portalPageText, /id="command-status"/);
     assert.match(portalPageText, /id="toast-region"[^>]*aria-atomic="true"/);
@@ -134,6 +140,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="check-update">Comprobar actualizaciones<\/button>/);
     assert.match(portalPageText, /id="system-auto-update-checks"[^>]*type="checkbox"/);
     assert.match(portalPageText, /id="system-debug-mode"[^>]*type="checkbox"/);
+    assert.match(portalPageText, /id="system-temporary-playlist-expiry-days"[^>]*type="number"[^>]*min="1"[^>]*max="365"/);
+    assert.match(portalPageText, /id="temporary-playlists-section"[^>]*data-debug-only hidden/);
+    assert.match(portalPageText, /id="temporary-playlist-grid"/);
     assert.match(portalPageText, /data-tab="operation" data-debug-only hidden>Registros/);
     assert.match(portalPageText, /id="admin-operation" data-debug-only hidden/);
     assert.match(portalPageText, /class="panel connection-advanced" data-debug-only hidden/);
@@ -208,6 +217,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.beta-exit-option/);
     assert.match(portalStylesText, /\[data-debug-only\]\[hidden\]/);
     assert.match(portalStylesText, /\.debug-panel/);
+    assert.match(portalStylesText, /\.playlist-lifecycle-badge/);
     assert.doesNotMatch(portalStylesText, /\.command-status/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
@@ -313,6 +323,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /function renderAvailableUpdateNotice/);
     assert.match(portalScriptText, /\/api\/admin\/system\/update-preferences/);
     assert.match(portalScriptText, /\/api\/admin\/system\/debug-preferences/);
+    assert.match(portalScriptText, /\/api\/admin\/system\/playlist-preferences/);
+    assert.match(portalScriptText, /\/api\/playlists\?scope=temporary/);
+    assert.match(portalScriptText, /data-promote-playlist/);
     assert.match(portalScriptText, /function applyDebugMode/);
     assert.match(portalScriptText, /function renderDebugSystemDetails/);
     assert.match(portalScriptText, /\/api\/admin\/system\/update-channel/);
@@ -407,6 +420,22 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     assert.equal((await debugSession.json()).debug_mode, true);
+
+    const playlistPreferences = await fetch(`${baseUrl}/api/admin/system/playlist-preferences`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ temporary_playlist_expiry_days: 14 })
+    });
+    assert.equal(playlistPreferences.status, 200);
+    assert.equal((await playlistPreferences.json()).temporary_playlist_expiry_days, 14);
+
+    const systemInfo = await fetch(`${baseUrl}/api/admin/system`, {
+      headers: { Authorization: `Bearer ${setupBody.token}` }
+    });
+    assert.equal((await systemInfo.json()).temporary_playlist_expiry_days, 14);
 
     const updateChannelResponse = await fetch(`${baseUrl}/api/admin/system/update-channel`, {
       method: "POST",

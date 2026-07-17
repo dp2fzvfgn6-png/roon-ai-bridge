@@ -70,7 +70,12 @@ does not mutate Roon.
 
 `roon_search_media` returns temporary references. `roon_get_media_entity`
 uses the selected reference to retrieve artist releases/popular tracks or an
-album track list through Roon Browse.
+album track list through Roon Browse. For a selected Roon catalog playlist it
+returns ordered track pages with `pagination.total`, `offset`, `returned` and
+`has_more`. The model can page the source, read a saved target with
+`roon_get_playlist`, and submit only missing recordings to
+`roon_edit_playlist_tracks`; `roon_get_playlist` remains exclusively for
+saved or temporary RoonIA playlists.
 
 ### Model-created playlist preflight
 
@@ -104,6 +109,23 @@ the second round, the verified shorter playlist is saved and
 the running process for 30 minutes; after a restart or expiration the model
 must start a new preflight.
 
+### Temporary working playlists
+
+Activity, mood and occasion requests that do not ask to preserve a named list
+use `roon_create_temporary_playlist`. It accepts the same strictly verified
+candidate batch and replenishment protocol as `roon_save_playlist`, but writes
+an immutable expiration timestamp alongside the playlist. The configured
+lifetime is read when a new build starts; changing the setting affects future
+temporary playlists only.
+
+Temporary playlists are excluded from ordinary saved-playlist listings and
+name lookup. `roon_list_temporary_playlists` exposes them deliberately, and
+normal playback uses the returned stable playlist ID. Expired rows are removed
+with their tracks and custom artwork before playlist operations. If the user
+wants to keep one, `roon_promote_temporary_playlist` removes only its lifecycle
+record, optionally changes its name or description, and preserves its ID,
+tracks, order and cover.
+
 ### Batch playlist editing
 
 `roon_edit_playlist_tracks` accepts an ordered batch of add, update, remove,
@@ -113,7 +135,10 @@ schemas are explicit so the model does not need to infer field names.
 
 Add and replace operations use the same strict preflight and complete metadata
 capture as playlist creation; unresolved candidates are reported as omitted
-without being written. Identity-changing updates are resolved before returning.
+without being written. Additions are also compared with the target's existing
+identity fingerprint and normalized title/artist key, so a source playlist
+cannot re-add an existing recording. Identity-changing updates are resolved
+before returning.
 An update with `changes.result_id` can repair one incorrect association
 manually.
 `roon_resolve_playlist` can retry unresolved entries, selected `track_ids` or

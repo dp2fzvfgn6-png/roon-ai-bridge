@@ -11,6 +11,7 @@ import { ToolAccessService } from "../services/toolAccessService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
 import { ApiKeyRecord } from "../services/apiKeyService";
 import { Logger } from "../utils/logger";
+import { SystemManagementService } from "../services/systemManagementService";
 import type { DownloadedToolImage, ToolFileReference } from "../services/toolFileService";
 
 export type BridgeV2Context = {
@@ -20,6 +21,7 @@ export type BridgeV2Context = {
   mediaService: RoonMediaService;
   playlistService: PlaylistService;
   playlistBuildService?: PlaylistBuildService;
+  systemManagementService?: SystemManagementService;
   zonePresetService: ZonePresetService;
   volumeLimitService: VolumeLimitService;
   diagnosticsService?: DiagnosticsService;

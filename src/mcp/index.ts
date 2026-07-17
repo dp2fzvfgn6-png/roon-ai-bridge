@@ -38,6 +38,7 @@ startBridgeV2McpServer({
   roonClient,
   playlistService,
   mediaService,
+  systemManagementService,
   zonePresetService,
   volumeLimitService
 }).catch((error) => {

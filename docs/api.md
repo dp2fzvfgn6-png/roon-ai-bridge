@@ -130,6 +130,19 @@ wrappers whose title, artist and artwork still match. It paginates until the
 requested limit, so the `tracks` array represents the complete Roon list rather
 than its first page. Long linked artist-credit subtitles are metadata, not
 editorial album descriptions.
+Playlist detail opens a selected Roon catalog playlist and returns its ordered
+tracks in pages. Use `count` up to 100 and increase `offset` until
+`pagination.has_more` is false:
+
+```bash
+curl "http://localhost:3000/roon/media/<RESULT_ID>/playlist-detail?count=100&offset=0"
+```
+
+Each row includes a one-based `playlist_position` plus the temporary media
+reference and normalized title, artist, album, duration and source metadata
+that Roon exposed. These catalog references are not permanent recording IDs;
+saved RoonIA playlist entries receive their own stable `track_id` and identity
+fingerprint.
 When a streaming album opens as a Roon `action_list` instead of a navigable
 track list, the service recovers the ordered tracks from Roon's Tracks category
 using the exact album title, artist ownership and shared cover fingerprint.
@@ -554,6 +567,11 @@ changing their `track_id`; legacy Browse keys are marked `stale`. Legacy JSON
 from `data/virtual-playlists.json` is migrated automatically when the SQLite
 store is empty.
 
+`GET /playlists` accepts `scope=saved|temporary|all` and defaults to `saved`,
+so temporary working lists never appear in ordinary consumers by accident.
+`POST /playlists/:playlist_id/promote` converts a non-expired temporary list
+into a saved list in place and accepts optional `name` and `description`.
+
 ## MCP Tools
 
 v0.6 added core local features through an MCP stdio server. v0.8 exposes the same MCP server over HTTP at `/mcp`, and v0.8.1 adds OAuth for a private ChatGPT app.
@@ -598,6 +616,9 @@ Implemented tools:
 - `roon_reorder_virtual_playlist_tracks`
 - `roon_resolve_virtual_playlist`
 - `roon_play_virtual_playlist`
+- `roon_list_temporary_playlists`
+- `roon_create_temporary_playlist`
+- `roon_promote_temporary_playlist`
 - `roon_search_media`
 - `roon_get_media_details`
 - `roon_list_artist_releases`
@@ -670,6 +691,7 @@ The portal on port `3001` uses protected same-origin endpoints:
 - `PATCH /api/admin/system/ports`
 - `PATCH /api/admin/system/update-preferences`
 - `PATCH /api/admin/system/debug-preferences`
+- `PATCH /api/admin/system/playlist-preferences`
 - `POST /api/admin/system/update-channel`
 - `POST /api/admin/system/check-update`
 - `POST /api/admin/system/update`
@@ -693,6 +715,14 @@ object describing the retained version.
 `debug_mode`. The value is persisted in `data/runtime-config.json` and is
 returned by `/api/session`, `/api/admin/settings` and `/api/admin/system` so the
 portal can apply the same visibility rules immediately and after restart.
+
+`PATCH /api/admin/system/playlist-preferences` accepts
+`temporary_playlist_expiry_days` from 1 through 365. The persisted value is
+used for newly created temporary playlists; existing lists retain their own
+expiration timestamp. When Debug mode is enabled, the portal exposes a
+separate temporary-playlist section with the normal edit, playback and delete
+controls plus promotion. Disabling Debug hides that section without deleting
+its playlists.
 - `GET /api/admin/api-keys`
 - `POST /api/admin/api-keys`
 - `DELETE /api/admin/api-keys/:key_id`

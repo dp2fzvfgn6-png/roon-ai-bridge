@@ -104,6 +104,33 @@ test("v2 play intent returns candidates and never acts on an ambiguous search", 
   assert.equal(result.data.candidates.length, 2);
 });
 
+test("v2 media detail forwards playlist pagination to the native Roon reader", async () => {
+  let received;
+  const mediaService = {
+    get: () => ({ result_id: "playlist-result", media_type: "playlist", title: "Reference Mix" }),
+    getPlaylistDetail: async (...args) => {
+      received = args;
+      return {
+        playlist: { result_id: "playlist-result", title: "Reference Mix" },
+        tracks: [{ playlist_position: 101, title: "Track 101" }],
+        pagination: { total: 175, limit: 100, offset: 100, returned: 75, has_more: false }
+      };
+    }
+  };
+  const gateway = new IntentGateway(gatewayContext(roonClient(), mediaService));
+
+  const result = await gateway.getMediaEntity({
+    result_id: "playlist-result",
+    count: 100,
+    offset: 100
+  });
+
+  assert.deepEqual(received, ["playlist-result", undefined, 100, 100]);
+  assert.equal(result.status, "completed");
+  assert.equal(result.data.pagination.total, 175);
+  assert.equal(result.data.tracks[0].playlist_position, 101);
+});
+
 test("v2 batch playlist edits require confirmation before removing tracks", async () => {
   const client = roonClient();
   let removals = 0;
@@ -169,6 +196,32 @@ test("v2 playlist additions resolve text tracks before returning", async () => {
   assert.equal(savedTrack.resolution.status, "resolved");
   assert.equal(savedTrack.resolution.roon_observation.search_result.result_id, "search:teardrop");
   assert.equal(result.data.edit_summary.omitted.length, 0);
+});
+
+test("v2 playlist additions omit recordings already present in the target", async () => {
+  const context = gatewayContext(roonClient(), {});
+  let additions = 0;
+  context.playlistService = {
+    findDuplicateTrack: () => ({ track_id: "existing-track" }),
+    addTrack: () => { additions += 1; },
+    getPlaylist: () => ({ playlist_id: "p1", tracks: [] })
+  };
+  const gateway = new IntentGateway(context);
+  gateway.playlistBuildService.prepareCandidate = async () => ({
+    accepted: true,
+    track: { query: "Teardrop Massive Attack", title: "Teardrop", artist: "Massive Attack" },
+    candidate: { title: "Teardrop", artist: "Massive Attack" }
+  });
+
+  const result = await gateway.editPlaylistTracks({
+    playlist_id: "p1",
+    operations: [{ type: "add", track: { title: "Teardrop", artist_credit: "Massive Attack" } }]
+  });
+
+  assert.equal(additions, 0);
+  assert.equal(result.data.edit_summary.accepted.length, 0);
+  assert.equal(result.data.edit_summary.omitted[0].reason, "duplicate_existing_recording");
+  assert.equal(result.data.edit_summary.omitted[0].existing_track_id, "existing-track");
 });
 
 test("v2 playlist additions omit an unresolved candidate without writing it", async () => {

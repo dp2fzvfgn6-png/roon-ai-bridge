@@ -231,12 +231,13 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_get_media_entity", {
     title: "Get Roon Media Entity",
-    description: "Use this when a selected artist, album, track or playlist needs deep details. Artist results preserve Roon album versus single/EP sections and include popular tracks; album results include their track list.",
+    description: "Use this when a selected artist, album, track or Roon catalog playlist needs deep details. Artist results preserve Roon album versus single/EP sections and include popular tracks; album results include their track list. Playlist results return ordered tracks with pagination; keep increasing offset until pagination.has_more=false. Use roon_get_playlist instead for a saved or temporary RoonIA playlist.",
     annotations: readOnly,
     inputSchema: {
       result_id: z.string().min(1),
       zone: targetSchema.optional(),
-      count: z.number().int().min(1).max(100).optional()
+      count: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).default(0).describe("Track offset for playlist details; ignored for other media types.")
     }
   }, (input) => gateway.getMediaEntity(input));
 
@@ -292,6 +293,16 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
     }
   }, (input) => gateway.listPlaylists(input));
 
+  register("roon_list_temporary_playlists", {
+    title: "List Temporary RoonIA Playlists",
+    description: "Use this when the user wants to revisit active temporary playlists created for contextual listening; permanent playlists are excluded.",
+    annotations: readOnly,
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).default(25),
+      offset: z.number().int().min(0).default(0)
+    }
+  }, (input) => gateway.listTemporaryPlaylists(input));
+
   register("roon_get_playlist", {
     title: "Get RoonIA Playlist",
     description: "Use this when one virtual playlist and its paginated tracks are needed.",
@@ -305,7 +316,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_save_playlist", {
     title: "Save RoonIA Playlist",
-    description: "Use this when the model should create a safe virtual playlist or replace its complete track list. Send title plus artist_credit for every primary and reserve; include album/year hints only when confident. For a requested size, set desired_count and include roughly 50-75% reserves. RoonIA preflights identity, metadata, duplicates and artist adjacency before persistence. If status=needs_input, call this tool again with its build_id and new candidates; RoonIA allows exactly two replenishment rounds, then saves a safe shorter playlist and reports missing_count. A result_id never bypasses validation.",
+    description: "Use this when the user explicitly wants to save a permanent playlist or replace its complete track list; use roon_create_temporary_playlist for contextual music they only want to hear now. Send title plus artist_credit for every primary and reserve. For a requested size, include roughly 50-75% reserves. If status=needs_input, call this tool again with its build_id and new candidates. RoonIA allows exactly two replenishment rounds and a result_id never bypasses validation.",
     annotations: write,
     inputSchema: {
       build_id: z.string().uuid().optional().describe("Return value from a prior needs_input response. On replenishment calls, submit only build_id and new tracks."),
@@ -318,9 +329,35 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
     }
   }, (input) => gateway.savePlaylist(input));
 
+  register("roon_create_temporary_playlist", {
+    title: "Create Temporary RoonIA Playlist",
+    description: "Use this when the user asks for contextual music for an activity, mood or occasion without asking to save it permanently. Provide a short intent summary plus primary and reserve tracks with title and artist_credit. If status=needs_input, call this tool again with build_id and fresh candidates. After completion call roon_play_playlist with the returned playlist_id and the requested queue mode. Do not use this when the user explicitly asks to keep or save the playlist.",
+    annotations: write,
+    inputSchema: {
+      build_id: z.string().uuid().optional().describe("Return value from a prior needs_input response for this temporary playlist build."),
+      name: z.string().min(1).optional(),
+      description: z.string().optional(),
+      intent: z.string().min(1).max(500).optional().describe("Short summary of the activity, mood or listening context; do not copy the full conversation."),
+      desired_count: z.number().int().min(1).max(500).default(15),
+      no_adjacent_same_artist: z.boolean().default(true),
+      tracks: z.array(playlistBuildCandidate).max(750).optional()
+    }
+  }, (input) => gateway.createTemporaryPlaylist(input));
+
+  register("roon_promote_temporary_playlist", {
+    title: "Save Temporary RoonIA Playlist",
+    description: "Use this when the user likes a temporary playlist and explicitly asks to keep it permanently. It preserves the playlist and track identities while removing its expiry.",
+    annotations: write,
+    inputSchema: {
+      playlist_id: z.string().min(1),
+      name: z.string().min(1).optional(),
+      description: z.string().optional()
+    }
+  }, (input) => gateway.promoteTemporaryPlaylist(input));
+
   register("roon_edit_playlist_tracks", {
     title: "Edit RoonIA Playlist Tracks",
-    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch. Additions and replacements require title plus artist_credit and use the same strict metadata preflight as playlist creation; unresolved or unsafe candidates are omitted rather than persisted.",
+    description: "Use this when one or more playlist track additions, updates, removals, replacements or reorderings should be applied as a single batch. Additions and replacements require title plus artist_credit and use the same strict metadata preflight as playlist creation; unresolved, unsafe or already-present recordings are omitted rather than persisted.",
     annotations: destructive,
     inputSchema: {
       playlist_id: z.string().min(1),

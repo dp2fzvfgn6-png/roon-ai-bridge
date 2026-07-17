@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS virtual_playlist_tracks (
   FOREIGN KEY (playlist_id) REFERENCES virtual_playlists (playlist_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS temporary_playlist_lifecycle (
+  playlist_id TEXT PRIMARY KEY,
+  intent TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (playlist_id) REFERENCES virtual_playlists (playlist_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS play_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   zone_id TEXT,
@@ -212,6 +220,9 @@ CREATE TABLE IF NOT EXISTS extension_registry (
 
 CREATE INDEX IF NOT EXISTS idx_virtual_playlist_tracks_playlist
   ON virtual_playlist_tracks (playlist_id, position);
+
+CREATE INDEX IF NOT EXISTS idx_temporary_playlist_expiry
+  ON temporary_playlist_lifecycle (expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_play_history_zone_started
   ON play_history (zone_id, started_at);

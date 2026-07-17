@@ -112,6 +112,13 @@ OAuth diagnostics and technical System details such as runtime environment,
 ports, capabilities, channel and build. It does not change `LOG_LEVEL` or make
 unsanitized secrets visible.
 
+System settings also expose the lifetime of newly created temporary playlists.
+The default is 7 days and the accepted range is 1-365 days. The value is stored
+as `temporary_playlist_expiry_days` in `data/runtime-config.json`; each
+temporary playlist keeps the expiration timestamp calculated at creation, so
+later preference changes do not alter it. Debug mode additionally reveals the
+temporary-playlist manager under `Música > Playlists`.
+
 ## Safe Update Channel
 
 The app container never receives Docker socket or sudo access. An update

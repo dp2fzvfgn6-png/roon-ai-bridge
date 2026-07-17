@@ -74,12 +74,17 @@ async function readMcpJson(response) {
   return JSON.parse(text);
 }
 
-test("MCP instructions require cover preflight and authorized file handoff up front", () => {
+test("MCP instructions require temporary-playlist sequencing and cover handoff up front", () => {
   const opening = BRIDGE_V2_INSTRUCTIONS.slice(0, 512);
+  assert.match(opening, /roon_create_temporary_playlist/);
+  assert.match(opening, /roon_play_playlist/);
+  assert.match(opening, /Promote it only when asked/);
   assert.match(opening, /roon_prepare_playlist_cover before image generation/);
   assert.match(opening, /roon_set_playlist_cover/);
   assert.match(opening, /image_file/);
   assert.match(opening, /Never pass an internal sandbox path/);
+  assert.match(BRIDGE_V2_INSTRUCTIONS, /page roon_get_media_entity with count and offset/);
+  assert.match(BRIDGE_V2_INSTRUCTIONS, /read the target with roon_get_playlist/);
 });
 
 test("registers the compact MCP v2 intent catalog", () => {
@@ -97,7 +102,7 @@ test("registers the compact MCP v2 intent catalog", () => {
 
   registerBridgeV2Tools(server, context);
 
-  assert.equal(tools.size, 32);
+  assert.equal(tools.size, 35);
   for (const [name, registration] of tools) {
     assert.match(registration.options.description, /^Use this when/);
     assert.ok(registration.options.outputSchema.status, `${name} should declare status output`);
@@ -114,6 +119,9 @@ test("registers the compact MCP v2 intent catalog", () => {
     "roon_get_media_entity",
     "roon_play_media",
     "roon_enqueue_media",
+    "roon_list_temporary_playlists",
+    "roon_create_temporary_playlist",
+    "roon_promote_temporary_playlist",
     "roon_edit_playlist_tracks",
     "roon_prepare_playlist_cover",
     "roon_set_playlist_cover",
@@ -146,6 +154,7 @@ test("read-only MCP credentials expose query tools and the three read-only widge
   assert.ok(tools.has("roon_get_state"));
   assert.ok(tools.has("roon_search_media"));
   assert.ok(tools.has("roon_prepare_playlist_cover"));
+  assert.ok(tools.has("roon_list_temporary_playlists"));
   assert.equal(tools.has("roon_control_playback"), false);
   assert.equal(tools.has("roon_set_playlist_cover"), false);
   assert.equal(tools.has("roon_play_media"), false);
@@ -181,11 +190,13 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 35);
+    assert.equal(tools.size, 38);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
     assert.ok(tools.get("roon_get_media_entity").outputSchema.properties.status);
+    assert.ok(tools.get("roon_get_media_entity").inputSchema.properties.offset);
+    assert.match(tools.get("roon_get_media_entity").description, /pagination\.has_more=false/);
     assert.ok(tools.get("roon_set_playlist_cover").inputSchema.properties.image_base64);
     const coverTool = tools.get("roon_set_playlist_cover");
     assert.deepEqual(coverTool._meta["openai/fileParams"], ["image_file"]);
@@ -194,6 +205,10 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     assert.ok(coverTool.inputSchema.properties.image_file.properties.file_name);
     assert.ok(tools.get("roon_prepare_playlist_cover").inputSchema.properties.playlist);
     const savePlaylist = tools.get("roon_save_playlist");
+    const temporaryPlaylist = tools.get("roon_create_temporary_playlist");
+    assert.ok(temporaryPlaylist.inputSchema.properties.intent);
+    assert.ok(temporaryPlaylist.inputSchema.properties.desired_count);
+    assert.match(temporaryPlaylist.description, /activity, mood or occasion/i);
     assert.ok(savePlaylist.inputSchema.properties.build_id);
     assert.ok(savePlaylist.inputSchema.properties.desired_count);
     assert.ok(savePlaylist.inputSchema.properties.no_adjacent_same_artist);

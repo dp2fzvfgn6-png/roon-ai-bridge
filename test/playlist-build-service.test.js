@@ -114,6 +114,44 @@ function fakeMedia(searchResults, albumDetails = {}) {
   };
 }
 
+test("temporary playlist builds preserve their purpose and lifecycle across replenishment", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const media = fakeMedia((request) => {
+    if (request.query.includes("First Song")) return [mediaTrack("first-temp", "First Song", "Artist One")];
+    if (request.query.includes("Second Song")) return [mediaTrack("second-temp", "Second Song", "Artist Two")];
+    return [];
+  });
+  const builder = new PlaylistBuildService(playlistService, media);
+  const initial = await builder.build({
+    purpose: "temporary_playlist",
+    name: "Temporary build",
+    intent: "music for focused work",
+    expiry_days: 10,
+    desired_count: 2,
+    tracks: [{ title: "First Song", artist_credit: "Artist One" }]
+  });
+  assert.equal(initial.phase, "needs_candidates");
+  assert.equal(playlistService.listPlaylists({ scope: "all" }).total, 0);
+  await assert.rejects(
+    builder.build({
+      purpose: "saved_playlist",
+      build_id: initial.build_id,
+      tracks: [{ title: "Second Song", artist_credit: "Artist Two" }]
+    }),
+    (error) => error.code === "PLAYLIST_BUILD_PURPOSE_MISMATCH"
+  );
+  const final = await builder.build({
+    purpose: "temporary_playlist",
+    build_id: initial.build_id,
+    tracks: [{ title: "Second Song", artist_credit: "Artist Two" }]
+  });
+  assert.equal(final.phase, "finalized");
+  assert.equal(final.playlist.lifecycle.type, "temporary");
+  assert.equal(final.playlist.lifecycle.intent, "music for focused work");
+  assert.equal(playlistService.listPlaylists().total, 0);
+  assert.equal(playlistService.listPlaylists({ scope: "temporary" }).total, 1);
+});
+
 test("playlist build waits for two replenishment rounds and then saves a safe shorter playlist", async () => {
   const playlistService = new PlaylistService(tempConfig());
   const media = fakeMedia((request) => {

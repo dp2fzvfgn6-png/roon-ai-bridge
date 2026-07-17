@@ -149,6 +149,27 @@ export type AlbumMediaDetail = {
   warnings: string[];
 };
 
+export type PlaylistMediaTrack = MediaResult & {
+  playlist_position: number;
+};
+
+export type PlaylistMediaDetail = {
+  playlist: MediaResult;
+  tracks: PlaylistMediaTrack[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    returned: number;
+    has_more: boolean;
+  };
+  data_origin: MediaDataOrigin;
+  completeness: MediaCompleteness;
+  ordered: boolean;
+  identity_verified: boolean;
+  warnings: string[];
+};
+
 type MediaReference = MediaResult & {
   query: string;
   ordinal: number;
@@ -483,7 +504,7 @@ async function loadCompleteList(
   sessionKey: string,
   maximum: number
 ): Promise<BrowseResponse> {
-  const limit = Math.max(1, Math.min(maximum, 500));
+  const limit = Math.max(1, Math.min(maximum, 2_000));
   const pageSize = Math.min(100, limit);
   const first = await loadCurrentList(browse, hierarchy, sessionKey, 0, pageSize);
   const total = Math.min(limit, Math.max(first.items.length, Number(first.list?.count) || 0));
@@ -1676,6 +1697,57 @@ export class RoonMediaService {
     };
   }
 
+  async getPlaylistDetail(
+    resultId: string,
+    zoneId?: string,
+    count = 100,
+    offset = 0
+  ): Promise<PlaylistMediaDetail> {
+    const playlist = this.getReference(resultId);
+    if (playlist.media_type !== "playlist") {
+      throw new ApiError("INVALID_SEARCH_QUERY", "result_id must reference a playlist", {
+        result_id: resultId,
+        media_type: playlist.media_type
+      });
+    }
+
+    const limit = Math.max(1, Math.min(count, 100));
+    const pageOffset = Math.max(0, Math.trunc(offset));
+    const warnings: string[] = [];
+    try {
+      const detail = await this.readPlaylistContents(playlist, zoneId, limit, pageOffset);
+      return {
+        playlist: this.publicReference(playlist),
+        tracks: detail.tracks,
+        pagination: detail.pagination,
+        data_origin: detail.data_origin,
+        completeness: detail.completeness,
+        ordered: true,
+        identity_verified: detail.identity_verified,
+        warnings
+      };
+    } catch (error) {
+      warnings.push(`playlist_browse: ${error instanceof Error ? error.message : String(error)}`);
+      const total = playlist.content_count || 0;
+      return {
+        playlist: this.publicReference(playlist),
+        tracks: [],
+        pagination: {
+          total,
+          limit,
+          offset: pageOffset,
+          returned: 0,
+          has_more: pageOffset < total
+        },
+        data_origin: playlist.data_origin,
+        completeness: "unknown",
+        ordered: false,
+        identity_verified: false,
+        warnings
+      };
+    }
+  }
+
   async play(
     resultId: string,
     zoneId: string,
@@ -2064,7 +2136,11 @@ export class RoonMediaService {
       duration_seconds: pickNestedNumber(item, ["duration_seconds", "duration", "length"]),
       track_number: pickNestedNumber(item, ["track_number", "track"]),
       disc_number: pickNestedNumber(item, ["disc_number", "disc"]),
-      content_count: type === "artist" ? artistContentCount(subtitle) : type === "album" ? releaseContentCount(item) : null,
+      content_count: type === "artist"
+        ? artistContentCount(subtitle)
+        : type === "album" || type === "playlist"
+          ? releaseContentCount(item)
+          : null,
       release_type: release?.type || null,
       release_type_source: release?.source || null,
       release_section: pickNestedString(item, ["release_section", "section_title"]),
@@ -2449,6 +2525,141 @@ export class RoonMediaService {
     if (response.action !== "list") return descriptiveText(biography, response);
     const loaded = await loadCurrentList(detail.browse, detail.hierarchy, detail.sessionKey, 0, 100);
     return descriptiveText(biography, response, loaded.list, loaded.items);
+  }
+
+  private async readPlaylistContents(
+    playlist: MediaReference,
+    zoneId: string | undefined,
+    limit: number,
+    offset: number
+  ): Promise<{
+    tracks: PlaylistMediaTrack[];
+    pagination: PlaylistMediaDetail["pagination"];
+    data_origin: MediaDataOrigin;
+    completeness: MediaCompleteness;
+    identity_verified: boolean;
+  }> {
+    const requestedEnd = offset + limit;
+    const detail = await this.openReference(
+      playlist,
+      zoneId,
+      "playlist-detail",
+      Math.max(100, Math.min(requestedEnd + 50, 2_000))
+    );
+    let current = detail.current;
+    let items = current.items;
+
+    const tracksEntry = items.find(isTrackSection);
+    if (tracksEntry?.item_key) {
+      const response = await browseCall(detail.browse, {
+        hierarchy: detail.hierarchy,
+        multi_session_key: detail.sessionKey,
+        item_key: tracksEntry.item_key,
+        ...(zoneId ? { zone_or_output_id: zoneId } : {})
+      });
+      if (response.action === "list") {
+        current = await loadCompleteList(
+          detail.browse,
+          detail.hierarchy,
+          detail.sessionKey,
+          Math.max(100, Math.min(requestedEnd + 50, 2_000))
+        );
+        items = current.items;
+      }
+    }
+
+    const advertisedByList = Math.max(0, Number(current.list?.count) || 0);
+    const advertisedTotal = playlist.content_count ?? advertisedByList;
+    const rawLoadTarget = Math.max(requestedEnd + 50, advertisedTotal);
+    if (items.length < rawLoadTarget) {
+      current = await loadCompleteList(
+        detail.browse,
+        detail.hierarchy,
+        detail.sessionKey,
+        Math.max(1, Math.min(rawLoadTarget, 2_000))
+      );
+      items = current.items;
+    }
+
+    let trackItems = itemsWithSourceContext(items).filter(isMediaContentItem);
+    const expectedTotal = Math.max(trackItems.length, advertisedTotal);
+    let rawOffset = items.length;
+    while (trackItems.length < Math.min(requestedEnd, expectedTotal) && rawOffset < 2_000) {
+      const extra = await loadCurrentList(
+        detail.browse,
+        detail.hierarchy,
+        detail.sessionKey,
+        rawOffset,
+        Math.min(100, 2_000 - rawOffset)
+      );
+      if (!extra.items.length) break;
+      items.push(...extra.items);
+      rawOffset += extra.items.length;
+      trackItems = itemsWithSourceContext(items).filter(isMediaContentItem);
+      if (extra.items.length < extra.count) break;
+    }
+    const total = Math.max(trackItems.length, advertisedTotal);
+    const pageItems = trackItems.slice(offset, requestedEnd);
+    const dataOrigin: MediaDataOrigin = detail.hierarchy === "playlists"
+      ? "roon_library"
+      : "roon_search_session";
+    const tracks = pageItems.map((item, index) => {
+      const playlistPosition = offset + index + 1;
+      const parsed = parsedTrackPosition(item);
+      const rawMedia = objectValue(item.media) || {};
+      const artist = pickString(rawMedia, ["artist", "artist_name"]) ||
+        (typeof item.subtitle === "string" ? item.subtitle : null);
+      const album = pickString(rawMedia, ["album", "album_name"]);
+      const result = this.registerReference(
+        [parsed.title, artist, album].filter(Boolean).join(" "),
+        "track",
+        {
+          ...item,
+          title: parsed.title,
+          media: {
+            ...rawMedia,
+            artist,
+            album,
+            track_number: parsed.track,
+            disc_number: parsed.disc
+          }
+        },
+        playlistPosition - 1,
+        "search",
+        playlist.sourcePreference,
+        null,
+        {
+          data_origin: dataOrigin,
+          completeness: "complete",
+          ordered: true,
+          identity_verified: true
+        }
+      );
+      return { ...result, playlist_position: playlistPosition };
+    });
+    const expected = Math.min(limit, Math.max(0, total - offset));
+    const pageComplete = tracks.length === expected;
+
+    Object.assign(playlist, {
+      content_count: total,
+      data_origin: dataOrigin,
+      completeness: pageComplete ? "complete" : "partial",
+      ordered: true,
+      identity_verified: true
+    });
+    return {
+      tracks,
+      pagination: {
+        total,
+        limit,
+        offset,
+        returned: tracks.length,
+        has_more: offset + tracks.length < total
+      },
+      data_origin: dataOrigin,
+      completeness: pageComplete ? "complete" : "partial",
+      identity_verified: true
+    };
   }
 
   private async readAlbumContents(

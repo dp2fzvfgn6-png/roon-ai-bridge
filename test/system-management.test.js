@@ -75,6 +75,27 @@ test("persists safe runtime ports and emits a fixed update request", () => {
       /must be a boolean/
     );
 
+    assert.equal(service.getSystemInfo().temporary_playlist_expiry_days, 7);
+    const playlistPreferences = service.savePlaylistPreferences({
+      temporary_playlist_expiry_days: 21
+    });
+    assert.equal(playlistPreferences.temporary_playlist_expiry_days, 21);
+    assert.equal(service.getTemporaryPlaylistExpiryDays(), 21);
+    assert.equal(service.getSystemInfo().temporary_playlist_expiry_days, 21);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(dataDir, "runtime-config.json"), "utf8"))
+        .temporary_playlist_expiry_days,
+      21
+    );
+    assert.throws(
+      () => service.savePlaylistPreferences({ temporary_playlist_expiry_days: 0 }),
+      /integer from 1 to 365/
+    );
+    assert.throws(
+      () => service.savePlaylistPreferences({ temporary_playlist_expiry_days: 366 }),
+      /integer from 1 to 365/
+    );
+
     const requested = service.requestUpdate();
     const file = JSON.parse(
       fs.readFileSync(path.join(dataDir, "update-request.json"), "utf8")
@@ -115,7 +136,7 @@ test("compares update builds even when the semantic version is unchanged", async
   const previousCommit = process.env.GIT_COMMIT;
   process.env.GIT_COMMIT = "111111111111aaaaaaaa";
   global.fetch = async (url) => String(url).includes("package.json")
-    ? new Response(JSON.stringify({ version: "0.17.3" }), { status: 200 })
+    ? new Response(JSON.stringify({ version: "0.18.0" }), { status: 200 })
     : new Response(JSON.stringify({ sha: "222222222222bbbbbbbb" }), { status: 200 });
   const noop = () => {};
   const service = new SystemManagementService({
@@ -127,7 +148,7 @@ test("compares update builds even when the semantic version is unchanged", async
   }, { info: noop, warn: noop, error: noop, debug: noop });
   try {
     const status = await service.checkForUpdates({ allow_beta_updates: false });
-    assert.equal(status.current_version, "0.17.3");
+    assert.equal(status.current_version, "0.18.0");
     assert.equal(status.current_build, "111111111111");
     assert.equal(status.latest_build, "222222222222");
     assert.equal(status.update_available, true);
@@ -148,7 +169,7 @@ test("runs automatic update checks once per day and restores their persisted res
   global.fetch = async (url) => {
     fetchCount += 1;
     return String(url).includes("package.json")
-      ? new Response(JSON.stringify({ version: "0.17.3" }), { status: 200 })
+      ? new Response(JSON.stringify({ version: "0.18.0" }), { status: 200 })
       : new Response(JSON.stringify({ sha: "bbbbbbbbbbbb22222222" }), { status: 200 });
   };
   const noop = () => {};
@@ -175,7 +196,7 @@ test("runs automatic update checks once per day and restores their persisted res
     const status = service.getSystemInfo().version_status;
     assert.equal(fetchCount, 2);
     assert.equal(status.channel, "beta");
-    assert.equal(status.latest_version, "0.17.3");
+    assert.equal(status.latest_version, "0.18.0");
     assert.equal(status.update_available, true);
     assert.equal(fs.existsSync(path.join(dataDir, "version-status.json")), true);
 
@@ -301,7 +322,7 @@ test("keeps the installed beta until main catches up, then requests stable autom
     assert.equal(restored.beta_exit_policy.mode, "wait_for_stable");
     restoredService.stopAutomaticChecks();
 
-    stableVersion = "0.17.3";
+    stableVersion = "0.18.0";
     const caughtUp = await service.checkForUpdates();
     assert.equal(caughtUp.update_available, true);
     const switched = service.getSystemInfo();

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ApiContext } from "../server";
+import { ApiError } from "../../utils/errors";
 import {
   confirmationRequiredResponse,
   dryRunResponse,
@@ -24,13 +25,18 @@ export function createPlaylistsRouter(context: ApiContext): Router {
 
   router.get("/playlists", (req, res, next) => {
     try {
+      const scope = String(req.query.scope || "saved");
+      if (!["saved", "temporary", "all"].includes(scope)) {
+        throw new ApiError("VALIDATION_ERROR", "scope must be saved, temporary or all");
+      }
       res.json(
         context.playlistService.listPlaylists({
           includeTracks: parseBoolean(req.query.include_tracks, false),
           limit: parsePageNumber(req.query.limit, 25),
           offset: parsePageNumber(req.query.offset, 0),
           trackLimit: parsePageNumber(req.query.track_limit, 25),
-          trackOffset: parsePageNumber(req.query.track_offset, 0)
+          trackOffset: parsePageNumber(req.query.track_offset, 0),
+          scope: scope as "saved" | "temporary" | "all"
         })
       );
     } catch (error) {
@@ -93,6 +99,19 @@ export function createPlaylistsRouter(context: ApiContext): Router {
           limit: parsePageNumber(req.query.limit, 50),
           offset: parsePageNumber(req.query.offset, 0)
         })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/playlists/:playlist_id/promote", (req, res, next) => {
+    try {
+      res.json(
+        context.playlistService.promoteTemporaryPlaylist(
+          req.params.playlist_id,
+          req.body || {}
+        )
       );
     } catch (error) {
       next(error);

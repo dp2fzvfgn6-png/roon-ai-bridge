@@ -240,14 +240,21 @@ export class IntentGateway {
     });
   }
 
-  async getMediaEntity(input: { result_id: string; zone?: TargetReference; count?: number }): Promise<OperationResult> {
+  async getMediaEntity(input: { result_id: string; zone?: TargetReference; count?: number; offset?: number }): Promise<OperationResult> {
     const media = this.context.mediaService.get(input.result_id);
     const zoneId = input.zone ? this.targets.zone(input.zone).zone_id : undefined;
     const data = media.media_type === "artist"
       ? await this.context.mediaService.getArtistDetail(input.result_id, zoneId, input.count || 50)
       : media.media_type === "album"
         ? await this.context.mediaService.getAlbumDetail(input.result_id, zoneId, input.count || 100)
-        : media;
+        : media.media_type === "playlist"
+          ? await this.context.mediaService.getPlaylistDetail(
+              input.result_id,
+              zoneId,
+              input.count || 100,
+              input.offset || 0
+            )
+          : media;
     return completed("roon_get_media_entity", `${media.media_type} details returned.`, data, {
       references: { result_id: input.result_id }
     });
@@ -326,6 +333,21 @@ export class IntentGateway {
       offset: input.offset || 0
     });
     return completed("roon_list_playlists", "Virtual playlists returned.", data, { verified: true });
+  }
+
+  listTemporaryPlaylists(input: { limit?: number; offset?: number }): OperationResult {
+    const data = this.context.playlistService.listPlaylists({
+      includeTracks: false,
+      limit: input.limit || 25,
+      offset: input.offset || 0,
+      scope: "temporary"
+    });
+    return completed(
+      "roon_list_temporary_playlists",
+      "Active temporary playlists returned.",
+      data,
+      { verified: true }
+    );
   }
 
   getPlaylist(input: { playlist_id: string; limit?: number; offset?: number }): OperationResult {
@@ -424,6 +446,83 @@ export class IntentGateway {
     };
   }
 
+  async createTemporaryPlaylist(input: {
+    build_id?: string;
+    name?: string;
+    description?: string;
+    intent?: string;
+    desired_count?: number;
+    no_adjacent_same_artist?: boolean;
+    tracks?: unknown[];
+  }): Promise<OperationResult> {
+    const expiryDays = this.context.systemManagementService?.getTemporaryPlaylistExpiryDays() || 7;
+    const build = await this.playlistBuildService.build({
+      ...input,
+      purpose: "temporary_playlist",
+      expiry_days: expiryDays
+    });
+    if (build.phase === "needs_candidates") {
+      return {
+        status: "needs_input",
+        operation: "roon_create_temporary_playlist",
+        summary: `Temporary playlist preflight needs ${build.missing_count} more verified tracks. Submit candidate round ${build.next_round} with build_id ${build.build_id}.`,
+        verified: false,
+        data: build,
+        references: { build_id: build.build_id, next_round: build.next_round },
+        warnings: ["No temporary playlist has been created yet."]
+      };
+    }
+
+    const mutation = this.playlistMutationResult(
+      "roon_create_temporary_playlist",
+      "Temporary playlist created.",
+      build.playlist as Record<string, any>
+    );
+    const playlist = mutation.data as Record<string, any>;
+    return {
+      ...mutation,
+      summary: build.complete
+        ? `Temporary playlist created with ${build.added_count} verified tracks.`
+        : `Temporary playlist created safely with ${build.added_count} verified tracks; ${build.missing_count} are missing from the requested target.`,
+      data: {
+        ...playlist,
+        build_summary: {
+          round: build.round,
+          desired_count: build.desired_count,
+          added_count: build.added_count,
+          missing_count: build.missing_count,
+          complete: build.complete,
+          accepted: build.accepted,
+          rejected: build.rejected,
+          not_selected: build.not_selected,
+          unused_reserves: build.unused_reserves,
+          search_summary: build.search_summary
+        }
+      },
+      references: {
+        playlist_id: playlist.playlist_id,
+        expires_at: playlist.lifecycle?.expires_at || null
+      },
+      warnings: build.complete
+        ? mutation.warnings
+        : [...mutation.warnings, `The temporary playlist has ${build.missing_count} fewer tracks than requested.`]
+    };
+  }
+
+  promoteTemporaryPlaylist(input: {
+    playlist_id: string;
+    name?: string;
+    description?: string;
+  }): OperationResult {
+    const playlist = this.context.playlistService.promoteTemporaryPlaylist(input.playlist_id, input);
+    return completed(
+      "roon_promote_temporary_playlist",
+      "Temporary playlist saved as a permanent playlist.",
+      playlist,
+      { verified: true, references: { playlist_id: playlist.playlist_id } }
+    );
+  }
+
   async editPlaylistTracks(input: {
     playlist_id: string;
     operations: Array<Record<string, any>>;
@@ -452,8 +551,20 @@ export class IntentGateway {
       if (operation.type === "add") {
         const prepared = await this.playlistBuildService.prepareCandidate(operation.track || operation.media);
         if (prepared.accepted) {
-          this.context.playlistService.addTrack(input.playlist_id, prepared.track);
-          acceptedCandidates.push(prepared.candidate);
+          const duplicate = typeof (this.context.playlistService as any).findDuplicateTrack === "function"
+            ? (this.context.playlistService as any).findDuplicateTrack(input.playlist_id, prepared.track)
+            : null;
+          if (duplicate) {
+            omittedCandidates.push({
+              ...prepared.candidate,
+              status: "duplicate",
+              reason: "duplicate_existing_recording",
+              existing_track_id: duplicate.track_id
+            });
+          } else {
+            this.context.playlistService.addTrack(input.playlist_id, prepared.track);
+            acceptedCandidates.push(prepared.candidate);
+          }
         } else {
           omittedCandidates.push(prepared.rejection);
         }

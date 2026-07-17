@@ -60,6 +60,11 @@ function parseCount(value: unknown, fallback: number, max: number): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, max)) : fallback;
 }
 
+function parseOffset(value: unknown): number {
+  const parsed = Number.parseInt(String(value ?? 0), 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
 export function createMediaRouter(context: ApiContext): Router {
   const router = Router();
 
@@ -169,6 +174,21 @@ export function createMediaRouter(context: ApiContext): Router {
           req.params.result_id,
           optionalString(req.query.zone_id),
           parseCount(req.query.count, 100, 200)
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/media/:result_id/playlist-detail", async (req, res, next) => {
+    try {
+      res.json(
+        await context.mediaService.getPlaylistDetail(
+          req.params.result_id,
+          optionalString(req.query.zone_id),
+          parseCount(req.query.count, 100, 100),
+          parseOffset(req.query.offset)
         )
       );
     } catch (error) {

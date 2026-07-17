@@ -107,7 +107,19 @@ export type VirtualPlaylist = {
   last_played_at: string | null;
   created_at: string;
   updated_at: string;
+  lifecycle: PlaylistLifecycle;
 };
+
+export type PlaylistLifecycle =
+  | { type: "saved" }
+  | {
+      type: "temporary";
+      intent: string | null;
+      expires_at: string;
+      created_at: string;
+    };
+
+export type PlaylistScope = "saved" | "temporary" | "all";
 
 export type VirtualPlaylistListItem = Omit<VirtualPlaylist, "tracks"> & {
   tracks?: VirtualPlaylistTrack[];
@@ -125,6 +137,7 @@ export type VirtualPlaylistListOptions = {
   offset?: number;
   trackLimit?: number;
   trackOffset?: number;
+  scope?: PlaylistScope;
 };
 
 export type VirtualPlaylistListResult = {
@@ -133,6 +146,7 @@ export type VirtualPlaylistListResult = {
   limit: number;
   offset: number;
   include_tracks: boolean;
+  scope: PlaylistScope;
 };
 
 export type VirtualPlaylistDetailResult = Omit<VirtualPlaylist, "tracks"> & {
@@ -166,6 +180,13 @@ type PlaylistRow = {
   last_played_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type TemporaryPlaylistRow = {
+  playlist_id: string;
+  intent: string | null;
+  expires_at: string;
+  created_at: string;
 };
 
 type TrackRow = {
@@ -759,20 +780,29 @@ export class PlaylistService {
   constructor(config: AppConfig, database?: SqliteDatabase) {
     this.database = database || createDatabase(config);
     this.coverDirectory = path.join(config.dataDir, "playlist-covers");
+    this.purgeExpiredTemporaryPlaylists();
     this.backfillPersistentTrackIdentity();
   }
 
   listPlaylists(options: VirtualPlaylistListOptions = {}): VirtualPlaylistListResult {
+    this.purgeExpiredTemporaryPlaylists();
     const limit = normalizePageNumber(options.limit, 25, 1, 100);
     const offset = normalizePageNumber(options.offset, 0, 0, Number.MAX_SAFE_INTEGER);
     const includeTracks = Boolean(options.includeTracks);
     const trackLimit = normalizePageNumber(options.trackLimit, 25, 1, 100);
     const trackOffset = normalizePageNumber(options.trackOffset, 0, 0, Number.MAX_SAFE_INTEGER);
-    const total = this.countPlaylists();
+    const scope = options.scope || "saved";
+    const lifecycleFilter = scope === "saved"
+      ? "WHERE NOT EXISTS (SELECT 1 FROM temporary_playlist_lifecycle temporary WHERE temporary.playlist_id = virtual_playlists.playlist_id)"
+      : scope === "temporary"
+        ? "WHERE EXISTS (SELECT 1 FROM temporary_playlist_lifecycle temporary WHERE temporary.playlist_id = virtual_playlists.playlist_id)"
+        : "";
+    const total = this.countPlaylists(scope);
     const playlistRows = this.database.db
       .prepare(
         `SELECT playlist_id, name, description, cover_image_key, last_played_at, created_at, updated_at
          FROM virtual_playlists
+         ${lifecycleFilter}
          ORDER BY updated_at DESC, name ASC
          LIMIT ? OFFSET ?`
       )
@@ -789,7 +819,8 @@ export class PlaylistService {
       total,
       limit,
       offset,
-      include_tracks: includeTracks
+      include_tracks: includeTracks,
+      scope
     };
   }
 
@@ -809,6 +840,10 @@ export class PlaylistService {
       .prepare(
         `SELECT playlist_id, name, description, cover_image_key, last_played_at, created_at, updated_at
          FROM virtual_playlists
+         WHERE NOT EXISTS (
+           SELECT 1 FROM temporary_playlist_lifecycle temporary
+           WHERE temporary.playlist_id = virtual_playlists.playlist_id
+         )
          ORDER BY name ASC`
       )
       .all() as PlaylistRow[];
@@ -832,6 +867,7 @@ export class PlaylistService {
       offset?: unknown;
     } = {}
   ): VirtualPlaylistDetailResult {
+    this.purgeExpiredTemporaryPlaylists();
     const row = this.getPlaylistRowOrThrow(playlistId);
     const includeTracks = options.includeTracks !== false;
     const limit = normalizePageNumber(options.limit, 50, 1, 500);
@@ -858,7 +894,8 @@ export class PlaylistService {
       has_more: includeTracks ? offset + (tracks?.length || 0) < trackCount : false,
       last_played_at: row.last_played_at,
       created_at: row.created_at,
-      updated_at: row.updated_at
+      updated_at: row.updated_at,
+      lifecycle: this.getPlaylistLifecycle(row.playlist_id)
     };
     if (tracks) result.tracks = tracks;
     return result;
@@ -972,6 +1009,122 @@ export class PlaylistService {
     });
 
     return this.getPlaylistById(playlistId);
+  }
+
+  savePreparedTemporaryPlaylist(input: {
+    name?: unknown;
+    description?: unknown;
+    tracks: unknown[];
+    intent?: unknown;
+    expiry_days?: unknown;
+  }): VirtualPlaylist {
+    const name = nonEmptyString(input.name);
+    if (!name) throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
+    const expiryDays = optionalFiniteInteger(input.expiry_days);
+    if (expiryDays === null || expiryDays < 1 || expiryDays > 365) {
+      throw new ApiError(
+        "INVALID_TEMPORARY_PLAYLIST_EXPIRY",
+        "expiry_days must be an integer from 1 to 365"
+      );
+    }
+
+    const baseId = slugify(name) || `playlist-${randomSuffix()}`;
+    let playlistId = baseId;
+    while (this.playlistExists(playlistId)) playlistId = `${baseId}-${randomSuffix()}`;
+    const createdAt = nowIso();
+    const expiresAt = new Date(Date.parse(createdAt) + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          `INSERT INTO virtual_playlists (playlist_id, name, description, cover_image_key, created_at, updated_at)
+           VALUES (:playlist_id, :name, :description, NULL, :created_at, :updated_at)`
+        )
+        .run({
+          playlist_id: playlistId,
+          name,
+          description: optionalString(input.description),
+          created_at: createdAt,
+          updated_at: createdAt
+        });
+      this.insertTracks(playlistId, input.tracks, createdAt);
+      this.database.db
+        .prepare(
+          `INSERT INTO temporary_playlist_lifecycle (playlist_id, intent, expires_at, created_at)
+           VALUES (:playlist_id, :intent, :expires_at, :created_at)`
+        )
+        .run({
+          playlist_id: playlistId,
+          intent: optionalString(input.intent),
+          expires_at: expiresAt,
+          created_at: createdAt
+        });
+    });
+
+    return this.getPlaylistById(playlistId);
+  }
+
+  promoteTemporaryPlaylist(
+    playlistId: string,
+    input: { name?: unknown; description?: unknown } = {}
+  ): VirtualPlaylist {
+    const temporary = this.getTemporaryPlaylistRow(playlistId);
+    if (!temporary) {
+      this.getPlaylistRowOrThrow(playlistId);
+      throw new ApiError("PLAYLIST_NOT_TEMPORARY", "Playlist is not temporary", {
+        playlist_id: playlistId
+      });
+    }
+    if (Date.parse(temporary.expires_at) <= Date.now()) {
+      const expired = this.getPlaylistRowOrThrow(playlistId);
+      this.database.db
+        .prepare("DELETE FROM virtual_playlists WHERE playlist_id = ?")
+        .run(playlistId);
+      this.removeCustomCoverFile(expired.cover_image_key);
+      throw new ApiError("TEMPORARY_PLAYLIST_EXPIRED", "Temporary playlist has expired", {
+        playlist_id: playlistId,
+        expires_at: temporary.expires_at
+      });
+    }
+
+    const current = this.getPlaylistRowOrThrow(playlistId);
+    const name = input.name === undefined ? current.name : nonEmptyString(input.name);
+    if (!name) throw new ApiError("INVALID_PLAYLIST", "Playlist name is required");
+    const description = input.description === undefined
+      ? current.description
+      : optionalString(input.description);
+
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          `UPDATE virtual_playlists
+           SET name = :name, description = :description, updated_at = :updated_at
+           WHERE playlist_id = :playlist_id`
+        )
+        .run({ playlist_id: playlistId, name, description, updated_at: nowIso() });
+      this.database.db
+        .prepare("DELETE FROM temporary_playlist_lifecycle WHERE playlist_id = ?")
+        .run(playlistId);
+    });
+    return this.getPlaylistById(playlistId);
+  }
+
+  purgeExpiredTemporaryPlaylists(now = new Date()): number {
+    const expired = this.database.db
+      .prepare(
+        `SELECT playlists.playlist_id, playlists.cover_image_key
+         FROM virtual_playlists playlists
+         JOIN temporary_playlist_lifecycle temporary ON temporary.playlist_id = playlists.playlist_id
+         WHERE temporary.expires_at <= ?`
+      )
+      .all(now.toISOString()) as Array<{ playlist_id: string; cover_image_key: string | null }>;
+    if (!expired.length) return 0;
+    this.database.transaction(() => {
+      const remove = this.database.db.prepare("DELETE FROM virtual_playlists WHERE playlist_id = ?");
+      for (const playlist of expired) remove.run(playlist.playlist_id);
+    });
+    for (const playlist of expired) this.removeCustomCoverFile(playlist.cover_image_key);
+    return expired.length;
   }
 
   updatePlaylist(
@@ -1090,6 +1243,22 @@ export class PlaylistService {
     this.insertTrack(playlistId, normalized);
     this.touchPlaylist(playlistId);
     return this.getPlaylistById(playlistId);
+  }
+
+  findDuplicateTrack(playlistId: string, input: unknown): VirtualPlaylistTrack | null {
+    const playlist = this.getPlaylistById(playlistId);
+    const normalized = normalizeTrackInput(input, undefined, this.nextTrackPosition(playlistId));
+    const stored = splitStoredMetadata(parseMetadata(normalized.metadata_json));
+    const fingerprint = stored.identity?.fingerprint || null;
+    const title = optionalString(stored.audio_metadata?.title) || normalized.title;
+    const artist = optionalString(stored.audio_metadata?.artist) || normalized.artist;
+    const normalizedTitleArtist = title && artist
+      ? `title_artist:${slugify(title)}:${slugify(artist)}`
+      : null;
+    return playlist.tracks.find((track) =>
+      (fingerprint && track.identity.fingerprint === fingerprint) ||
+      (normalizedTitleArtist && this.duplicateKey(track) === normalizedTitleArtist)
+    ) || null;
   }
 
   async addTrackResolved(
@@ -1786,14 +1955,42 @@ export class PlaylistService {
     return Boolean(row);
   }
 
-  private countPlaylists(): number {
+  private countPlaylists(scope: PlaylistScope): number {
+    const lifecycleFilter = scope === "saved"
+      ? "WHERE NOT EXISTS (SELECT 1 FROM temporary_playlist_lifecycle temporary WHERE temporary.playlist_id = virtual_playlists.playlist_id)"
+      : scope === "temporary"
+        ? "WHERE EXISTS (SELECT 1 FROM temporary_playlist_lifecycle temporary WHERE temporary.playlist_id = virtual_playlists.playlist_id)"
+        : "";
     const row = this.database.db
-      .prepare("SELECT COUNT(*) AS count FROM virtual_playlists")
+      .prepare(`SELECT COUNT(*) AS count FROM virtual_playlists ${lifecycleFilter}`)
       .get() as { count?: number } | undefined;
     return row?.count || 0;
   }
 
+  private getTemporaryPlaylistRow(playlistId: string): TemporaryPlaylistRow | null {
+    return this.database.db
+      .prepare(
+        `SELECT playlist_id, intent, expires_at, created_at
+         FROM temporary_playlist_lifecycle
+         WHERE playlist_id = ?`
+      )
+      .get(playlistId) as TemporaryPlaylistRow | undefined || null;
+  }
+
+  private getPlaylistLifecycle(playlistId: string): PlaylistLifecycle {
+    const temporary = this.getTemporaryPlaylistRow(playlistId);
+    return temporary
+      ? {
+          type: "temporary",
+          intent: temporary.intent,
+          expires_at: temporary.expires_at,
+          created_at: temporary.created_at
+        }
+      : { type: "saved" };
+  }
+
   private getPlaylistById(playlistId: string): VirtualPlaylist {
+    this.purgeExpiredTemporaryPlaylists();
     return this.getPlaylistFromRow(this.getPlaylistRowOrThrow(playlistId));
   }
 
@@ -1833,7 +2030,8 @@ export class PlaylistService {
       ...duration,
       last_played_at: row.last_played_at,
       created_at: row.created_at,
-      updated_at: row.updated_at
+      updated_at: row.updated_at,
+      lifecycle: this.getPlaylistLifecycle(row.playlist_id)
     };
   }
 
@@ -1855,7 +2053,8 @@ export class PlaylistService {
       duration_known_track_count: stats.duration_known_track_count,
       last_played_at: row.last_played_at,
       created_at: row.created_at,
-      updated_at: row.updated_at
+      updated_at: row.updated_at,
+      lifecycle: this.getPlaylistLifecycle(row.playlist_id)
     };
 
     if (!options.includeTracks) return base;

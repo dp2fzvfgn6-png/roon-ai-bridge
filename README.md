@@ -56,12 +56,16 @@ v0.17.2 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Add a query result next or to the queue when Roon exposes that browse action.
 - Create local virtual playlists.
 - Store local virtual playlists in SQLite.
+- Create expiring working playlists for activity, mood and occasion requests,
+  then promote a liked result to a normal saved playlist without rebuilding it.
 - Create, read, update, delete and reorder playlist tracks by stable query with saved metadata.
 - Play or enqueue a virtual playlist through Roon.
 - Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
 - Serve an independent administration portal on port `3001`.
 - Control playback, volume, queues and synchronized zone groups from the portal.
 - Create, edit, reorder, play and delete virtual playlists from the portal.
+- Configure temporary-playlist expiry under System and, in Debug mode, inspect,
+  edit, play, promote or delete temporary playlists from their own section.
 - Generate automatic playlist cover collages from distinct track artwork, with
   instant random tile rotation every two seconds.
 - Prepare generated playlist artwork from exact playlist context, transfer the
@@ -86,6 +90,8 @@ v0.17.2 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Publish OAuth discovery metadata and support dynamic client registration.
 - Authorize a private ChatGPT app with authorization code, PKCE and a local approval PIN.
 - Search tracks, albums, artists and playlists separately.
+- Read every ordered track from a selected Roon catalog playlist through
+  paginated media details.
 - Return temporary `result_id` references for exact follow-up actions.
 - Play a selected track, album or artist catalog while replacing the existing queue.
 - Start artist radio as a separate similar-music intent.

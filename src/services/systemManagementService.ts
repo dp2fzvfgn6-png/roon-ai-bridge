@@ -25,6 +25,7 @@ type BetaExitPolicy = {
 };
 
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_TEMPORARY_PLAYLIST_EXPIRY_DAYS = 7;
 
 function currentBuild(): string | null {
   const value = process.env.GIT_COMMIT?.trim();
@@ -38,6 +39,19 @@ function validatePort(value: unknown, field: string): number {
     throw new ApiError("INVALID_SYSTEM_CONFIG", `${field} must be a port from 1 to 65535`);
   }
   return port;
+}
+
+function validateTemporaryPlaylistExpiryDays(value: unknown): number {
+  const days = typeof value === "number"
+    ? value
+    : Number.parseInt(String(value || ""), 10);
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    throw new ApiError(
+      "INVALID_SYSTEM_CONFIG",
+      "temporary_playlist_expiry_days must be an integer from 1 to 365"
+    );
+  }
+  return days;
 }
 
 function serviceAddresses(apiPort: number, portalPort: number) {
@@ -91,6 +105,7 @@ export class SystemManagementService {
   private versionStatus: VersionStatus;
   private automaticUpdateChecks: boolean;
   private debugMode: boolean;
+  private temporaryPlaylistExpiryDays: number;
   private selectedUpdateChannel: "stable" | "beta";
   private betaExitPolicy: BetaExitPolicy | null;
   private automaticCheckTimer: NodeJS.Timeout | null = null;
@@ -113,6 +128,11 @@ export class SystemManagementService {
     this.debugMode = typeof runtimeConfig.debug_mode === "boolean"
       ? runtimeConfig.debug_mode
       : config.debugMode === true;
+    const configuredExpiryDays = runtimeConfig.temporary_playlist_expiry_days;
+    this.temporaryPlaylistExpiryDays = Number.isInteger(configuredExpiryDays) &&
+      Number(configuredExpiryDays) >= 1 && Number(configuredExpiryDays) <= 365
+      ? Number(configuredExpiryDays)
+      : DEFAULT_TEMPORARY_PLAYLIST_EXPIRY_DAYS;
     this.versionStatus = this.readVersionStatus() || {
       current_version: APP_VERSION,
       current_build: currentBuild(),
@@ -136,6 +156,7 @@ export class SystemManagementService {
       beta_exit_policy: this.betaExitPolicy,
       automatic_update_checks: this.automaticUpdateChecks,
       debug_mode: this.debugMode,
+      temporary_playlist_expiry_days: this.temporaryPlaylistExpiryDays,
       addresses: serviceAddresses(this.config.port, this.config.portalPort),
       version_status: this.versionStatus,
       update_status: this.readUpdateStatus()
@@ -263,6 +284,31 @@ export class SystemManagementService {
     });
     this.logger.info("Debug mode changed", { enabled: this.debugMode });
     return { debug_mode: this.debugMode };
+  }
+
+  getTemporaryPlaylistExpiryDays(): number {
+    return this.temporaryPlaylistExpiryDays;
+  }
+
+  savePlaylistPreferences(input: { temporary_playlist_expiry_days?: unknown }): {
+    temporary_playlist_expiry_days: number;
+  } {
+    const days = validateTemporaryPlaylistExpiryDays(input.temporary_playlist_expiry_days);
+    const current = this.readRuntimeConfig();
+    this.temporaryPlaylistExpiryDays = days;
+    this.writeRuntimeConfig({
+      ...current,
+      port: current.port ?? this.config.port,
+      portal_port: current.portal_port ?? this.config.portalPort,
+      update_channel: current.update_channel ?? this.currentChannel(),
+      automatic_update_checks: current.automatic_update_checks ?? this.automaticUpdateChecks,
+      debug_mode: current.debug_mode ?? this.debugMode,
+      temporary_playlist_expiry_days: days,
+      public_base_url: current.public_base_url ?? this.config.publicBaseUrl,
+      portal_base_url: current.portal_base_url ?? this.config.portalPublicUrl
+    });
+    this.logger.info("Temporary playlist expiry changed", { days });
+    return { temporary_playlist_expiry_days: days };
   }
 
   changeUpdateChannel(input: { allow_beta_updates?: unknown; strategy?: unknown }): Record<string, unknown> {
