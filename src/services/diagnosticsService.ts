@@ -6,7 +6,7 @@ import { ActionLogService } from "./actionLogService";
 import { TechnicalLogService } from "./technicalLogService";
 import { ExtensionManagerService } from "./extensionManagerService";
 import { buildToolsManifest } from "./toolManifestService";
-import { McpContext } from "../mcp/mcpContext";
+import { BridgeV2Context } from "../bridge-v2/context";
 import { sanitizeValue } from "./sanitization";
 
 export type DiagnosticsOptions = {
@@ -24,7 +24,7 @@ export class DiagnosticsService {
     private readonly actionLogs: ActionLogService,
     private readonly technicalLogs: TechnicalLogService,
     private readonly extensionManager: ExtensionManagerService,
-    private readonly mcpContext: McpContext
+    private readonly mcpContext: BridgeV2Context
   ) {}
 
   bundle(options: DiagnosticsOptions = {}): Record<string, unknown> {

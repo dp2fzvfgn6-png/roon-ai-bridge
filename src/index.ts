@@ -1,30 +1,11 @@
 import { loadConfig } from "./config/env";
 import { createServer } from "./api/server";
-import { createRoonClient } from "./roon/roonClient";
-import { PlaylistService } from "./services/playlistService";
-import { OAuthService } from "./services/oauthService";
-import { RoonMediaService } from "./roon/roonMediaService";
-import { createLogger } from "./utils/logger";
-import { createDatabase } from "./db/database";
-import { ApiKeyService } from "./services/apiKeyService";
 import { createPortalServer } from "./portal/server";
-import { PortalAuthService } from "./services/portalAuthService";
-import { SystemManagementService } from "./services/systemManagementService";
-import { ZonePresetService } from "./services/zonePresetService";
-import { OutputVolumeSettingsService } from "./services/outputVolumeSettingsService";
-import { VolumeLimitService } from "./services/volumeLimitService";
-import { ActionLogService } from "./services/actionLogService";
-import { TechnicalLogService, createObservedLogger } from "./services/technicalLogService";
-import { ExtensionManagerService } from "./services/extensionManagerService";
-import { DiagnosticsService } from "./services/diagnosticsService";
-import { ToolAccessService } from "./services/toolAccessService";
-import { HomeHistoryService } from "./services/homeHistoryService";
+import { createApplication } from "./app/createApplication";
 
 const config = loadConfig();
-const baseLogger = createLogger(config.logLevel);
-const database = createDatabase(config);
-const technicalLogService = new TechnicalLogService(database);
-const logger = createObservedLogger(baseLogger, technicalLogService);
+const { context } = createApplication(config);
+const { logger, roonClient, systemManagementService } = context;
 
 logger.info("Configuration loaded", {
   port: config.port,
@@ -41,60 +22,6 @@ logger.info("Configuration loaded", {
   roonStreamingSource: config.roonStreamingSource
 });
 
-const systemManagementService = new SystemManagementService(config, logger);
-const homeHistoryService = new HomeHistoryService(database);
-const roonClient = createRoonClient(
-  config,
-  logger,
-  systemManagementService,
-  (zones) => {
-    const recorded = homeHistoryService.observeZones(zones);
-    if (recorded > 0) logger.info("Listening history updated", { recorded });
-  }
-);
-const playlistService = new PlaylistService(config, database);
-const oauthService = new OAuthService(config);
-const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
-const apiKeyService = new ApiKeyService(config, database);
-const toolAccessService = new ToolAccessService(database);
-const portalAuthService = new PortalAuthService(config, database);
-const zonePresetService = new ZonePresetService(config, database);
-const outputVolumeSettingsService = new OutputVolumeSettingsService(
-  config,
-  database
-);
-const volumeLimitService = new VolumeLimitService(config, database);
-const actionLogService = new ActionLogService(database);
-const extensionManagerService = new ExtensionManagerService(config, technicalLogService);
-const context = {
-  config,
-  logger,
-  roonClient,
-  playlistService,
-  oauthService,
-  mediaService,
-  apiKeyService,
-  portalAuthService,
-  systemManagementService,
-  zonePresetService,
-  outputVolumeSettingsService,
-  volumeLimitService,
-  actionLogService,
-  homeHistoryService,
-  technicalLogService,
-  extensionManagerService,
-  toolAccessService
-};
-const diagnosticsService = new DiagnosticsService(
-  config,
-  database,
-  roonClient,
-  actionLogService,
-  technicalLogService,
-  extensionManagerService,
-  context
-);
-(context as any).diagnosticsService = diagnosticsService;
 const app = createServer(context);
 
 logger.info("Starting service", {

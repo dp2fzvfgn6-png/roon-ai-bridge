@@ -13,162 +13,60 @@ import { RoonClient } from "./roonClient";
 import { cleanRoonDisplayText } from "./roonText";
 import { getZoneOrThrow } from "./roonZoneService";
 
-export type MediaType = "track" | "album" | "artist" | "playlist";
-export type ReleaseType = "album" | "ep" | "single" | "single_ep" | "compilation" | "live" | "remix" | "unknown";
-export type ReleaseTypeSource = "roon_metadata" | "roon_section" | "musicbrainz" | "inferred" | "unknown";
-export type MediaSource = "tidal" | "qobuz" | "library" | "radio" | "playlist" | "unknown";
-export type MediaDataOrigin = "roon_library" | "roon_search_session" | "external_metadata" | "inferred";
-export type MediaCompleteness = "complete" | "partial" | "unknown";
-export type MediaActionMode = "replace_queue" | "play_next" | "append";
-export type SourcePreference = "highest_quality" | "streaming_first" | "library_first";
-export type SearchStrategy = "broaden" | "remove_context" | "artist_only" | "title_only" | "fuzzy" | "all";
-export type VersionHint =
-  | "studio"
-  | "live"
-  | "remix"
-  | "edit"
-  | "remaster"
-  | "cover"
-  | "alternate"
-  | "unknown";
+import type {
+  MediaType,
+  ReleaseType,
+  ReleaseTypeSource,
+  MediaSource,
+  MediaDataOrigin,
+  MediaCompleteness,
+  MediaActionMode,
+  SourcePreference,
+  SearchStrategy,
+  VersionHint,
+  MediaQuality,
+  MediaResult,
+  MediaEntityLink,
+  SearchMediaGroups,
+  SearchMediaResponse,
+  ArtistMediaDetail,
+  AlbumMediaDetail,
+  PlaylistMediaTrack,
+  PlaylistMediaDetail,
+  SearchMediaRequest,
+  SearchStrategyOptions
+} from "./media/mediaContracts";
+export type {
+  MediaType,
+  ReleaseType,
+  ReleaseTypeSource,
+  MediaSource,
+  MediaDataOrigin,
+  MediaCompleteness,
+  MediaActionMode,
+  SourcePreference,
+  SearchStrategy,
+  VersionHint,
+  MediaQuality,
+  MediaResult,
+  MediaEntityLink,
+  SearchMediaGroups,
+  SearchMediaResponse,
+  ArtistMediaDetail,
+  AlbumMediaDetail,
+  PlaylistMediaTrack,
+  PlaylistMediaDetail,
+  SearchMediaRequest,
+  SearchStrategyOptions
+} from "./media/mediaContracts";
 
-export type MediaQuality = {
-  label: string;
-  bit_depth: number | null;
-  sample_rate_hz: number | null;
-  format: string | null;
-};
-
-export type MediaResult = {
-  result_id: string;
-  roon_item_key: string | null;
-  type: MediaType;
-  media_type: MediaType;
-  title: string;
-  artist: string | null;
-  artists: MediaEntityLink[];
-  album: string | null;
-  album_artist: string | null;
-  version_hint: VersionHint;
-  subtitle: string | null;
-  image_key: string | null;
-  source: MediaSource;
-  source_confidence: "high" | "medium" | "low";
-  quality: MediaQuality | null;
-  is_library: boolean | null;
-  playable: boolean;
-  is_best_match: boolean;
-  selection_required: boolean;
-  match_score: number;
-  confidence: "high" | "medium" | "low";
-  match_reasons: string[];
-  match_penalties: string[];
-  version_penalties: string[];
-  warnings: string[];
-  expires_at: string;
-  release_year?: number | null;
-  duration_seconds?: number | null;
-  track_number?: number | null;
-  disc_number?: number | null;
-  content_count?: number | null;
-  release_type: ReleaseType | null;
-  release_type_source: ReleaseTypeSource | null;
-  release_section: string | null;
-  roon_rank: number;
-  direct_match: boolean;
-  direct_match_score: number;
-  data_origin: MediaDataOrigin;
-  completeness: MediaCompleteness;
-  ordered: boolean | null;
-  identity_verified: boolean;
-  links: {
-    artist: MediaEntityLink | null;
-    artists: MediaEntityLink[];
-    album: MediaEntityLink | null;
-  };
-};
-
-export type MediaEntityLink = {
-  type: "artist" | "album";
-  title: string;
-  artist: string | null;
-  result_id: string | null;
-};
-
-export type SearchMediaGroups = {
-  artist: MediaResult[];
-  album: MediaResult[];
-  ep: MediaResult[];
-  single_ep: MediaResult[];
-  single: MediaResult[];
-  track: MediaResult[];
-  playlist: MediaResult[];
-};
-
-export type SearchMediaResponse = {
-  query: string;
-  source_preference: SourcePreference;
-  results: MediaResult[];
-  groups: SearchMediaGroups;
-  best_match: MediaResult | null;
-  best_by_type: Partial<Record<keyof SearchMediaGroups, MediaResult>>;
-  ambiguous: boolean;
-  ambiguity_reason: string | null;
-  recommended_result_id: string | null;
-  selection_required: boolean;
-  available_counts: Partial<Record<MediaType, number>>;
-  warnings: string[];
-};
-
-export type ArtistMediaDetail = {
-  artist: MediaResult;
-  bio: string | null;
-  popular_tracks: MediaResult[];
-  albums: MediaResult[];
-  singles_eps: MediaResult[];
-  release_sections: Array<{
-    title: string;
-    release_type: ReleaseType;
-    releases: MediaResult[];
-  }>;
-  data_origin: MediaDataOrigin;
-  completeness: MediaCompleteness;
-  identity_verified: boolean;
-  warnings: string[];
-};
-
-export type AlbumMediaDetail = {
-  album: MediaResult;
-  description: string | null;
-  tracks: MediaResult[];
-  related_tracks: MediaResult[];
-  data_origin: MediaDataOrigin;
-  completeness: MediaCompleteness;
-  ordered: boolean;
-  identity_verified: boolean;
-  warnings: string[];
-};
-
-export type PlaylistMediaTrack = MediaResult & {
-  playlist_position: number;
-};
-
-export type PlaylistMediaDetail = {
-  playlist: MediaResult;
-  tracks: PlaylistMediaTrack[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    returned: number;
-    has_more: boolean;
-  };
-  data_origin: MediaDataOrigin;
-  completeness: MediaCompleteness;
-  ordered: boolean;
-  identity_verified: boolean;
-  warnings: string[];
-};
+import {
+  inferVersionDetails,
+  mediaRelevanceScore,
+  normalizeMediaText as normalize,
+  scoreSearchResult
+} from "./media/mediaSearchPolicy";
+export { mediaRelevanceScore, scoreSearchResult } from "./media/mediaSearchPolicy";
 
 type MediaReference = MediaResult & {
   query: string;
@@ -180,28 +78,11 @@ type MediaReference = MediaResult & {
   originalItem: BrowseItem;
 };
 
-export type SearchMediaRequest = {
-  query: string;
-  types?: MediaType[];
-  zoneId?: string;
-  count?: number;
-  sourcePreference?: SourcePreference;
-  strategy?: SearchStrategyOptions;
-};
-
-export type SearchStrategyOptions = {
-  source_preference?: SourcePreference;
-  avoid_live?: boolean;
-  avoid_remix?: boolean;
-  avoid_cover?: boolean;
-  prefer_original_album?: boolean;
-};
-
 const CATEGORY_TITLE: Record<MediaType, string[]> = {
   track: ["tracks", "canciones"],
-  album: ["albums", "álbumes", "albumes"],
+  album: ["albums", "Ã¡lbumes", "albumes"],
   artist: ["artists", "artistas"],
-  playlist: ["playlists", "listas de reproducción", "listas"]
+  playlist: ["playlists", "listas de reproducciÃ³n", "listas"]
 };
 
 const ACTION_TITLES: Record<MediaActionMode, string[]> = {
@@ -213,9 +94,9 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "play playlist",
     "play",
     "reproducir ahora",
-    "reproducir álbum",
+    "reproducir Ã¡lbum",
     "reproducir artista",
-    "reproducir canción",
+    "reproducir canciÃ³n",
     "reproducir lista"
   ],
   play_next: [
@@ -223,8 +104,8 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "play next",
     "add to next",
     "add as next",
-    "añadir siguiente",
-    "añadir como siguiente",
+    "aÃ±adir siguiente",
+    "aÃ±adir como siguiente",
     "reproducir siguiente"
   ],
   append: [
@@ -235,8 +116,8 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "add to queue end",
     "add last",
     "append to queue",
-    "añadir al final",
-    "añadir al final de la cola"
+    "aÃ±adir al final",
+    "aÃ±adir al final de la cola"
   ]
 };
 
@@ -263,9 +144,9 @@ const ENTITY_DETAIL_ACTION_TITLES: Record<"artist" | "album", string[]> = {
     "ir al artista",
     "ver artista",
     "informacion del artista",
-    "información del artista",
+    "informaciÃ³n del artista",
     "pagina del artista",
-    "página del artista"
+    "pÃ¡gina del artista"
   ],
   album: [
     "go to album",
@@ -274,15 +155,15 @@ const ENTITY_DETAIL_ACTION_TITLES: Record<"artist" | "album", string[]> = {
     "album details",
     "album info",
     "album",
-    "álbum",
+    "Ã¡lbum",
     "ir al album",
-    "ir al álbum",
+    "ir al Ã¡lbum",
     "ver album",
-    "ver álbum",
+    "ver Ã¡lbum",
     "informacion del album",
-    "información del álbum",
+    "informaciÃ³n del Ã¡lbum",
     "pagina del album",
-    "página del álbum"
+    "pÃ¡gina del Ã¡lbum"
   ]
 };
 
@@ -311,17 +192,8 @@ type LibraryIndex = {
   items: LibraryIdentity[];
 };
 
-function normalize(value: string): string {
-  return (cleanRoonDisplayText(value) || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function artistContentCount(subtitle: string | null | undefined): number | null {
-  const match = normalize(subtitle || "").match(/(?:^|\s)(\d+)\s+(?:albums?|albumes|álbumes)(?:\s|$)/);
+  const match = normalize(subtitle || "").match(/(?:^|\s)(\d+)\s+(?:albums?|albumes|Ã¡lbumes)(?:\s|$)/);
   return match ? Number.parseInt(match[1], 10) : null;
 }
 
@@ -580,9 +452,9 @@ function directMatchScore(result: MediaResult, directItems: BrowseItem[]): numbe
     const typeMatches = (
       result.media_type === "artist" && ["artist", "artista"].includes(directKind)
     ) || (
-      result.media_type === "album" && ["album", "álbum"].includes(directKind)
+      result.media_type === "album" && ["album", "Ã¡lbum"].includes(directKind)
     ) || (
-      result.media_type === "track" && ["track", "song", "pista", "cancion", "canción"].includes(directKind)
+      result.media_type === "track" && ["track", "song", "pista", "cancion", "canciÃ³n"].includes(directKind)
     );
     if (!imageMatches && !artistMatches && !typeMatches) continue;
     let candidate = 70;
@@ -917,289 +789,6 @@ export function inferMediaQuality(item: BrowseItem): MediaQuality | null {
   };
 }
 
-function qualityScore(quality: MediaQuality | null): number {
-  if (!quality) return 0;
-  return (quality.bit_depth || 0) * 100 + (quality.sample_rate_hz || 0) / 1000;
-}
-
-function sourceScore(source: MediaSource, preference: SourcePreference): number {
-  if (preference === "library_first") return source === "library" ? 30 : source === "tidal" ? 20 : source === "qobuz" ? 20 : 0;
-  if (preference === "streaming_first") {
-    return source === "tidal" ? 30 : source === "qobuz" ? 25 : source === "library" ? 10 : 0;
-  }
-  return source === "tidal" ? 20 : source === "qobuz" ? 15 : source === "library" ? 10 : 0;
-}
-
-function confidenceFromScore(score: number): "high" | "medium" | "low" {
-  if (score >= 75) return "high";
-  if (score >= 60) return "medium";
-  return "low";
-}
-
-function requestedAlternateVersion(request: {
-  query?: string | null;
-  title?: string | null;
-}): boolean {
-  const text = normalize(`${request.query || ""} ${request.title || ""}`);
-  return /\b(3d|binaural|headphones only|remix|mix|edit|live|cover|remaster(?:ed)?|interpretation|version)\b/.test(text);
-}
-
-function inferVersionDetails(title: string, subtitle: string | null): {
-  version_hint: VersionHint;
-  is_alternate_version: boolean;
-  version_penalties: string[];
-} {
-  const text = normalize(`${title} ${subtitle || ""}`);
-  const penalties: string[] = [];
-  if (/\b3d\b/.test(text)) penalties.push("alternate_3d");
-  if (/\bbinaural\b|\bheadphones only\b/.test(text)) penalties.push("binaural_version");
-  if (/\binterpretation\b/.test(text)) penalties.push("interpretation_version");
-  if (/\bremix\b|\brework\b/.test(text)) penalties.push("remix_version");
-  if (/\bedit\b|\bradio edit\b/.test(text)) penalties.push("edit_version");
-  if (/\blive\b|\ben vivo\b|\bdirecto\b/.test(text)) penalties.push("live_version");
-  if (/\bremaster(?:ed)?\b/.test(text)) penalties.push("remaster_version");
-  if (/\bcover\b|\btribute\b/.test(text)) penalties.push("cover_version");
-  if (/\bversion\b/.test(text)) penalties.push("alternate_version");
-  if (/\bmix\b/.test(text) && !penalties.includes("remix_version")) {
-    penalties.push("mix_version");
-  }
-
-  if (penalties.includes("binaural_version") || penalties.includes("alternate_3d")) {
-    return { version_hint: "alternate", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.includes("remix_version") || penalties.includes("mix_version")) {
-    return { version_hint: "remix", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.includes("edit_version")) {
-    return { version_hint: "edit", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.includes("live_version")) {
-    return { version_hint: "live", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.includes("remaster_version")) {
-    return { version_hint: "remaster", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.includes("cover_version")) {
-    return { version_hint: "cover", is_alternate_version: true, version_penalties: penalties };
-  }
-  if (penalties.length > 0) {
-    return { version_hint: "alternate", is_alternate_version: true, version_penalties: penalties };
-  }
-  return { version_hint: "studio", is_alternate_version: false, version_penalties: [] };
-}
-
-export function mediaRelevanceScore(result: MediaResult, query: string): number {
-  const normalizedQuery = normalize(query);
-  const title = normalize(result.title);
-  const subtitle = normalize(result.subtitle || "");
-  const queryTokens = normalizedQuery.split(" ").filter(Boolean);
-  let score = 0;
-
-  if (result.media_type === "artist" && title === normalizedQuery) score += 2500;
-  if (subtitle === normalizedQuery) score += 1800;
-  if (title === normalizedQuery) score += 1600;
-  if (subtitle.startsWith(`${normalizedQuery},`) || subtitle.startsWith(`${normalizedQuery} /`)) {
-    score += 1300;
-  } else if (subtitle.includes(normalizedQuery)) {
-    score += 900;
-  }
-  if (title.includes(normalizedQuery) && title !== normalizedQuery) score += 700;
-  score += queryTokens.filter((token) => title.includes(token)).length * 80;
-  score += queryTokens.filter((token) => subtitle.includes(token)).length * 100;
-  return score;
-}
-
-function mediaResultScore(
-  result: MediaResult,
-  preference: SourcePreference,
-  query: string
-): number {
-  return (
-    mediaRelevanceScore(result, query) * 1000000 +
-    qualityScore(result.quality) * 100 +
-    sourceScore(result.source, preference)
-  );
-}
-
-export function scoreSearchResult(
-  result: MediaResult,
-  request: {
-    query: string;
-    title?: string | null;
-    artist?: string | null;
-    album?: string | null;
-    sourcePreference?: SourcePreference;
-    strategy?: SearchStrategyOptions;
-  }
-): { score: number; confidence: "high" | "medium" | "low"; reasons: string[]; penalties: string[] } {
-  const preference = request.sourcePreference || "highest_quality";
-  const strategy = request.strategy || {};
-  const query = normalize(request.query);
-  const title = request.title ? normalize(request.title) : "";
-  const artist = request.artist ? normalize(request.artist) : "";
-  const album = request.album ? normalize(request.album) : "";
-  const resultTitle = normalize(result.title);
-  const resultSubtitle = normalize(result.subtitle || "");
-  const resultAlbum = normalize(result.album || "");
-  const reasons: string[] = [];
-  const penalties: string[] = [];
-  let score = 0;
-
-  if (result.playable) {
-    score += 8;
-    reasons.push("playable");
-  }
-
-  if (title) {
-    if (resultTitle === title) {
-      score += 34;
-      reasons.push("exact_title", "exact title");
-    } else if (resultTitle.includes(title) || title.includes(resultTitle)) {
-      score += 8;
-      reasons.push("partial_title", "partial title");
-      penalties.push("title_partial");
-    }
-  }
-
-  if (artist) {
-    if (resultSubtitle === artist || resultSubtitle.includes(artist)) {
-      score += 20;
-      reasons.push("artist_match", "artist match");
-    } else {
-      const artistTokens = artist.split(" ").filter((token) => token.length > 2);
-      const matched = artistTokens.filter((token) => resultSubtitle.includes(token)).length;
-      if (matched > 0) {
-        score += Math.min(10, matched * 3);
-        reasons.push("artist_token_match");
-      } else {
-        score -= 15;
-        penalties.push("artist_mismatch");
-      }
-    }
-  }
-
-  if (album) {
-    if (resultAlbum === album) {
-      score += 10;
-      reasons.push("album_match");
-    } else if (resultAlbum && (resultAlbum.includes(album) || album.includes(resultAlbum))) {
-      score += 5;
-      reasons.push("album_partial");
-      penalties.push("album_partial");
-    } else {
-      score -= 8;
-      penalties.push("album_missing_or_mismatch");
-    }
-  }
-
-  if (query) {
-    const relevance = mediaRelevanceScore(result, query);
-    const normalizedRelevance = Math.min(18, Math.round(relevance / 180));
-    score += normalizedRelevance;
-    if (relevance > 0) reasons.push("query_relevance");
-    const queryTokens = query.split(" ").filter((token) => token.length > 2);
-    const titleMatches = queryTokens.filter((token) => resultTitle.includes(token)).length;
-    const subtitleMatches = queryTokens.filter((token) => resultSubtitle.includes(token)).length;
-    const tokenScore = Math.min(30, titleMatches * 6 + subtitleMatches * 5);
-    if (tokenScore > 0) {
-      score += tokenScore;
-      reasons.push("query_token_match");
-    }
-    const titleTokens = resultTitle.split(" ").filter((token) => token.length > 2);
-    const subtitleTokens = resultSubtitle.split(" ").filter((token) => token.length > 2);
-    const titleCovered = titleTokens.length > 0 && titleTokens.every((token) => query.includes(token));
-    const artistCovered = subtitleTokens.length > 0 && subtitleTokens.some((token) => query.includes(token));
-    if (titleCovered && artistCovered) {
-      score += 25;
-      reasons.push("query_title_artist_match");
-    }
-    const candidateTerms = new Set(resultTitle.split(" ").filter((token) => token.length > 2));
-    const extraTerms = [...candidateTerms].filter((token) => !query.includes(token));
-    if (extraTerms.length > 0 && titleCovered) {
-      score -= Math.min(12, extraTerms.length * 3);
-      penalties.push("extra_title_terms");
-    }
-  }
-
-  const quality = qualityScore(result.quality);
-  if (quality > 0) {
-    score += Math.min(6, Math.round(quality / 500));
-    reasons.push("quality_metadata");
-  }
-
-  const source = sourceScore(result.source, preference);
-  if (source > 0) {
-    score += Math.min(5, Math.max(1, Math.round(source / 6)));
-    reasons.push(`${result.source}_source`);
-  }
-
-  if (!result.playable) {
-    score -= 30;
-    penalties.push("not_playable");
-  }
-
-  const uniqueVersionPenalties = Array.from(new Set(result.version_penalties || []));
-  const wantsAlternate = requestedAlternateVersion(request);
-  if (!wantsAlternate && uniqueVersionPenalties.length > 0) {
-    const severe = uniqueVersionPenalties.filter((penalty) =>
-      penalty !== "edit_version" && penalty !== "remaster_version"
-    ).length;
-    const mild = uniqueVersionPenalties.length - severe;
-    score -= severe * 22 + mild * 10;
-    penalties.push(...uniqueVersionPenalties);
-  }
-  if (
-    !wantsAlternate &&
-    result.version_hint === "studio" &&
-    ((title && resultTitle === title) || (!title && query.includes(resultTitle)))
-  ) {
-    score += 10;
-    reasons.push("clean_studio_version");
-  }
-
-  if (result.source === "unknown") {
-    score -= 5;
-    penalties.push("source_unknown");
-  }
-  if (!result.quality && result.source === "unknown") {
-    score -= 3;
-    penalties.push("quality_unknown");
-  }
-  if (result.is_library === null) {
-    score -= 2;
-    penalties.push("library_status_unknown");
-  }
-
-  if (strategy.avoid_live && result.version_hint === "live") {
-    score -= 18;
-    penalties.push("live_version");
-  }
-  if (strategy.avoid_remix && result.version_hint === "remix") {
-    score -= 18;
-    penalties.push("remix_version");
-  }
-  if (strategy.avoid_cover && result.version_hint === "cover") {
-    score -= 18;
-    penalties.push("cover_version");
-  }
-  if (strategy.prefer_original_album && result.version_hint !== "studio") {
-    score -= 12;
-    penalties.push("not_original_studio_version");
-  }
-
-  const bounded = Math.max(0, Math.min(100, Math.round(score)));
-  const confidence =
-    !result.roon_item_key || penalties.includes("artist_mismatch") || penalties.includes("not_playable")
-      ? (bounded >= 75 ? "medium" : confidenceFromScore(bounded))
-      : confidenceFromScore(bounded);
-  return {
-    score: bounded,
-    confidence,
-    reasons,
-    penalties
-  };
-}
-
 function titleMatchesCategory(title: string, type: MediaType): boolean {
   const normalized = normalize(title);
   return CATEGORY_TITLE[type].some((candidate) => normalize(candidate) === normalized);
@@ -1479,7 +1068,7 @@ export class RoonMediaService {
     for (const strategy of strategies) {
       if (strategy === "broaden") add(request.previousQuery || original, strategy);
       if (strategy === "remove_context") {
-        add(original.replace(/\b(peaky blinders|soundtrack|episode|scene|temporada|capitulo|capítulo)\b/gi, " "), strategy);
+        add(original.replace(/\b(peaky blinders|soundtrack|episode|scene|temporada|capitulo|capÃ­tulo)\b/gi, " "), strategy);
       }
       if (strategy === "title_only") {
         add(original.replace(/\b(by|de|feat\.?|featuring|peaky blinders|soundtrack)\b.*$/i, " "), strategy);

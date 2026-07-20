@@ -3,10 +3,19 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.18.0 Beta - Unreleased
+## 0.18.0 - 2026-07-20
 
-- Development continues on the `beta` branch from the v0.17.3 stable release.
-- Planned focus: project restructuring.
+- Promoted the validated v0.18.0 beta line to the stable `main` channel.
+- Added a typed application composition root shared by the API, portal and MCP
+  layers, removing post-construction context mutation.
+- Removed the disconnected legacy MCP facade and made `bridge-v2` the only
+  HTTP and stdio implementation.
+- Split the portal backend into focused route modules and extracted the shared
+  mini-player browser feature without changing routes or presentation.
+- Preserved the public media, playlist and MCP facades while extracting their
+  contracts and bounded search, cover and transport policies.
+- Updated the architecture documentation and added explicit v0.18.0 regression
+  and post-deployment validation guidance.
 
 ## 0.17.3 - 2026-07-20
 

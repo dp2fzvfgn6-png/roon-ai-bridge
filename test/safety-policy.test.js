@@ -3,11 +3,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const sharp = require("sharp");
 
 const { createServer } = require("../dist/api/server");
 const { createDatabase } = require("../dist/db/database");
-const { registerRoonMcpTools } = require("../dist/mcp/mcpTools");
+const { registerBridgeV2Tools } = require("../dist/bridge-v2/mcp/tools");
 const { changeZoneVolume } = require("../dist/roon/roonVolumeService");
 const { PlaylistService } = require("../dist/services/playlistService");
 
@@ -57,7 +56,7 @@ function createVolumeClient(zone, calls) {
 
 function registerTools(context) {
   const tools = new Map();
-  registerRoonMcpTools({
+  registerBridgeV2Tools({
     registerTool(name, options, handler) {
       tools.set(name, { options, handler });
     }
@@ -67,7 +66,7 @@ function registerTools(context) {
 
 async function invoke(tool, args) {
   const result = await tool.handler(args);
-  return result.structuredContent.result;
+  return result.structuredContent;
 }
 
 test("volume dry_run and safe-limit confirmation do not call Roon unless allowed", async () => {
@@ -118,7 +117,7 @@ test("volume dry_run and safe-limit confirmation do not call Roon unless allowed
   );
 });
 
-test("destructive playlist MCP tools require confirmation and support dry_run", async () => {
+test("destructive playlist MCP v2 tools require confirmation", async () => {
   const config = tempConfig();
   const database = createDatabase(config);
   const playlistService = new PlaylistService(config, database);
@@ -134,113 +133,39 @@ test("destructive playlist MCP tools require confirmation and support dry_run", 
     mediaService: {}
   };
   const tools = registerTools(context);
-  const coverSource = await sharp({
-    create: {
-      width: 1024,
-      height: 1024,
-      channels: 3,
-      background: { r: 20, g: 40, b: 70 }
-    }
-  })
-    .png()
-    .toBuffer();
-
-  const coverUpdated = await invoke(tools.get("roon_set_virtual_playlist_cover_image"), {
+  const removeBlocked = await invoke(tools.get("roon_edit_playlist_tracks"), {
     playlist_id: playlist.playlist_id,
-    image_base64: coverSource.toString("base64"),
-    content_type: "image/png"
+    operations: [{ type: "remove", track_id: "one" }]
   });
-  assert.equal(coverUpdated.ok, true);
-  assert.equal(coverUpdated.classification.safe_mutation, true);
-  assert.match(playlistService.getPlaylist(playlist.playlist_id).cover_image_key, /^custom:/);
+  assert.equal(removeBlocked.status, "confirmation_required");
+  assert.equal(playlistService.getPlaylist(playlist.playlist_id).track_count, 1);
 
-  const deleteDryRun = await invoke(tools.get("roon_delete_virtual_playlist"), {
+  const removed = await invoke(tools.get("roon_edit_playlist_tracks"), {
     playlist_id: playlist.playlist_id,
-    dry_run: true
-  });
-  assert.equal(deleteDryRun.dry_run, true);
-  assert.equal(playlistService.getPlaylist(playlist.playlist_id).playlist_id, playlist.playlist_id);
-
-  const deleteBlocked = await invoke(tools.get("roon_delete_virtual_playlist"), {
-    playlist_id: playlist.playlist_id
-  });
-  assert.equal(deleteBlocked.requires_confirmation, true);
-  assert.equal(deleteBlocked.confirmation_reason, "destructive_action");
-  assert.equal(deleteBlocked.confirm_payload.arguments.confirm, true);
-
-  const removeBlocked = await invoke(tools.get("roon_remove_virtual_playlist_track"), {
-    playlist_id: playlist.playlist_id,
-    track_id: "one"
-  });
-  assert.equal(removeBlocked.requires_confirmation, true);
-
-  const replaceBlocked = await invoke(tools.get("roon_replace_virtual_playlist_tracks"), {
-    playlist_id: playlist.playlist_id,
-    tracks: [{ query: "two", title: "Two" }]
-  });
-  assert.equal(replaceBlocked.requires_confirmation, true);
-
-  const removed = await invoke(tools.get("roon_remove_virtual_playlist_track"), {
-    playlist_id: playlist.playlist_id,
-    track_id: "one",
+    operations: [{ type: "remove", track_id: "one" }],
     confirm: true
   });
-  assert.equal(removed.ok, true);
+  assert.equal(removed.status, "completed");
+  assert.equal(removed.verified, true);
   assert.equal(playlistService.getPlaylist(playlist.playlist_id).tracks_count, 0);
 
-  const deleted = await invoke(tools.get("roon_delete_virtual_playlist"), {
+  const deleteBlocked = await invoke(tools.get("roon_delete_playlist"), {
+    playlist_id: playlist.playlist_id
+  });
+  assert.equal(deleteBlocked.status, "confirmation_required");
+
+  const deleted = await invoke(tools.get("roon_delete_playlist"), {
     playlist_id: playlist.playlist_id,
     confirm: true
   });
-  assert.equal(deleted.ok, true);
+  assert.equal(deleted.status, "completed");
+  assert.equal(deleted.verified, true);
   assert.throws(
     () => playlistService.getPlaylist(playlist.playlist_id),
     (error) => error.code === "PLAYLIST_NOT_FOUND"
   );
 
   database.close();
-});
-
-test("safe playback and queue MCP dry_runs avoid executing media actions", async () => {
-  let playCalls = 0;
-  const context = {
-    logger: logger(),
-    roonClient: {
-      getZone: (zoneId) => ({ zone_id: zoneId, display_name: "Despacho", state: "paused" })
-    },
-    playlistService: {},
-    mediaService: {
-      get: (resultId) => ({
-        result_id: resultId,
-        media_type: "track",
-        title: "Dry Run Song",
-        playable: true
-      }),
-      play: async () => {
-        playCalls += 1;
-        return { ok: true };
-      }
-    }
-  };
-  const tools = registerTools(context);
-
-  const playPlan = await invoke(tools.get("roon_play_media"), {
-    result_id: "media_1",
-    zone_id: "desk",
-    dry_run: true
-  });
-  assert.equal(playPlan.dry_run, true);
-  assert.equal(playPlan.classification.destructive, false);
-
-  const queuePlan = await invoke(tools.get("roon_add_media_to_queue"), {
-    result_id: "media_1",
-    zone_id: "desk",
-    position: "end",
-    dry_run: true
-  });
-  assert.equal(queuePlan.dry_run, true);
-  assert.equal(queuePlan.classification.queue_mutation, true);
-  assert.equal(playCalls, 0);
 });
 
 test("/safety/policy exposes portal-consumable classifications and volume limits", async () => {

@@ -1,12 +1,12 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. The current stable package is v0.17.3. It extends the
+administration portal. The current stable package is v0.18.0. It extends the
 canonical MCP v2 surface with deterministic media discovery, strict playlist
-creation, temporary working playlists and six cache-busted v19 widgets.
+creation, six cache-busted v19 widgets and a modular internal architecture.
 
-See the [changelog](CHANGELOG.md), [v0.17.3 release notes](docs/v0.17.3-release-notes.md)
-and [release validation](docs/v0.17.3-validation.md).
+See the [changelog](CHANGELOG.md), [v0.18.0 release notes](docs/v0.18.0-release-notes.md)
+and [release validation](docs/v0.18.0-validation.md).
 
 This project does not expose anything to the internet by itself. It does not
 implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
@@ -18,25 +18,29 @@ The project is structured so the current feature set stays small but can grow wi
 ```text
 src/
   index.ts
+  app/             typed application context and dependency composition
   config/          environment and app configuration
-  roon/            Roon client, types and Roon services
+  roon/            Roon client, adapters and focused media policies
   api/             Express server and HTTP routes
-  services/        application services, including SQLite-backed playlists
+  portal/          portal server and focused route modules
+  services/        application services and focused playlist policies
   db/              SQLite schema and persistence adapter
-  mcp/             local/remote MCP server, Apps SDK resource and tool definitions
+  bridge-v2/       active MCP intents, transports and Apps resources
   security/        future security notes
   utils/           logger, errors and validation
+portal/
+  features/        extracted browser features behind the existing portal shell
 db/
   schema.sql       SQLite schema
 data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.17.3 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.18.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.17.3 Scope
+## v0.18.0 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -535,9 +539,9 @@ MCP call when the match is unambiguous.
 
 The catalog covers state, transport, volume, output power, playback options,
 grouping, transfer, media search and deep details, play/enqueue/radio, queue,
-virtual playlists, volume policies, zone presets and diagnostics. See
-[MCP Server](src/mcp/README.md) for the complete list and
-[MCP v2 Architecture](docs/mcp-v2-architecture.md) for contract semantics.
+virtual playlists, volume policies, zone presets and diagnostics.
+See [MCP v2 Architecture](docs/mcp-v2-architecture.md) for the complete active
+boundary and contract semantics.
 
 Now-playing, adaptive media, playlist, playlist-library, queue and zone-panel
 widgets are published under the cache-busted `ui://roon-ai-bridge/v19/`
@@ -632,6 +636,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
   portal activity history, update-channel controls and embedded v18 artwork.
 - v0.17.3: temporary working playlists, complete catalog-playlist reads,
   expanded v19 widgets and compact persistent player-zone controls.
+- v0.18.0: typed application composition, one canonical MCP v2 implementation
+  and focused portal, media, playlist and transport modules.
 
 ## Security
 

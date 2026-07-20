@@ -5,7 +5,10 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 function loadMiniPlayerRuntime(zone) {
-  const source = fs.readFileSync(path.join(__dirname, "..", "portal", "app.js"), "utf8");
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "portal", "features", "mini-player.js"),
+    "utf8"
+  );
   const helpers = source.slice(
     source.indexOf("function miniVolumeOutputs"),
     source.indexOf("function miniOutputPopoverOpen")

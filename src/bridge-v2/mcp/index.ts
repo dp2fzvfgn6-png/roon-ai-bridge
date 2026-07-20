@@ -1,13 +1,13 @@
-import { loadConfig } from "../config/env";
-import { createRoonClient } from "../roon/roonClient";
-import { PlaylistService } from "../services/playlistService";
-import { RoonMediaService } from "../roon/roonMediaService";
-import { createStderrLogger } from "../utils/logger";
-import { startBridgeV2McpServer } from "../bridge-v2/mcp/server";
-import { createDatabase } from "../db/database";
-import { SystemManagementService } from "../services/systemManagementService";
-import { ZonePresetService } from "../services/zonePresetService";
-import { VolumeLimitService } from "../services/volumeLimitService";
+import { loadConfig } from "../../config/env";
+import { createRoonClient } from "../../roon/roonClient";
+import { PlaylistService } from "../../services/playlistService";
+import { RoonMediaService } from "../../roon/roonMediaService";
+import { createStderrLogger } from "../../utils/logger";
+import { createDatabase } from "../../db/database";
+import { SystemManagementService } from "../../services/systemManagementService";
+import { ZonePresetService } from "../../services/zonePresetService";
+import { VolumeLimitService } from "../../services/volumeLimitService";
+import { startBridgeV2McpServer } from "./server";
 
 const config = {
   ...loadConfig(),

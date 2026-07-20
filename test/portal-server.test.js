@@ -245,7 +245,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     const portalScript = await fetch(`${baseUrl}/app.js`);
     assert.equal(portalScript.status, 200);
     assert.equal(portalScript.headers.get("cache-control"), "no-store");
-    const portalScriptText = await portalScript.text();
+    const miniPlayerScript = await fetch(`${baseUrl}/features/mini-player.js`);
+    assert.equal(miniPlayerScript.status, 200);
+    assert.equal(miniPlayerScript.headers.get("cache-control"), "no-store");
+    const portalScriptText = `${await portalScript.text()}\n${await miniPlayerScript.text()}`;
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /data-mini-select-zone/);
     assert.match(portalScriptText, /data-mini-quick-zone-step/);

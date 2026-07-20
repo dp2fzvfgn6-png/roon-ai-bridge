@@ -1,154 +1,110 @@
 # Architecture
 
-The API, MCP server and administration portal share one Roon client and data
-store. The active MCP facade is an independent v2 subsystem with its own
-contracts and intent orchestration.
+The HTTP API, administration portal and active MCP v2 facade share one
+application context, one Roon client and the same persisted services. The
+composition root constructs those dependencies once and passes typed context
+objects to each delivery layer.
 
 ```text
 src/
-  index.ts
-  config/
-    env.ts
-  roon/
-    roonClient.ts
-    roonSdk.ts
-    roonStateCache.ts
-    roonTransportService.ts
-    roonBrowseService.ts
-    roonZoneService.ts
-    roonQueueService.ts
-    roonPlaybackService.ts
-    roonVolumeService.ts
-    roonTypes.ts
-    roonMediaService.ts
+  index.ts                         process startup only
+  app/
+    context.ts                     shared application contract
+    createApplication.ts           dependency composition root
+  config/                          environment and runtime settings
   api/
-    server.ts
-    routes/
-      health.routes.ts
-      roon.routes.ts
-      zones.routes.ts
-      playback.routes.ts
-      volume.routes.ts
-      library.routes.ts
-      queue.routes.ts
-      playlists.routes.ts
-      oauth.routes.ts
-      media.routes.ts
+    server.ts                      HTTP API composition
+    routes/                        focused HTTP route modules
   portal/
-    server.ts
+    server.ts                      portal middleware and route composition
+    routes/                        auth, dashboard, connections, system,
+                                   access and audio-administration routes
+  roon/
+    roonClient.ts                  Roon extension lifecycle
+    roonSdk.ts                     typed callback/reliability boundary
+    roonStateCache.ts              live subscription reducer
+    roon*Service.ts                transport, browse and playback adapters
+    roonMediaService.ts            stable media facade
+    media/
+      mediaContracts.ts            public media contracts
+      mediaSearchPolicy.ts         pure relevance/version/source policy
   services/
-    oauthService.ts
-    playlistService.ts
-    portalAuthService.ts
-    systemManagementService.ts
-    zonePresetService.ts
-    outputVolumeSettingsService.ts
-    historyService.ts
-    preferencesService.ts
-  db/
-    database.ts
-    schema.sql
-  mcp/
-    README.md
-    index.ts
-    server.ts
-    mcpContext.ts
-    mcpTools.ts
-    tools.todo.ts
+    playlistService.ts             stable playlist facade
+    playlists/
+      playlistContracts.ts         public playlist contracts
+      playlistCoverPolicy.ts       cover validation and normalization
+    ...                            other application services
+  db/                              active SQLite adapter and schema
   bridge-v2/
-    contracts.ts
-    context.ts
-    targetResolver.ts
-    intentGateway.ts
+    context.ts                     MCP application boundary
+    intentGateway.ts               stable intent facade
+    intents/
+      transportIntentHandler.ts    state and transport intentions
     mcp/
-      server.ts
-      tools.ts
-    widgets/
-      resources.ts
-      tools.ts
-      viewService.ts
-  security/
-    README.md
-  utils/
-    logger.ts
-    errors.ts
-    validation.ts
+      index.ts                     active stdio entry point
+      server.ts                    MCP server construction
+      tools.ts                     canonical tool catalog
+    widgets/                       read-only MCP Apps views/resources
+  utils/                           logging, errors and validation
+
+portal/
+  index.html
+  app.js                           portal shell and remaining features
+  features/
+    mini-player.js                 extracted player feature
 ```
 
 Static portal assets live in `portal/` and are copied into the Docker image.
 The main API listens on `3000`; the portal listens on `3001`. Both servers run
 inside the same Node.js process so they observe the same Roon subscription,
-playlists and API-key database without registering a second extension.
+playlists and database without registering a second extension.
 
-## Layers
+## Dependency Direction
 
-- `config`: environment parsing and runtime settings.
-- `roon`: Roon Core discovery, transport service, zone mapping, playback and volume.
-- `roonSdk`: typed callback boundary, request timeouts and shared state-verification helpers.
-- `roonStateCache`: public subscription-event reducer for the live zone cache.
-- `roonMediaService`: typed search, temporary media references and deterministic Browse actions.
-- `api`: Express server and route definitions.
-- `services`: OAuth persistence and application services such as virtual playlists.
-- `db`: future persistence adapter and schema.
-- `bridge-v2`: active local/remote MCP intent facade and focused widget layer.
-- `mcp`: disconnected legacy facade retained pending a dependency audit.
-- `security`: future auth/security notes.
-- `utils`: common logging, errors and validation.
+```text
+process startup
+  -> application composition
+    -> Roon adapters, database and application services
+      -> HTTP API, portal and MCP v2 delivery layers
+```
+
+Delivery layers may orchestrate application services but do not construct a
+second copy of them. Widely imported media, playlist and MCP classes remain
+stable facades while pure contracts and policies move into focused modules.
 
 ## Current Runtime Flow
 
-1. `src/index.ts` loads config.
-2. Logger is created.
-3. If `ENABLE_AUTH=true`, `API_TOKEN` is required before startup continues.
-4. Roon client starts discovery.
-5. Express starts on `PORT`.
-6. `/health`, `/privacy`, OAuth discovery and OAuth endpoints stay public.
-7. Other HTTP API routes pass through Bearer-token auth when enabled.
-8. ChatGPT discovers OAuth metadata, dynamically registers a client, and obtains an access token with authorization code plus PKCE.
-9. Roon authorization is completed separately in the Roon UI.
-10. The transport service subscribes to zones.
-11. The browse service is available when Roon exposes `RoonApiBrowse`.
-12. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
-13. `src/mcp/index.ts` launches the `bridge-v2` server with `npm run mcp` and exposes 35 canonical intents plus six focused widget entry points over stdio.
-14. Typed search creates short-lived `result_id` references and re-resolves selected media in a fresh Roon Browse session before acting.
-15. `POST /mcp` and `GET /mcp` expose the same MCP v2 tools and cache-busted widget resources over Streamable HTTP.
+1. `src/index.ts` loads configuration and asks `createApplication` to compose
+   the logger, database, Roon adapters and application services.
+2. If `ENABLE_AUTH=true`, `API_TOKEN` is required before startup continues.
+3. The shared Roon client starts discovery and subscriptions.
+4. Express starts the HTTP API on `PORT`; the portal is mounted separately on
+   its configured port using the same `ApplicationContext`.
+5. Public health, privacy and OAuth discovery routes remain outside Bearer
+   authentication. Protected routes use the existing token/OAuth policy.
+6. API and portal routes call the shared services for state, media, queues,
+   playlists, configuration and administration.
+7. `src/bridge-v2/mcp/index.ts` launches the same MCP v2 server used by the HTTP
+   transport when `pnpm run mcp` is invoked.
+8. `POST /mcp` and `GET /mcp` expose the 35 canonical intents and six focused
+   widget entry points over Streamable HTTP.
+9. Typed media search creates short-lived references and re-resolves selected
+   media in a fresh Roon Browse session before acting.
 
-Virtual playlist identity is owned by RoonIA. `track_id` is permanent and each
-row stores a semantic recording snapshot plus a versioned fingerprint in
-SQLite. Roon Browse `item_key` and media `result_id` values are explicitly
-ephemeral: playback searches and scores fresh candidates from the stored
-identity, rejects ambiguous matches, then performs the action in a fresh Browse
-session. `play_now` resolves the first track before replacing the existing
-queue.
+## Persistence
 
-## Persistence Plan
+`db/schema.sql` defines the active SQLite model, including application
+settings, cores, cached zones, playlists and tracks, history, preferences and
+search data. RoonIA persists Roon authorization state in
+`data/roonstate.json`, SQLite application state in `data/roonia.sqlite`, and
+private OAuth clients/codes/tokens in `data/oauth-store.json`.
 
-`db/schema.sql` prepares future SQLite tables:
-
-- `app_settings`
-- `roon_cores`
-- `zones_cache`
-- `virtual_playlists`
-- `virtual_playlist_tracks`
-- `play_history`
-- `command_history`
-- `user_preferences`
-- `search_cache`
-
-RoonIA persists Roon authorization state in `data/roonstate.json`, local virtual
-playlists, portal users/sessions, zone presets, volume policies and hashed
-managed API keys in `data/roonia.sqlite`, and private
-OAuth clients/codes/tokens in `data/oauth-store.json`. On first launch with an
-empty SQLite store, legacy playlists from `data/virtual-playlists.json` are
-imported automatically.
-
-Playlist rows created before the identity model are enriched on service start.
-The migration preserves `track_id`, user metadata and audio metadata, and marks
-any persisted Roon Browse reference as stale and non-reusable.
+On first launch with an empty SQLite store, legacy playlists from
+`data/virtual-playlists.json` are imported automatically. Playlist rows created
+before the current identity model are enriched on service start without
+changing their stable IDs or reusing stale Roon Browse references.
 
 Runtime port, update-channel and public bridge/portal URL overrides live in
 `data/runtime-config.json`. Update requests and staged results use
 `data/update-request.json` and `data/update-status.json` as a narrow handoff
-between the app container and the LXC systemd watcher. The container build
-receives the deployed Git commit so equal semantic versions can still be
-compared and distinguished by build.
+between the app container and the LXC systemd watcher.

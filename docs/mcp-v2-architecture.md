@@ -23,6 +23,9 @@ The implementation lives in `src/bridge-v2`:
 - `contracts.ts` defines target/media references and the result envelope.
 - `targetResolver.ts` resolves exact accent-insensitive zone/output names or IDs.
 - `intentGateway.ts` implements complete user intentions.
+- `intents/transportIntentHandler.ts` owns state, playback, volume, power,
+  playback-option, grouping and transfer orchestration behind that facade.
+- `mcp/index.ts` is the active stdio entry point.
 - `mcp/tools.ts` owns schemas, annotations and the 35-tool intent catalog.
 - `mcp/server.ts` owns server instructions and HTTP/stdio construction.
 - `widgets/viewService.ts` creates bounded, presentation-ready view models.
@@ -191,7 +194,6 @@ summary and never repeats the full JSON payload.
 
 ## Compatibility boundary
 
-The old `src/mcp/server.ts`, `mcpTools.ts` and widget resource remain in the
-tree only for legacy HTTP/portal dependencies and historical tests. Neither
-`/mcp` nor `pnpm run mcp` instantiates the old server. They can be deleted after
-a dedicated dependency audit.
+The dependency audit completed in v0.18.0 and the disconnected `src/mcp`
+implementation was removed. Both `/mcp` and `pnpm run mcp` now enter through
+`src/bridge-v2/mcp`; there is no legacy runtime or model-visible alias layer.

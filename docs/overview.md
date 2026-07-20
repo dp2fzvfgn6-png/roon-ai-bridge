@@ -3,7 +3,7 @@
 Roon AI Bridge is a local Roon extension with an HTTP API, administration
 portal and an intent-oriented MCP v2 facade with focused interactive widgets.
 
-The current v0.9 goal is intentionally narrow:
+The current v0.18.0 beta keeps the deployed scope intentionally focused:
 
 - Run in a dedicated Proxmox LXC.
 - Use the same VLAN/subnet as Roon Core.
@@ -30,11 +30,11 @@ The current v0.9 goal is intentionally narrow:
 - Return one uniform structured MCP result envelope and keep large widget view
   data out of model-visible content.
 
-The MCP v2 and widget redesign are implemented and locally validated. ChatGPT
-is intentionally still disconnected; reconnection and app-level evaluation are
-a later phase.
+The MCP v2 facade, OAuth connection flow and focused widgets are implemented.
+The private ChatGPT app connects to the authenticated Streamable HTTP endpoint;
+public app-directory submission remains a separate future decision.
 
-v0.9 deliberately does not implement:
+The current release deliberately does not implement:
 
 - OpenAI API calls from the bridge
 - public app-directory submission
