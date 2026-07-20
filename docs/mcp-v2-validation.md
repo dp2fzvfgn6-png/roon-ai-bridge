@@ -5,11 +5,11 @@ playlist additions below have automated local validation only.
 
 ## Contract checks
 
-- `tools/list` exposes 34 tools: 31 canonical intents and three model-visible
+- `tools/list` exposes 41 tools: 35 canonical intents and six model-visible
   widget entry points.
 - All descriptions start with `Use this when...`.
 - Every tool declares a discriminated output schema.
-- Only the three widget entry points advertise an `openai/outputTemplate`.
+- Only the six widget entry points advertise an `openai/outputTemplate`.
 - Legacy names such as `roon_status`, `roon_list_zones`,
   `roon_play_by_query` and widget action tools are absent.
 - Zone and output inputs accept semantic names or stable IDs.

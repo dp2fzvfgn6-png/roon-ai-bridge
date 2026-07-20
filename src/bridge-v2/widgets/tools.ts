@@ -26,7 +26,13 @@ async function renderResult(operation: string, widget: WidgetPayload, context: B
   const hydratedWidget = await embedWidgetArtwork(context, widget);
   const summary = widget.view === "now_playing"
     ? `${Array.isArray(widget.zones) ? widget.zones.length : 0} zona(s) reproduciendo.`
-    : `Mostrando ${widget.title}.`;
+    : widget.view === "zones"
+      ? `${Array.isArray(widget.zones) ? widget.zones.length : 0} zona(s) en el panel.`
+      : widget.view === "queue"
+        ? `${Array.isArray(widget.items) ? widget.items.length : 0} elemento(s) en la cola.`
+        : widget.view === "playlist_library"
+          ? `${Array.isArray(widget.playlists) ? widget.playlists.length : 0} playlist(s) en la biblioteca.`
+          : `Mostrando ${widget.title}.`;
   return {
     structuredContent: {
       status: "completed",
@@ -73,6 +79,43 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
     });
   }
 
+  if (allowed("roon_show_zones")) {
+    server.registerTool("roon_show_zones", {
+      title: "Show Roon Zones",
+      description: "Use this when the user wants a visual overview of every Roon zone, its playback state, grouped outputs, current media, volume, mute state, safe limit and playback options. Do not use it to change playback, volume or grouping.",
+      inputSchema: {},
+      outputSchema: {
+        status: z.literal("completed"), operation: z.string(), summary: z.string(),
+        view: z.literal("zones"), generated_at: z.string()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: descriptorMeta(WIDGET_V2_URIS.zones)
+    } as any, async () => {
+      try { return await renderResult("roon_show_zones", views.zones(), context); }
+      catch (error) { return errorResult("roon_show_zones", error); }
+    });
+  }
+
+  if (allowed("roon_show_queue")) {
+    server.registerTool("roon_show_queue", {
+      title: "Show Roon Queue",
+      description: "Use this when the user wants to see what is coming next in one named Roon zone. It displays the current zone context and a bounded queue snapshot; it never skips, removes, reorders or starts an item.",
+      inputSchema: {
+        zone: referenceSchema,
+        count: z.number().int().min(1).max(100).default(30)
+      },
+      outputSchema: {
+        status: z.literal("completed"), operation: z.string(), summary: z.string(),
+        view: z.literal("queue"), generated_at: z.string()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: descriptorMeta(WIDGET_V2_URIS.queue)
+    } as any, async (input: any) => {
+      try { return await renderResult("roon_show_queue", await views.queue(input), context); }
+      catch (error) { return errorResult("roon_show_queue", error); }
+    });
+  }
+
   if (allowed("roon_show_media")) {
     server.registerTool("roon_show_media", {
       title: "Show Music Information",
@@ -114,6 +157,26 @@ export function registerWidgetV2Tools(server: McpServer, context: BridgeV2Contex
     } as any, async (input: any) => {
       try { return await renderResult("roon_show_playlist", views.playlist(input), context); }
       catch (error) { return errorResult("roon_show_playlist", error); }
+    });
+  }
+
+  if (allowed("roon_show_playlist_library")) {
+    server.registerTool("roon_show_playlist_library", {
+      title: "Show Playlist Library",
+      description: "Use this when the user wants to browse or see an overview of saved RoonIA virtual playlists. It displays covers, descriptions, track counts, known duration and recent playback; use roon_show_playlist for one exact playlist.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(60).default(24),
+        offset: z.number().int().min(0).default(0)
+      },
+      outputSchema: {
+        status: z.literal("completed"), operation: z.string(), summary: z.string(),
+        view: z.literal("playlist_library"), generated_at: z.string()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: descriptorMeta(WIDGET_V2_URIS.playlistLibrary)
+    } as any, async (input: any) => {
+      try { return await renderResult("roon_show_playlist_library", views.playlistLibrary(input), context); }
+      catch (error) { return errorResult("roon_show_playlist_library", error); }
     });
   }
 }

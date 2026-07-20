@@ -5,7 +5,7 @@ const {
   WIDGET_V2_URIS
 } = require("../dist/bridge-v2/widgets/resources");
 
-test("serves three minimal read-only v18 widget resources", async () => {
+test("serves six focused read-only v19 widget resources", async () => {
   const resources = new Map();
   const server = {
     registerResource(name, uri, options, handler) {
@@ -15,9 +15,13 @@ test("serves three minimal read-only v18 widget resources", async () => {
 
   registerWidgetV2Resources(server);
   assert.deepEqual([...resources.keys()].sort(), Object.values(WIDGET_V2_URIS).sort());
-  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v18\/now-playing\.html$/);
-  assert.match(WIDGET_V2_URIS.media, /\/v18\/media\.html$/);
-  assert.match(WIDGET_V2_URIS.playlist, /\/v18\/playlist\.html$/);
+  assert.equal(Object.keys(WIDGET_V2_URIS).length, 6);
+  assert.match(WIDGET_V2_URIS.nowPlaying, /\/v19\/now-playing\.html$/);
+  assert.match(WIDGET_V2_URIS.media, /\/v19\/media\.html$/);
+  assert.match(WIDGET_V2_URIS.playlist, /\/v19\/playlist\.html$/);
+  assert.match(WIDGET_V2_URIS.playlistLibrary, /\/v19\/playlist-library\.html$/);
+  assert.match(WIDGET_V2_URIS.queue, /\/v19\/queue\.html$/);
+  assert.match(WIDGET_V2_URIS.zones, /\/v19\/zones\.html$/);
 
   for (const uri of Object.values(WIDGET_V2_URIS)) {
     const response = await resources.get(uri).handler();
@@ -36,6 +40,10 @@ test("serves three minimal read-only v18 widget resources", async () => {
     assert.match(resource.text, /function placeholder/);
     assert.match(resource.text, /output\.volume/);
     assert.match(resource.text, /loading="lazy"/);
+    assert.match(resource.text, /function renderPlaylistLibrary/);
+    assert.match(resource.text, /function renderQueue/);
+    assert.match(resource.text, /function renderZones/);
+    assert.match(resource.text, /L.mite seguro/);
 
     assert.doesNotMatch(resource.text, /tools\/call/);
     assert.doesNotMatch(resource.text, /window\.openai\.callTool/);

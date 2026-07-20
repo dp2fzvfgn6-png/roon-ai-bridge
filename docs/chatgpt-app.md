@@ -1,6 +1,6 @@
 # ChatGPT App
 
-> Current status: MCP v2 and widget v18 are available for ChatGPT connection.
+> Current status: MCP v2 and widget v19 are available for ChatGPT connection.
 > Use `Settings -> Connections` in the portal as the authoritative setup and
 > OAuth administration surface.
 
@@ -54,15 +54,15 @@ The MCP server exposes tools for:
 - Queue snapshots and queue mutations.
 - Local virtual playlists.
 
-The server registers three focused Apps SDK widget resources under:
+The server registers six focused MCP Apps widget resources under:
 
 ```text
-ui://roon-ai-bridge/v18/
+ui://roon-ai-bridge/v19/
 ```
 
 When tool schemas, descriptions or widget behavior change, refresh the ChatGPT
 app configuration and start a new conversation. ChatGPT can keep older tool
-metadata cached even after the backend deploy succeeds; the versioned v18
+metadata cached even after the backend deploy succeeds; the versioned v19
 resource URIs invalidate the widget cache.
 
 ## ChatGPT Developer Setup (public URL mode)
@@ -187,6 +187,27 @@ Muéstrame la playlist Focus.
 ```
 
 Expected tool: `roon_show_playlist`.
+
+```text
+Muestra mi biblioteca de playlists.
+```
+
+Expected tool: `roon_show_playlist_library`. It shows saved RoonIA playlists
+with artwork, description, track count, known duration and recent playback.
+
+```text
+Que viene a continuacion en Despacho?
+```
+
+Expected tool: `roon_show_queue` with `zone: { "name": "Despacho" }`. It
+shows one bounded queue snapshot without changing playback.
+
+```text
+Muestra el panel de zonas.
+```
+
+Expected tool: `roon_show_zones`. It shows every zone, grouped output, current
+media, volume, mute state, playback options and active safe-volume limit.
 
 ```text
 Reproduce Bad Bunny en Despacho.

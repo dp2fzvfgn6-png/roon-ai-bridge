@@ -4,9 +4,9 @@ The active MCP endpoint is implemented by `src/bridge-v2`. The previous
 `src/mcp/mcpTools.ts` catalog is retained temporarily as disconnected legacy
 code and is not registered by either Streamable HTTP or stdio.
 
-The v2 facade combines a compact intent catalog with three focused interactive
-surfaces. Core actions remain reusable data tools; widgets call those same
-actions instead of exposing a second model-visible action catalog.
+The v2 facade combines a compact intent catalog with six focused read-only
+surfaces. Core actions remain reusable data tools, while each widget hydrates
+one bounded result without exposing a second action catalog.
 
 ## Design rules
 
@@ -87,12 +87,15 @@ Configuration and operations:
 Widget entry points visible to the model:
 
 - `roon_show_now_playing`
+- `roon_show_zones`
+- `roon_show_queue`
 - `roon_show_media`
 - `roon_show_playlist`
+- `roon_show_playlist_library`
 
 The widgets are read-only and contain no interactive tool calls or polling.
-The three focused resources are cache-busted under
-`ui://roon-ai-bridge/v18/` and support both
+The six focused resources are cache-busted under
+`ui://roon-ai-bridge/v19/` and support both
 the MCP Apps `ui/notifications/*` bridge and ChatGPT compatibility globals.
 
 ## Running locally

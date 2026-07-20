@@ -18,8 +18,8 @@ The current v0.9 goal is intentionally narrow:
 - Start playback from a simple query.
 - Read queue snapshots and perform basic queue actions.
 - Store and play local virtual playlists.
-- Expose 30 canonical intent tools over stdio and Streamable HTTP.
-- Offer three model-visible widget entry points and app-only internal navigation.
+- Expose 35 canonical intent tools over stdio and Streamable HTTP.
+- Offer six model-visible read-only widget entry points.
 - Resolve zone/output names and query-to-action flows inside one MCP call.
 - Optionally protect the HTTP API with a Bearer API token.
 - Authorize a private ChatGPT app with OAuth authorization code and PKCE.

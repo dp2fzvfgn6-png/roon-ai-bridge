@@ -339,6 +339,31 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
+  router.post("/playlists/:playlist_id/tracks/:track_id/play", async (req, res, next) => {
+    try {
+      context.logger.info("Virtual playlist track playback request received", {
+        playlistId: req.params.playlist_id,
+        trackId: req.params.track_id,
+        zoneId: req.body?.zone_id,
+        mode: req.body?.mode
+      });
+      res.json(
+        await context.playlistService.playPlaylistTrack(
+          context.roonClient,
+          req.params.playlist_id,
+          req.params.track_id,
+          req.body || {},
+          {
+            mediaService: context.mediaService,
+            logger: context.logger
+          }
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.patch("/playlists/:playlist_id/tracks/:track_id", (req, res, next) => {
     try {
       res.json(

@@ -48,6 +48,7 @@ test("serves portal assets publicly but protects every administration endpoint",
   let debugMode = false;
   let updateChannel = "stable";
   let temporaryPlaylistExpiryDays = 7;
+  let playlistTrackPlaybackInput = null;
   const systemManagementService = {
     getSystemInfo: () => ({
       version: "0.17.2",
@@ -101,7 +102,11 @@ test("serves portal assets publicly but protects every administration endpoint",
         limit: 100,
         offset: 0,
         include_tracks: false
-      })
+      }),
+      playPlaylistTrack: async (_roonClient, playlistId, trackId, input) => {
+        playlistTrackPlaybackInput = { playlistId, trackId, input };
+        return { ok: true, playlist_id: playlistId, track_id: trackId, mode: input.mode };
+      }
     },
     oauthService: new OAuthService(config),
     mediaService: {},
@@ -128,8 +133,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260717\.7"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260717\.7"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260720\.1"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260720\.1"/);
+    assert.match(portalPageText, /id="playback-actions-popover"[^>]*popover="auto"[^>]*hidden/);
+    assert.doesNotMatch(portalPageText, /id="playback-actions-dialog"/);
     assert.match(portalPageText, /id="version-badge">v—<\/small>/);
     assert.doesNotMatch(portalPageText, /id="command-status"/);
     assert.match(portalPageText, /id="toast-region"[^>]*aria-atomic="true"/);
@@ -224,6 +231,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\[data-debug-only\]\[hidden\]/);
     assert.match(portalStylesText, /\.debug-panel/);
     assert.match(portalStylesText, /\.playlist-lifecycle-badge/);
+    assert.match(portalStylesText, /\.playback-popover/);
+    assert.match(portalStylesText, /\.playlist-track-row/);
+    assert.match(portalStylesText, /\.track-technical/);
     assert.doesNotMatch(portalStylesText, /\.command-status/);
 
     const portalScript = await fetch(`${baseUrl}/app.js`);
@@ -232,7 +242,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     const portalScriptText = await portalScript.text();
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /active-zone-select/);
-    assert.match(portalScriptText, /data-play-mode="play_next"/);
+    assert.match(portalScriptText, /\["replace_queue","play_next","append"\]/);
     assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
     assert.match(portalScriptText, /SEARCH_CATEGORIES = \[\{type:"artist",count:6\}/);
     assert.match(portalScriptText, /state\.searchController\?\.abort\(\)/);
@@ -272,6 +282,20 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /playlist-collage/);
     assert.match(portalScriptText, /playlistDurationLabel\(item\)/);
     assert.match(portalScriptText, /al menos /);
+    assert.match(portalScriptText, /playlist\.tracks_count\} canciones\$\{duration/);
+    assert.match(portalScriptText, /function playlistModalHead/);
+    assert.match(portalScriptText, /data-playlist-actions/);
+    assert.match(portalScriptText, /Añadir al principio de la cola/);
+    assert.match(portalScriptText, /Añadir al final de la cola/);
+    assert.match(portalScriptText, /function openPlaylistTrack/);
+    assert.match(portalScriptText, /function playlistTrackDebug/);
+    assert.match(portalScriptText, /if\(!state\.debugMode\)return ""/);
+    assert.match(portalScriptText, /function playlistTrackMatches/);
+    assert.match(portalScriptText, /playlistTrackMatches\(track,item\)/);
+    assert.match(portalScriptText, /data-toggle-reorder/);
+    assert.match(portalScriptText, /tracks\/reorder/);
+    assert.match(portalScriptText, /playlistForm\(state\.selectedPlaylist,\{context:true\}\)/);
+    assert.doesNotMatch(portalScriptText, /esc\(track\.resolution\?\.status\|\|""\)/);
     assert.match(portalScriptText, /<h3>\$\{esc\(item\.name\)\}<\/h3><div class="playlist-meta">[\s\S]*<\/div><p title=/);
     assert.match(portalScriptText, /uniqueKeys\.length >= 16 \? 4 : uniqueKeys\.length >= 10 \? 3 : 2/);
     assert.match(portalScriptText, /capacity = columns \* columns/);
@@ -441,6 +465,21 @@ test("serves portal assets publicly but protects every administration endpoint",
       headers: { Authorization: `Bearer ${setupBody.token}` }
     });
     assert.equal((await debugSession.json()).debug_mode, true);
+
+    const playlistTrackPlayback = await fetch(`${baseUrl}/api/playlists/evening/tracks/song-1/play`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${setupBody.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ zone_id: "office", mode: "add_next" })
+    });
+    assert.equal(playlistTrackPlayback.status, 200);
+    assert.deepEqual(playlistTrackPlaybackInput, {
+      playlistId: "evening",
+      trackId: "song-1",
+      input: { zone_id: "office", mode: "add_next" }
+    });
 
     const playlistPreferences = await fetch(`${baseUrl}/api/admin/system/playlist-preferences`, {
       method: "PATCH",

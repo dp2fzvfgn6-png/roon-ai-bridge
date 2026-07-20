@@ -12,8 +12,19 @@ export type QueueItem = {
   queue_item_id?: number | string;
   title?: string;
   subtitle?: string;
+  artist?: string;
+  album?: string;
   image_key?: string | null;
+  one_line?: QueueItemDisplayLines;
+  two_line?: QueueItemDisplayLines;
+  three_line?: QueueItemDisplayLines;
   [key: string]: unknown;
+};
+
+type QueueItemDisplayLines = {
+  line1?: string;
+  line2?: string;
+  line3?: string;
 };
 
 export type QueueSnapshot = {
@@ -31,10 +42,41 @@ function asQueueItems(msg: Record<string, unknown>): QueueItem[] {
   ];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate as QueueItem[];
+    if (Array.isArray(candidate)) return candidate.map(normalizeQueueItem);
   }
 
   return [];
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function displayLines(value: unknown): QueueItemDisplayLines {
+  return value && typeof value === "object"
+    ? value as QueueItemDisplayLines
+    : {};
+}
+
+function normalizeQueueItem(value: unknown): QueueItem {
+  const item = value && typeof value === "object"
+    ? value as QueueItem
+    : {};
+  const oneLine = displayLines(item.one_line);
+  const twoLine = displayLines(item.two_line);
+  const threeLine = displayLines(item.three_line);
+  const title = text(item.title) || text(threeLine.line1) || text(twoLine.line1) || text(oneLine.line1);
+  const artist = text(item.artist) || text(threeLine.line2) || text(twoLine.line2);
+  const album = text(item.album) || text(threeLine.line3);
+  const subtitle = text(item.subtitle) || artist;
+
+  return {
+    ...item,
+    ...(title ? { title } : {}),
+    ...(artist ? { artist } : {}),
+    ...(album ? { album } : {}),
+    ...(subtitle ? { subtitle } : {})
+  };
 }
 
 export async function getQueueSnapshot(

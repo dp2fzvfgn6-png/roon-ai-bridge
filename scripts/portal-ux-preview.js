@@ -38,10 +38,10 @@ const media = [
   { result_id:"artist-radiohead",media_type:"artist",title:"Radiohead",subtitle:"Oxford, England",artist:"Radiohead",image_key:"radio",source:"library",is_library:true },
   { result_id:"album-moon",media_type:"album",title:"Moon Safari",subtitle:"AIR · 1998",artist:"AIR",image_key:"moon",source:"qobuz",release_type:"album",release_type_source:"roon_metadata",quality:{label:"24-bit / 96 kHz"} },
   { result_id:"album-rainbows",media_type:"album",title:"In Rainbows",subtitle:"Radiohead · 2007",artist:"Radiohead",image_key:"radio",source:"library",release_type:"album",release_type_source:"roon_metadata",is_library:true },
-  { result_id:"track-femme",media_type:"track",title:"La femme d'argent",artist:"AIR",album:"Moon Safari",image_key:"moon",source:"qobuz",is_best_match:true,quality:{label:"24-bit / 96 kHz"} },
-  { result_id:"track-weird",media_type:"track",title:"Weird Fishes / Arpeggi",artist:"Radiohead",album:"In Rainbows",image_key:"radio",source:"library",is_library:true },
-  { result_id:"track-hand",media_type:"track",title:"Red Right Hand",artist:"Nick Cave & The Bad Seeds",album:"Let Love In",image_key:"cave",source:"tidal" },
-  { result_id:"track-repetition",media_type:"track",title:"Repetition",artist:"Max Cooper, Tom Hodge",artists:[{type:"artist",title:"Max Cooper",artist:null,result_id:"artist-cooper"},{type:"artist",title:"Tom Hodge",artist:null,result_id:null}],album:"Yearning for the Infinite",image_key:"cooper",source:"qobuz",quality:{label:"24-bit / 96 kHz"} },
+  { result_id:"track-femme",media_type:"track",title:"La femme d'argent",artist:"AIR",album:"Moon Safari",image_key:"moon",source:"qobuz",duration_seconds:443,release_year:1998,genre:"Electronic",is_best_match:true,quality:{label:"24-bit / 96 kHz"} },
+  { result_id:"track-weird",media_type:"track",title:"Weird Fishes / Arpeggi",artist:"Radiohead",album:"In Rainbows",image_key:"radio",source:"library",duration_seconds:318,release_year:2007,is_library:true },
+  { result_id:"track-hand",media_type:"track",title:"Red Right Hand",artist:"Nick Cave & The Bad Seeds",album:"Let Love In",image_key:"cave",source:"tidal",duration_seconds:368,release_year:1994 },
+  { result_id:"track-repetition",media_type:"track",title:"Repetition",artist:"Max Cooper, Tom Hodge",artists:[{type:"artist",title:"Max Cooper",artist:null,result_id:"artist-cooper"},{type:"artist",title:"Tom Hodge",artist:null,result_id:null}],album:"Yearning for the Infinite",image_key:"cooper",source:"qobuz",duration_seconds:354,release_year:2019,quality:{label:"24-bit / 96 kHz"} },
   { result_id:"playlist-roon",media_type:"playlist",title:"Late Night Focus",subtitle:"Roon playlist · 42 tracks",image_key:"eno",source:"playlist" }
 ];
 const listeningHistory = [
@@ -65,7 +65,7 @@ const searchHistory = [
 media.push(
   ...[["artist-cave","Nick Cave & The Bad Seeds","cave"],["artist-cooper","Max Cooper","cooper"],["artist-massive","Massive Attack","massive"],["artist-kraft","Kraftwerk","kraft"],["artist-eno","Brian Eno","eno"],["artist-moderat","Moderat",null]].map(([result_id,title,image_key])=>({result_id,media_type:"artist",title,subtitle:"Artista",artist:title,image_key,source:"qobuz"})),
   ...[["album-cave","Push the Sky Away","Nick Cave & The Bad Seeds","cave","album"],["album-cooper","Unspoken Words","Max Cooper","cooper","album"],["album-massive","Mezzanine","Massive Attack","massive","album"],["album-kraft","The Man-Machine","Kraftwerk","kraft","album"],["album-eno","Ambient 1","Brian Eno","eno","ep"],["album-moderat","II","Moderat","moderat","single"]].map(([result_id,title,artist,image_key,release_type])=>({result_id,media_type:"album",title,subtitle:`${artist} · ${release_type==="ep"?"EP":release_type==="single"?"Single":"Álbum"}`,artist,image_key,source:"qobuz",release_type,release_type_source:"roon_metadata"})),
-  ...Array.from({length:12},(_,index)=>({result_id:`track-preview-${index}`,media_type:"track",title:`Pista destacada ${index+1}`,artist:index%2?"Radiohead":"AIR",album:index%2?"In Rainbows":"Moon Safari",image_key:index%2?"radio":"moon",source:"library"}))
+  ...Array.from({length:12},(_,index)=>({result_id:`track-preview-${index}`,media_type:"track",title:`Pista destacada ${index+1}`,artist:index%2?"Radiohead":"AIR",album:index%2?"In Rainbows":"Moon Safari",image_key:index%2?"radio":"moon",source:"library",duration_seconds:210+index*7}))
 );
 function previewGroupKey(item) { return item.media_type==="album"&&["ep","single_ep","single"].includes(item.release_type)?item.release_type:item.media_type; }
 function previewSearchPayload(query, requestedTypes = null) {
@@ -83,10 +83,10 @@ function previewSearchPayload(query, requestedTypes = null) {
   return {query:query||"radiohead",source_preference:"highest_quality",results,groups,best_match:results.find((item)=>item.result_id===best?.result_id)||null,best_by_type,ambiguous:false,ambiguity_reason:null,recommended_result_id:best?.result_id||null,selection_required:false,warnings:[]};
 }
 const playlists = [
-  { playlist_id:"night",name:"After dark",description:"Electronic, ambient and slow-burning records for late sessions, dim lights and long transitions that keep unfolding without breaking the mood.",cover_image_key:"cooper",tracks_count:28,last_played_at:"2026-07-13T19:40:00Z",tracks:[] },
-  { playlist_id:"sunday",name:"Sunday morning",description:"Quiet records for a slow start.",cover_image_key:"eno",tracks_count:19,last_played_at:"2026-07-12T09:15:00Z",tracks:[] },
-  { playlist_id:"essentials",name:"All-time essentials",description:"Records that never leave the rotation.",cover_image_key:"massive",tracks_count:64,last_played_at:null,tracks:[] },
-  { playlist_id:"machines",name:"Machines & humans",description:"Krautrock, electro and modern minimalism.",cover_image_key:"kraft",tracks_count:35,last_played_at:"2026-07-10T17:30:00Z",tracks:[] }
+  { playlist_id:"night",name:"After dark",description:"Electronic, ambient and slow-burning records for late sessions, dim lights and long transitions that keep unfolding without breaking the mood.",cover_image_key:"cooper",tracks_count:28,track_count:28,total_duration_seconds:7040,duration_known_track_count:28,last_played_at:"2026-07-13T19:40:00Z",tracks:[] },
+  { playlist_id:"sunday",name:"Sunday morning",description:"Quiet records for a slow start.",cover_image_key:"eno",tracks_count:19,track_count:19,total_duration_seconds:4750,duration_known_track_count:19,last_played_at:"2026-07-12T09:15:00Z",tracks:[] },
+  { playlist_id:"essentials",name:"All-time essentials",description:"Records that never leave the rotation.",cover_image_key:"massive",tracks_count:64,track_count:64,total_duration_seconds:15980,duration_known_track_count:64,last_played_at:null,tracks:[] },
+  { playlist_id:"machines",name:"Machines & humans",description:"Krautrock, electro and modern minimalism.",cover_image_key:"kraft",tracks_count:35,track_count:35,total_duration_seconds:8860,duration_known_track_count:35,last_played_at:"2026-07-10T17:30:00Z",tracks:[] }
 ];
 const customCovers = new Map();
 const keys = [
@@ -125,7 +125,11 @@ app.patch("/api/playlists/:id",(req,res)=>{const p=playlists.find(x=>x.playlist_
 app.post("/api/playlists/:id/cover",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];const match=String(req.body.data_url||"").match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);if(match){const id=`preview-${Date.now()}.${match[1].split('/')[1]}`;customCovers.set(id,{type:match[1],bytes:Buffer.from(match[2],"base64")});p.cover_image_key=`custom:${id}`;}res.json(p);});
 app.delete("/api/playlists/:id/cover",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];p.cover_image_key=null;res.json(p);});
 app.get("/api/playlists/covers/:id",(req,res)=>{const image=customCovers.get(req.params.id);if(!image)return res.sendStatus(404);res.type(image.type).send(image.bytes);});
-app.get("/api/playlists/:id",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];res.json({...p,tracks:media.filter(x=>x.media_type==="track").map((x,i)=>({track_id:`t${i}`,title:x.title,artist:x.artist,album:x.album,image_key:x.image_key,query:`${x.title} ${x.artist}`}))});});
+function previewPlaylistDetail(p){const tracks=media.filter(x=>x.media_type==="track").map((x,i)=>({track_id:`t${i}`,title:x.title,artist:x.artist,album:x.album,image_key:x.image_key,query:`${x.title} ${x.artist}`,audio_metadata:{...x},identity:{duration_seconds:x.duration_seconds||null,release_year:x.release_year||null,source:x.source||null},resolution:{status:"resolved",selected_result_id:x.result_id},roon_binding:{state:"stale",item_key:null,reusable:false,last_observed_at:null}}));const ordered=p.preview_track_order?.map((id)=>tracks.find((track)=>track.track_id===id)).filter(Boolean)||tracks;return {...p,tracks:ordered};}
+app.get("/api/playlists/:id",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];res.json(previewPlaylistDetail(p));});
+app.post("/api/playlists/:id/tracks/reorder",(req,res)=>{const p=playlists.find(x=>x.playlist_id===req.params.id)||playlists[0];p.preview_track_order=Array.isArray(req.body.track_ids)?req.body.track_ids:null;res.json(previewPlaylistDetail(p));});
+app.post("/api/playlists/:id/tracks/:trackId/play",(_req,res)=>res.json({ok:true}));
+app.post("/api/playlists/:id/play",(_req,res)=>res.json({ok:true}));
 app.get("/api/roon/library",(_req,res)=>res.json({list:{title:"Recently added",count:8},items:Object.entries(albums).map(([key,v])=>({item_key:key,title:v[2],subtitle:v[3],image_key:key,hint:"list"}))}));
 app.get("/api/roon/queue/:id",(_req,res)=>res.json({items:media.filter(x=>x.media_type==="track")}));
 app.get("/api/zone-presets",(_req,res)=>res.json([{preset_id:"whole-house",name:"Toda la casa",description:"Salón y cocina sincronizados",grouping:{members:[1,2]},volumes:[1,2]},{preset_id:"work",name:"Concentración",description:"Despacho a volumen bajo",grouping:{members:[1]},volumes:[1]}]));

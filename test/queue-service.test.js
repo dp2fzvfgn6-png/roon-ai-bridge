@@ -41,6 +41,25 @@ test("queue snapshots respect max_item_count", async () => {
   assert.equal(result.items.length, 5);
 });
 
+test("queue snapshots expose Roon display lines as track metadata", async () => {
+  const rawItem = {
+    queue_item_id: 41,
+    length: 289,
+    image_key: "queue-cover",
+    one_line: { line1: "Pyramid Song - Radiohead" },
+    two_line: { line1: "Pyramid Song", line2: "Radiohead" },
+    three_line: { line1: "Pyramid Song", line2: "Radiohead", line3: "Amnesiac" }
+  };
+  const result = await getQueueSnapshot(queueClient({ office: [rawItem] }), "office", 10);
+
+  assert.equal(result.items[0].title, "Pyramid Song");
+  assert.equal(result.items[0].artist, "Radiohead");
+  assert.equal(result.items[0].album, "Amnesiac");
+  assert.equal(result.items[0].subtitle, "Radiohead");
+  assert.deepEqual(result.items[0].three_line, rawItem.three_line);
+  assert.deepEqual(result.raw.items, [rawItem]);
+});
+
 test("queue snapshots allow empty queues and reject missing zones", async () => {
   const client = queueClient({ office: [] });
   const empty = await getQueueSnapshot(client, "office", 10);

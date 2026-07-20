@@ -109,7 +109,7 @@ playlists and API-key database without registering a second extension.
 10. The transport service subscribes to zones.
 11. The browse service is available when Roon exposes `RoonApiBrowse`.
 12. API routes use Roon services to list zones, control playback, control volume, browse the library, search, play by query, manage the queue and play virtual playlists.
-13. `src/mcp/index.ts` launches the `bridge-v2` server with `npm run mcp` and exposes 30 canonical intents plus focused widget entry points over stdio.
+13. `src/mcp/index.ts` launches the `bridge-v2` server with `npm run mcp` and exposes 35 canonical intents plus six focused widget entry points over stdio.
 14. Typed search creates short-lived `result_id` references and re-resolves selected media in a fresh Roon Browse session before acting.
 15. `POST /mcp` and `GET /mcp` expose the same MCP v2 tools and cache-busted widget resources over Streamable HTTP.
 

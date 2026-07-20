@@ -138,7 +138,7 @@ test("registers the compact MCP v2 intent catalog", () => {
     assert.equal(tools.has(legacy), false, `${legacy} should not be exposed`);
 });
 
-test("read-only MCP credentials expose query tools and the three read-only widgets", () => {
+test("read-only MCP credentials expose query tools and the six read-only widgets", () => {
   const tools = new Map();
   const server = { registerTool(name, options) { tools.set(name, options); } };
   const context = {
@@ -159,15 +159,18 @@ test("read-only MCP credentials expose query tools and the three read-only widge
   assert.equal(tools.has("roon_set_playlist_cover"), false);
   assert.equal(tools.has("roon_play_media"), false);
   assert.ok(tools.has("roon_show_now_playing"));
+  assert.ok(tools.has("roon_show_zones"));
+  assert.ok(tools.has("roon_show_queue"));
   assert.ok(tools.has("roon_show_media"));
   assert.ok(tools.has("roon_show_playlist"));
+  assert.ok(tools.has("roon_show_playlist_library"));
   assert.equal(tools.has("roon_open_player"), false);
   assert.equal(tools.has("roon_ui_action"), false);
   assert.equal(tools.has("roon_ui_navigate"), false);
   for (const tool of tools.values()) assert.equal(tool.annotations.readOnlyHint, true);
 });
 
-test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render tools", async () => {
+test("HTTP MCP tools/list exposes v2 intents plus six focused read-only render tools", async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-mcp-v2-"));
   const config = createConfig(dataDir);
   const database = createDatabase(config);
@@ -190,7 +193,7 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 38);
+    assert.equal(tools.size, 41);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);
@@ -222,10 +225,17 @@ test("HTTP MCP tools/list exposes v2 intents plus three minimal read-only render
     assert.ok(savePlaylist.outputSchema.properties.status.enum.includes("needs_input"));
     assert.match(coverTool.description, /images below 768x768 are rejected/);
     assert.match(coverTool.inputSchema.properties.image_file.description, /preferred input/);
-    const renderTools = ["roon_show_now_playing", "roon_show_media", "roon_show_playlist"];
+    const renderTools = [
+      "roon_show_now_playing",
+      "roon_show_zones",
+      "roon_show_queue",
+      "roon_show_media",
+      "roon_show_playlist",
+      "roon_show_playlist_library"
+    ];
     for (const [name, tool] of tools) {
       if (renderTools.includes(name)) {
-        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v18\//);
+        assert.match(tool._meta["openai/outputTemplate"], /^ui:\/\/roon-ai-bridge\/v19\//);
         assert.deepEqual(tool._meta.ui.visibility, ["model", "app"]);
       } else {
         assert.equal(tool._meta?.["openai/outputTemplate"], undefined);

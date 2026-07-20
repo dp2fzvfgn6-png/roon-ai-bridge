@@ -2,6 +2,7 @@ import { BridgeV2Context } from "../context";
 import { TargetReference } from "../contracts";
 import { TargetResolver } from "../targetResolver";
 import { formatZone } from "../../roon/roonZoneService";
+import { getQueueSnapshot, QueueItem } from "../../roon/roonQueueService";
 import type { MediaResult, MediaType, SourcePreference } from "../../roon/roonMediaService";
 import { ApiError } from "../../utils/errors";
 
@@ -11,7 +12,10 @@ export type WidgetView =
   | "artist"
   | "album"
   | "track"
-  | "playlist";
+  | "playlist"
+  | "playlist_library"
+  | "queue"
+  | "zones";
 
 export type WidgetPayload = {
   widget_version: 3;
@@ -44,6 +48,14 @@ function normalize(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export class WidgetV2ViewService {
@@ -182,6 +194,144 @@ export class WidgetV2ViewService {
     };
   }
 
+  playlistLibrary(input: { limit?: number; offset?: number } = {}): WidgetPayload {
+    const limit = input.limit ?? 24;
+    const offset = input.offset ?? 0;
+    const result = this.context.playlistService.listPlaylists({
+      scope: "saved",
+      includeTracks: true,
+      trackLimit: 1,
+      trackOffset: 0,
+      limit,
+      offset
+    });
+    return {
+      ...basePayload("playlist_library", "Biblioteca de playlists"),
+      playlists: result.playlists.map((playlist) => {
+        const firstTrack = playlist.tracks?.[0];
+        return {
+          playlist_id: playlist.playlist_id,
+          name: playlist.name,
+          description: playlist.description,
+          track_count: playlist.track_count,
+          total_duration_seconds: playlist.total_duration_seconds,
+          duration_known_track_count: playlist.duration_known_track_count,
+          last_played_at: playlist.last_played_at,
+          updated_at: playlist.updated_at,
+          ...artwork(playlist.cover_image_key || firstTrack?.image_key || null)
+        };
+      }),
+      pagination: {
+        offset: result.offset,
+        returned: result.playlists.length,
+        total: result.total,
+        has_more: result.offset + result.playlists.length < result.total
+      }
+    };
+  }
+
+  async queue(input: { zone: TargetReference; count?: number }): Promise<WidgetPayload> {
+    const zone = this.targets.zone(input.zone);
+    const formatted = formatZone(zone);
+    const snapshot = await getQueueSnapshot(
+      this.context.roonClient,
+      zone.zone_id,
+      input.count ?? 30
+    );
+    const items = snapshot.items.map((item, index) => this.queueItem(item, index));
+    const knownDurations = items
+      .map((item) => item.duration_seconds)
+      .filter((value): value is number => typeof value === "number");
+    return {
+      ...basePayload("queue", `A continuación · ${formatted.display_name}`),
+      zone: {
+        zone_id: formatted.zone_id,
+        name: formatted.display_name,
+        state: formatted.state,
+        now_playing: {
+          title: formatted.now_playing.line1,
+          artist: formatted.now_playing.line2,
+          album: formatted.now_playing.line3,
+          seek_position: formatted.now_playing.seek_position,
+          length: formatted.now_playing.length,
+          ...artwork(formatted.now_playing.image_key)
+        }
+      },
+      items,
+      total_duration_seconds: knownDurations.length
+        ? knownDurations.reduce((sum, value) => sum + value, 0)
+        : null,
+      duration_known_item_count: knownDurations.length,
+      returned: items.length,
+      truncated: snapshot.items.length >= snapshot.max_item_count
+    };
+  }
+
+  zones(): WidgetPayload {
+    const stateOrder: Record<string, number> = {
+      playing: 0,
+      loading: 1,
+      paused: 2,
+      stopped: 3
+    };
+    const zones = this.context.roonClient.getZones()
+      .map((zone) => {
+        const formatted = formatZone(zone);
+        return {
+          zone_id: formatted.zone_id,
+          name: formatted.display_name,
+          state: formatted.state,
+          media: {
+            title: formatted.now_playing.line1,
+            artist: formatted.now_playing.line2,
+            album: formatted.now_playing.line3,
+            seek_position: formatted.now_playing.seek_position,
+            length: formatted.now_playing.length,
+            ...artwork(formatted.now_playing.image_key)
+          },
+          outputs: formatted.outputs.map((output) => {
+            const activeLimit = this.context.volumeLimitService?.findActiveLimit(zone, output) || null;
+            return {
+              output_id: output.output_id,
+              name: output.display_name,
+              volume: output.volume
+                ? {
+                    value: output.volume.value ?? null,
+                    type: output.volume.type ?? null,
+                    min: output.volume.min ?? null,
+                    max: output.volume.max ?? null,
+                    muted: Boolean(output.volume.is_muted)
+                  }
+                : null,
+              safe_limit: activeLimit
+                ? { limit_id: activeLimit.limit_id, name: activeLimit.name, safe_max: activeLimit.safe_max }
+                : null
+            };
+          }),
+          playback_settings: formatted.playback_settings
+        };
+      })
+      .sort((left, right) =>
+        (stateOrder[left.state] ?? 9) - (stateOrder[right.state] ?? 9) ||
+        left.name.localeCompare(right.name, "es")
+      );
+    const states = zones.reduce<Record<string, number>>((counts, zone) => {
+      counts[zone.state] = (counts[zone.state] || 0) + 1;
+      return counts;
+    }, {});
+    return {
+      ...basePayload("zones", "Panel de zonas"),
+      core: {
+        name: this.context.roonClient.getCoreName(),
+        connected: this.context.roonClient.isCoreConnected(),
+        transport_ready: this.context.roonClient.isTransportReady()
+      },
+      zone_count: zones.length,
+      states,
+      zones
+    };
+  }
+
   private async mediaEntity(resultId: string, count = 50): Promise<WidgetPayload> {
     const media = this.context.mediaService.get(resultId);
     if (media.media_type === "artist") {
@@ -240,6 +390,20 @@ export class WidgetV2ViewService {
       is_best_match: media.is_best_match,
       links: media.links,
       ...artwork(media.image_key)
+    };
+  }
+
+  private queueItem(item: QueueItem, index: number): Record<string, unknown> {
+    const raw = item as Record<string, unknown>;
+    return {
+      queue_item_id: item.queue_item_id ?? null,
+      position: index + 1,
+      title: optionalString(item.title) || "Sin título",
+      artist: optionalString(raw.artist) || optionalString(item.subtitle),
+      album: optionalString(raw.album),
+      subtitle: optionalString(item.subtitle),
+      duration_seconds: optionalNumber(raw.duration_seconds) ?? optionalNumber(raw.length),
+      ...artwork(item.image_key)
     };
   }
 

@@ -5,6 +5,13 @@ each release lives under [`docs/`](docs/README.md).
 
 ## 0.17.3 Beta - Unreleased
 
+- Expanded the MCP Apps surface from three to six focused read-only widgets
+  with a saved-playlist library, a bounded per-zone queue and an all-zone
+  dashboard with grouped outputs, playback options and active safe limits.
+- Normalized Roon queue display lines into title, artist and album fields so
+  the portal and MCP queue views show track metadata instead of generic rows.
+- Cache-busted the shared widget renderer under `ui://roon-ai-bridge/v19/` and
+  kept artwork private in result metadata for every new view.
 - Added temporary working playlists for activity, mood and occasion requests.
   They use the same strict batched recording preflight as saved playlists, stay
   out of normal playlist listings and can replace or extend the Roon queue.

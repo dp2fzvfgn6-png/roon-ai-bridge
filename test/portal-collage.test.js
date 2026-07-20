@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 function loadCollageRuntime() {
   const source = fs.readFileSync(path.join(__dirname, "..", "portal", "app.js"), "utf8");
-  const prefix = source.slice(0, source.indexOf("function enhancePlaylistTrackActions"));
+  const prefix = source.slice(0, source.indexOf("const portalObserver"));
   const collages = [];
   const intervals = [];
   const document = {

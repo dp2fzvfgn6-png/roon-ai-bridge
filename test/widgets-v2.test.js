@@ -59,7 +59,7 @@ function output(id, name, value, muted = false) {
 }
 
 function fixture() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v18-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-widget-v19-"));
   const config = { dataDir, publicBaseUrl: "https://example.test", enableAuth: false, apiToken: null };
   const database = createDatabase(config);
   const playlists = new PlaylistService(config, database);
@@ -98,14 +98,33 @@ function fixture() {
       getZone: (id) => zones.find((item) => item.zone_id === id) || null,
       getOutputs: () => outputs,
       getOutput: (id) => outputs.find((item) => item.output_id === id) || null,
-      getTransport: () => ({}),
+      getTransport: () => ({
+        subscribe_queue(zone, count, callback) {
+          callback("Subscribed", {
+            items: [{
+              queue_item_id: 41,
+              length: 289,
+              image_key: "queue-cover",
+              one_line: { line1: "Pyramid Song - Radiohead" },
+              two_line: { line1: "Pyramid Song", line2: "Radiohead" },
+              three_line: { line1: "Pyramid Song", line2: "Radiohead", line3: "Amnesiac" }
+            }].slice(0, count)
+          });
+          return { unsubscribe(done) { if (done) done(); } };
+        }
+      }),
       isCoreConnected: () => true,
       getCoreName: () => "Test Core",
-      isTransportReady: () => false,
+      isTransportReady: () => true,
       isBrowseReady: () => true,
       isImageReady: () => true
     },
     playlistService: playlists,
+    volumeLimitService: {
+      findActiveLimit: (_zone, candidate) => candidate.output_id === "out-left"
+        ? { limit_id: "safe-office", name: "Despacho seguro", safe_max: 25 }
+        : null
+    },
     mediaService: {
       search: async () => ({
         query: "Radiohead",
@@ -241,5 +260,59 @@ test("playlist view uses Roon artwork when the playlist has no custom cover", ()
     const view = new WidgetV2ViewService(context).playlist({ playlist: { id: "focus" } });
     assert.equal(view.playlist.image_key, "cover-1");
     assert.equal(view.playlist.image_url, null);
+  } finally { database.close(); }
+});
+
+test("playlist library returns bounded saved playlist cards and pagination", () => {
+  const { database, context } = fixture();
+  try {
+    const view = new WidgetV2ViewService(context).playlistLibrary({ limit: 1, offset: 0 });
+    assert.equal(view.view, "playlist_library");
+    assert.equal(view.playlists.length, 1);
+    assert.equal(view.playlists[0].playlist_id, "focus");
+    assert.equal(view.playlists[0].track_count, 1);
+    assert.equal(view.playlists[0].image_key, "custom:custom-cover");
+    assert.deepEqual(view.pagination, { offset: 0, returned: 1, total: 1, has_more: false });
+  } finally { database.close(); }
+});
+
+test("queue view resolves a named zone and normalizes upcoming items", async () => {
+  const { database, context } = fixture();
+  try {
+    const view = await new WidgetV2ViewService(context).queue({
+      zone: { name: "Despacho" },
+      count: 10
+    });
+    assert.equal(view.view, "queue");
+    assert.equal(view.zone.name, "Despacho");
+    assert.equal(view.zone.now_playing.title, "Everything In Its Right Place");
+    assert.equal(view.items[0].queue_item_id, 41);
+    assert.equal(view.items[0].title, "Pyramid Song");
+    assert.equal(view.items[0].artist, "Radiohead");
+    assert.equal(view.items[0].album, "Amnesiac");
+    assert.equal(view.items[0].duration_seconds, 289);
+    assert.equal(view.items[0].image_key, "queue-cover");
+    assert.equal(view.total_duration_seconds, 289);
+  } finally { database.close(); }
+});
+
+test("zones panel includes every zone, grouped outputs and active safe limits", () => {
+  const { database, context } = fixture();
+  try {
+    const view = new WidgetV2ViewService(context).zones();
+    assert.equal(view.view, "zones");
+    assert.equal(view.zone_count, 3);
+    assert.deepEqual(view.states, { playing: 2, paused: 1 });
+    assert.deepEqual(view.zones.slice(0, 2).map((item) => item.name), ["Cocina", "Despacho"]);
+    assert.equal(view.zones[2].zone_id, "zone-lounge");
+    const office = view.zones.find((item) => item.name === "Despacho");
+    assert.equal(office.outputs.length, 2);
+    assert.deepEqual(office.outputs[0].safe_limit, {
+      limit_id: "safe-office",
+      name: "Despacho seguro",
+      safe_max: 25
+    });
+    assert.equal(office.outputs[1].volume.muted, true);
+    assert.equal(office.playback_settings.loop, "disabled");
   } finally { database.close(); }
 });

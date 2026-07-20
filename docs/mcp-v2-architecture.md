@@ -2,8 +2,8 @@
 
 ## Purpose
 
-MCP v2 replaces the previous 89-tool facade with 30 canonical intent tools and
-three focused read-only widget entry points. It is a
+MCP v2 replaces the previous 89-tool facade with 35 canonical intent tools and
+six focused read-only widget entry points. It is a
 breaking contract with no legacy aliases. The HTTP API, portal and persisted
 user data remain outside this replacement.
 
@@ -23,14 +23,15 @@ The implementation lives in `src/bridge-v2`:
 - `contracts.ts` defines target/media references and the result envelope.
 - `targetResolver.ts` resolves exact accent-insensitive zone/output names or IDs.
 - `intentGateway.ts` implements complete user intentions.
-- `mcp/tools.ts` owns schemas, annotations and the 30-tool intent catalog.
+- `mcp/tools.ts` owns schemas, annotations and the 35-tool intent catalog.
 - `mcp/server.ts` owns server instructions and HTTP/stdio construction.
 - `widgets/viewService.ts` creates bounded, presentation-ready view models.
-- `widgets/tools.ts` owns three model-visible read-only display entry points.
+- `widgets/tools.ts` owns six model-visible read-only display entry points.
 - `widgets/resources.ts` owns the cache-busted MCP Apps HTML resources.
 
 The widget layer contains no mutations, controls or polling. `roon_show_now_playing`,
-`roon_show_media` and `roon_show_playlist` each produce one bounded view model.
+`roon_show_zones`, `roon_show_queue`, `roon_show_media`, `roon_show_playlist`
+and `roon_show_playlist_library` each produce one bounded view model.
 Full presentation payloads live in result `_meta`; model-visible
 `structuredContent` stays concise.
 
@@ -172,8 +173,11 @@ optional named zone in the same call. Grouped zones expose every output and its
 individual volume. `roon_show_media` returns categorized results for a generic
 query and expands an unambiguous artist, album or track in one call when one
 explicit type is supplied. `roon_show_playlist` resolves an exact name or ID
-and returns cover, description and bounded song rows. The iframe only hydrates
-the returned data and never calls another tool.
+and returns cover, description and bounded song rows. `roon_show_playlist_library`
+returns paginated saved-playlist cards, `roon_show_queue` resolves one zone and
+renders a bounded queue snapshot, and `roon_show_zones` summarizes all zones,
+grouped outputs, playback options and active safe-volume limits. The iframe only
+hydrates the returned data and never calls another tool.
 
 ## Result semantics
 
