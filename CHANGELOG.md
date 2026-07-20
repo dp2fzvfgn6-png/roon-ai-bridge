@@ -3,6 +3,10 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
+## 0.18.1 Beta - Unreleased
+
+- Development continues on the `beta` branch from the v0.18.0 stable release.
+
 ## 0.18.0 - 2026-07-20
 
 - Promoted the validated v0.18.0 beta line to the stable `main` channel.
