@@ -1,12 +1,12 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. The current stable package is v0.17.2. It extends the
+administration portal. The current stable package is v0.17.3. It extends the
 canonical MCP v2 surface with deterministic media discovery, strict playlist
-creation, richer catalog navigation and cache-busted v18 widgets.
+creation, temporary working playlists and six cache-busted v19 widgets.
 
-See the [changelog](CHANGELOG.md), [v0.17.2 release notes](docs/v0.17.2-release-notes.md)
-and [release validation](docs/v0.17.2-validation.md).
+See the [changelog](CHANGELOG.md), [v0.17.3 release notes](docs/v0.17.3-release-notes.md)
+and [release validation](docs/v0.17.3-validation.md).
 
 This project does not expose anything to the internet by itself. It does not
 implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
@@ -32,11 +32,11 @@ data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.17.2 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.17.3 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.17.2 Scope
+## v0.17.3 Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -630,6 +630,8 @@ If `/roon/status` says `browse_ready: false`, wait until Roon reconnects the ext
   playlist UX and signed artwork for v17 widgets.
 - v0.17.2: batched playlist creation, complete streaming catalog navigation,
   portal activity history, update-channel controls and embedded v18 artwork.
+- v0.17.3: temporary working playlists, complete catalog-playlist reads,
+  expanded v19 widgets and compact persistent player-zone controls.
 
 ## Security
 

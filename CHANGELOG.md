@@ -3,8 +3,9 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.17.3 Beta - Unreleased
+## 0.17.3 - 2026-07-20
 
+- Promoted the validated v0.17.3 beta line to the stable `main` channel.
 - Expanded the MCP Apps surface from three to six focused read-only widgets
   with a saved-playlist library, a bounded per-zone queue and an all-zone
   dashboard with grouped outputs, playback options and active safe limits.
@@ -25,8 +26,6 @@ each release lives under [`docs/`](docs/README.md).
   while Modo Debug is enabled.
 - Added ordered, paginated track reads for playlists selected from the native
   Roon catalog, allowing a model to compare them with saved RoonIA playlists.
-
-- Development continues on the `beta` branch from the v0.17.2 stable release.
 
 ## 0.17.2 - 2026-07-17
 
