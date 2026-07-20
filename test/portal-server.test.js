@@ -322,7 +322,9 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /playerPendingUpdates/);
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
     assert.match(portalScriptText, /miniRenderSignature===signature/);
-    assert.match(portalScriptText, /playback:playbackSignature\(zone\),position/);
+    assert.match(portalScriptText, /miniRenderSignature===signature\)\{setMiniPlayerSeekClock\(position,playing\);return;/);
+    assert.doesNotMatch(portalScriptText, /JSON\.stringify\(\{playback:playbackSignature\(zone\),position,/);
+    assert.match(portalScriptText, /playback:playbackSignature\(zone\),zones:/);
     assert.match(portalScriptText, /function setMiniPlayerSeekClock/);
     assert.match(portalScriptText, /function setRangeFill/);
     assert.match(portalScriptText, /input\.style\.setProperty\('--range-progress'/);
