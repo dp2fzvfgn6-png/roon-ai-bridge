@@ -133,9 +133,10 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260720\.1"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260720\.1"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260720\.2"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260720\.2"/);
     assert.match(portalPageText, /id="playback-actions-popover"[^>]*popover="auto"[^>]*hidden/);
+    assert.match(portalPageText, /id="mini-output-popover"[^>]*popover="auto"[^>]*hidden/);
     assert.doesNotMatch(portalPageText, /id="playback-actions-dialog"/);
     assert.match(portalPageText, /id="version-badge">v—<\/small>/);
     assert.doesNotMatch(portalPageText, /id="command-status"/);
@@ -232,6 +233,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.debug-panel/);
     assert.match(portalStylesText, /\.playlist-lifecycle-badge/);
     assert.match(portalStylesText, /\.playback-popover/);
+    assert.match(portalStylesText, /\.mini-output-popover/);
     assert.match(portalStylesText, /\.playlist-track-row/);
     assert.match(portalStylesText, /\.track-technical/);
     assert.doesNotMatch(portalStylesText, /\.command-status/);
@@ -241,7 +243,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.equal(portalScript.headers.get("cache-control"), "no-store");
     const portalScriptText = await portalScript.text();
     assert.match(portalScriptText, /data-image-key/);
-    assert.match(portalScriptText, /active-zone-select/);
+    assert.match(portalScriptText, /data-mini-select-zone/);
     assert.match(portalScriptText, /\["replace_queue","play_next","append"\]/);
     assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
     assert.match(portalScriptText, /SEARCH_CATEGORIES = \[\{type:"artist",count:6\}/);
@@ -318,6 +320,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /zone\.now_playing\|\|\{\}/);
     assert.match(portalScriptText, /data-mini-seek/);
     assert.match(portalScriptText, /data-mini-volume/);
+    assert.match(portalScriptText, /data-mini-zone-step/);
+    assert.match(portalScriptText, /miniVolumeOutputs/);
+    assert.match(portalScriptText, /Promise\.allSettled\(outputs\.map/);
+    assert.match(portalScriptText, /miniOutputStepMode\(output\)/);
+    assert.match(portalScriptText, /mode:'absolute',value/);
     assert.match(portalScriptText, /miniPlayerIsInteracting/);
     assert.match(portalScriptText, /playerPendingUpdates/);
     assert.match(portalScriptText, /if\(miniPlayerIsInteracting\(\)\)return/);
