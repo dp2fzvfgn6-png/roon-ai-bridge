@@ -1,6 +1,6 @@
 {
   "name": "roon-ai-bridge",
-  "version": "0.17.3",
+  "version": "0.18.0",
   "description": "Roon bridge with native extension settings, advanced transport control and a secure administration portal.",
   "main": "dist/index.js",
   "scripts": {
