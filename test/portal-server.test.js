@@ -133,8 +133,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalPageText, /id="confirm-dialog"/);
     assert.match(portalPageText, /id="beta-exit-dialog"/);
     assert.match(portalPageText, /src="\/roonia-logo\.svg"/);
-    assert.match(portalPageText, /href="\/styles\.css\?v=20260720\.2"/);
-    assert.match(portalPageText, /src="\/app\.js\?v=20260720\.2"/);
+    assert.match(portalPageText, /href="\/styles\.css\?v=20260720\.3"/);
+    assert.match(portalPageText, /src="\/app\.js\?v=20260720\.3"/);
     assert.match(portalPageText, /id="playback-actions-popover"[^>]*popover="auto"[^>]*hidden/);
     assert.match(portalPageText, /id="mini-output-popover"[^>]*popover="auto"[^>]*hidden/);
     assert.doesNotMatch(portalPageText, /id="playback-actions-dialog"/);
@@ -234,6 +234,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalStylesText, /\.playlist-lifecycle-badge/);
     assert.match(portalStylesText, /\.playback-popover/);
     assert.match(portalStylesText, /\.mini-output-popover/);
+    assert.match(portalStylesText, /\.mini-output-popover \{[^}]*border: 0;[^}]*border-radius: 0;/);
+    assert.match(portalStylesText, /\.mini-output-range::-webkit-slider-thumb \{[^}]*opacity: 0;/);
     assert.match(portalStylesText, /\.playlist-track-row/);
     assert.match(portalStylesText, /\.track-technical/);
     assert.doesNotMatch(portalStylesText, /\.command-status/);
@@ -244,6 +246,12 @@ test("serves portal assets publicly but protects every administration endpoint",
     const portalScriptText = await portalScript.text();
     assert.match(portalScriptText, /data-image-key/);
     assert.match(portalScriptText, /data-mini-select-zone/);
+    assert.match(portalScriptText, /data-mini-quick-zone-step/);
+    assert.match(portalScriptText, /mini-volume-section/);
+    assert.match(portalScriptText, /mini-zones-section/);
+    assert.match(portalScriptText, /grouped\?`<div class="mini-group-volume"/);
+    assert.doesNotMatch(portalScriptText, /<details class="mini-zone-switcher"/);
+    assert.match(portalScriptText, /function openMiniOutputPopover\(\)\{if\(miniOutputPopoverOpen\(\)\)\{closeMiniOutputPopover\(\);return;/);
     assert.match(portalScriptText, /\["replace_queue","play_next","append"\]/);
     assert.match(portalScriptText, /artist:6, album:6, ep:6, single_ep:6, single:6, track:12/);
     assert.match(portalScriptText, /SEARCH_CATEGORIES = \[\{type:"artist",count:6\}/);

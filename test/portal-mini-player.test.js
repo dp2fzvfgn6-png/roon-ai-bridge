@@ -65,6 +65,24 @@ test("group volume buttons apply one native step to every adjustable output", as
   assert.deepEqual(runtime.refreshes, ['[data-mini-zone-step="1"]']);
 });
 
+test("quick volume buttons retain their own focus target", async () => {
+  const zone = {
+    zone_id: "single",
+    display_name: "Despacho",
+    outputs: [
+      { output_id: "desk", display_name: "DAC", volume: { type: "number", value: 29, min: 0, max: 100, step: 1 } }
+    ]
+  };
+  const runtime = loadMiniPlayerRuntime(zone);
+
+  await runtime.api.changeMiniZoneStep(-1, '[data-mini-quick-zone-step="-1"]');
+
+  assert.deepEqual(runtime.calls, [
+    { path: "/api/roon/outputs/desk/volume", body: { mode: "relative_step", value: -1 } }
+  ]);
+  assert.deepEqual(runtime.refreshes, ['[data-mini-quick-zone-step="-1"]']);
+});
+
 test("output step limits use each output's native step", () => {
   const runtime = loadMiniPlayerRuntime({ outputs: [] });
   const output = { volume: { type: "number", value: 58, min: 0, max: 60, step: 2 } };
