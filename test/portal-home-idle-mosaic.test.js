@@ -18,6 +18,24 @@ function loadMosaicGeometry() {
   };
 }
 
+function loadIdleTransitionHarness() {
+  const source = fs.readFileSync(path.join(__dirname, "..", "portal", "app.js"), "utf8");
+  const start = source.indexOf("const HOME_IDLE_GRACE_MS");
+  const end = source.indexOf("function homeIdleLayoutEdges", start);
+  assert.ok(start >= 0 && end > start, "home idle transition functions must remain extractable");
+  const timers = new Map();
+  let nextTimerId = 1;
+  const renders = [];
+  const context = vm.createContext({
+    state: { view: "home", homeIdleTimer: null, homePreviewZoneId: null, zones: [{ state: "stopped" }], homePlaybackSignature: "stale" },
+    setTimeout(callback, delay) { const id = nextTimerId++; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    renderHomePlayback(force) { renders.push(force); }
+  });
+  vm.runInContext(`${source.slice(start, end)};globalThis.idleTransition={HOME_IDLE_GRACE_MS,scheduleHomeIdleTransition,cancelHomeIdleTransition};`, context);
+  return { context, timers, renders, transition: context.idleTransition };
+}
+
 test("idle mosaic creates one fewer shared boundary than zones", () => {
   const { layout } = loadMosaicGeometry();
   assert.deepEqual(layout(1), [0, 1]);
@@ -57,4 +75,30 @@ test("idle artwork requests follow rendered pixels with bounded density", () => 
   assert.equal(imageSize(700, 2), 1280);
   assert.equal(imageSize(1200, 3), 1600);
   assert.equal(imageSize(100, 0.5), 512);
+});
+
+test("home playback waits through one transient idle publication", () => {
+  const { context, timers, renders, transition } = loadIdleTransitionHarness();
+  transition.scheduleHomeIdleTransition();
+  transition.scheduleHomeIdleTransition();
+
+  assert.equal(timers.size, 1);
+  const timer = [...timers.values()][0];
+  assert.equal(timer.delay, 2600);
+  assert.deepEqual(renders, []);
+
+  timer.callback();
+  assert.equal(context.state.homePlaybackSignature, null);
+  assert.deepEqual(renders, [true]);
+});
+
+test("home idle transition is cancelled when playback returns", () => {
+  const { context, timers, renders, transition } = loadIdleTransitionHarness();
+  transition.scheduleHomeIdleTransition();
+  const timer = [...timers.values()][0];
+  context.state.zones[0].state = "playing";
+  timer.callback();
+
+  assert.deepEqual(renders, []);
+  assert.equal(context.state.homeIdleTimer, null);
 });

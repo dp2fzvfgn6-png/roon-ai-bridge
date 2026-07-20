@@ -4,7 +4,7 @@ import { RoonClient } from "./roonClient";
 import { RoonOutput, RoonZone } from "./roonTypes";
 import { requireTransport } from "./roonTransportService";
 import { getZoneOrThrow } from "./roonZoneService";
-import { roonSdkCall } from "./roonSdk";
+import { roonSdkCall, waitForRoonState } from "./roonSdk";
 
 type TransportSettings = {
   shuffle?: boolean;
@@ -132,11 +132,36 @@ export async function changeOutputVolume(
     throw new ApiError("INVALID_VOLUME_VALUE", "Volume value must be numeric");
   }
   validateOutputVolumeCommand(output, mode, value);
+  const currentValue = Number(output.volume?.value);
+  const step = Number(output.volume?.step) > 0 ? Number(output.volume?.step) : 1;
+  const expectedValue = mode === "absolute"
+    ? value
+    : Number.isFinite(currentValue)
+      ? currentValue + value * (mode === "relative_step" ? step : 1)
+      : null;
   await transportCall(
     (callback) => transport.change_volume(output, mode, value, callback),
     "change output volume"
   );
-  return { ok: true, output_id: outputId, mode, value, state_verified: false };
+  const verifiedOutput = expectedValue === null
+    ? null
+    : await waitForRoonState(
+        () => roonClient.getOutput(outputId),
+        (candidate) => {
+          const actual = Number(candidate.volume?.value);
+          return Number.isFinite(actual) && Math.abs(actual - expectedValue) < 0.001;
+        },
+        { timeoutMs: 1600, intervalMs: 100 }
+      );
+  const refreshedOutput = verifiedOutput || roonClient.getOutput(outputId) || output;
+  return {
+    ok: true,
+    output_id: outputId,
+    mode,
+    value,
+    output: refreshedOutput,
+    state_verified: Boolean(verifiedOutput)
+  };
 }
 
 export async function muteAll(

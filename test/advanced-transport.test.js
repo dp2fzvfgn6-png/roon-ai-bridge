@@ -21,7 +21,11 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
   const transport = {
     seek: done("seek"),
     mute: done("mute"),
-    change_volume: done("change_volume"),
+    change_volume(output, mode, value, callback) {
+      calls.push(["change_volume", output, mode, value]);
+      output.volume.value += value * (mode === "relative_step" ? output.volume.step || 1 : 1);
+      callback(false);
+    },
     mute_all: done("mute_all"),
     pause_all: done("pause_all"),
     toggle_standby: done("toggle_standby"),
@@ -57,7 +61,7 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
   }]);
   await seekZone(client, "zone-1", "relative", -15);
   await muteOutput(client, "output-1", "mute");
-  await changeOutputVolume(client, "output-1", "relative_step", 1);
+  const volumeResult = await changeOutputVolume(client, "output-1", "relative_step", 1);
   await muteAll(client, "unmute");
   await pauseAll(client);
   await outputPowerAction(client, "output-1", "toggle_standby");
@@ -81,6 +85,8 @@ test("maps advanced transport actions to the native Roon SDK", async () => {
     auto_radio: false,
     loop: "loop"
   });
+  assert.equal(volumeResult.state_verified, true);
+  assert.equal(volumeResult.output.volume.value, 21);
 });
 
 test("rejects invalid SDK commands for incremental outputs", async () => {

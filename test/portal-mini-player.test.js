@@ -12,7 +12,7 @@ function loadMiniPlayerRuntime(zone) {
   );
   const groupStep = source.slice(
     source.indexOf("async function changeMiniZoneStep"),
-    source.indexOf("async function changeMiniOutputAbsolute")
+    source.indexOf("function renderMiniPlayer")
   );
   const calls = [];
   const notifications = [];
@@ -24,16 +24,23 @@ function loadMiniPlayerRuntime(zone) {
       return { ok: true };
     },
     console,
+    CSS: { escape: (value) => value },
     notifyAction: (action, details) => notifications.push({ action, details }),
     refreshMiniOutputContext: async (selector) => refreshes.push(selector),
-    state: { playerPendingUpdates: 0 },
+    renderMiniPlayer: () => {},
+    miniOutputPopoverOpen: () => false,
+    renderMiniOutputPopover: () => {},
+    positionMiniOutputPopover: () => {},
+    state: { playerPendingUpdates: 0, zones: [zone] },
     toast: () => { throw new Error("Unexpected toast"); }
   });
   vm.runInContext(`${helpers}\n${groupStep}\n;globalThis.miniPlayerTestApi={
     changeMiniZoneStep,
+    changeMiniOutputAbsolute,
     miniOutputCanStep,
     miniOutputStepMode,
-    miniVolumeOutputs
+    miniVolumeOutputs,
+    miniZoneVolumeLabel
   };`, context);
   return { api: context.miniPlayerTestApi, calls, context, notifications, refreshes };
 }
@@ -81,6 +88,38 @@ test("quick volume buttons retain their own focus target", async () => {
     { path: "/api/roon/outputs/desk/volume", body: { mode: "relative_step", value: -1 } }
   ]);
   assert.deepEqual(runtime.refreshes, ['[data-mini-quick-zone-step="-1"]']);
+  assert.equal(zone.outputs[0].volume.value, 28);
+});
+
+test("collapsed zone volume summarizes equal and different grouped values", () => {
+  const runtime = loadMiniPlayerRuntime({ outputs: [] });
+  const outputs = [
+    { volume: { value: 24 } },
+    { volume: { value: 24 } }
+  ];
+
+  assert.equal(runtime.api.miniZoneVolumeLabel(outputs), "24");
+  outputs[1].volume.value = 38;
+  assert.equal(runtime.api.miniZoneVolumeLabel(outputs), "24–38");
+});
+
+test("slider changes apply an absolute value and retain the panel focus target", async () => {
+  const zone = {
+    zone_id: "single",
+    display_name: "Despacho",
+    outputs: [
+      { output_id: "desk", display_name: "DAC", volume: { type: "number", value: 29, min: 0, max: 100, step: 1 } }
+    ]
+  };
+  const runtime = loadMiniPlayerRuntime(zone);
+
+  await runtime.api.changeMiniOutputAbsolute({ value: "44", dataset: { outputId: "desk" } });
+
+  assert.deepEqual(runtime.calls, [
+    { path: "/api/roon/outputs/desk/volume", body: { mode: "absolute", value: 44 } }
+  ]);
+  assert.equal(zone.outputs[0].volume.value, 44);
+  assert.deepEqual(runtime.refreshes, ['[data-mini-volume][data-output-id="desk"]']);
 });
 
 test("output step limits use each output's native step", () => {
