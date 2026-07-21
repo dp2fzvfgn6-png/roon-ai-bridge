@@ -498,8 +498,8 @@ export class SystemManagementService {
       const installedBuild = currentBuild();
       const waitingForStable = Boolean(this.betaExitPolicy && channel === "stable");
       const stableHasCaughtUp = waitingForStable && compareVersions(latest, this.betaExitPolicy!.installed_version) >= 0;
-      const updateAvailable = waitingForStable && !stableHasCaughtUp
-        ? false
+      const updateAvailable = waitingForStable
+        ? stableHasCaughtUp
         : installedBuild
           ? latestBuild !== installedBuild
           : compareVersions(latest, APP_VERSION) > 0 ? true : null;

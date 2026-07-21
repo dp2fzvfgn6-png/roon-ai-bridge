@@ -282,12 +282,13 @@ test("keeps the installed beta until main catches up, then requests stable autom
   process.env.GIT_COMMIT = "aaaaaaaaaaaa11111111";
   process.env.INSTALLED_CHANNEL = "beta";
   let stableVersion = "0.17.1";
+  let stableBuild = "bbbbbbbbbbbb22222222";
   let fetchCount = 0;
   global.fetch = async (url) => {
     fetchCount += 1;
     return String(url).includes("package.json")
       ? new Response(JSON.stringify({ version: stableVersion }), { status: 200 })
-      : publishedImageResponse("bbbbbbbbbbbb22222222");
+      : publishedImageResponse(stableBuild);
   };
   const noop = () => {};
   const service = new SystemManagementService({
@@ -337,7 +338,9 @@ test("keeps the installed beta until main catches up, then requests stable autom
     restoredService.stopAutomaticChecks();
 
     stableVersion = "0.19.0";
+    stableBuild = "aaaaaaaaaaaa11111111";
     const caughtUp = await service.checkForUpdates();
+    assert.equal(caughtUp.current_build, caughtUp.latest_build);
     assert.equal(caughtUp.update_available, true);
     const switched = service.getSystemInfo();
     assert.equal(switched.update_channel, "stable");
