@@ -144,7 +144,7 @@ test("compares update builds even when the semantic version is unchanged", async
   const previousCommit = process.env.GIT_COMMIT;
   process.env.GIT_COMMIT = "111111111111aaaaaaaa";
   global.fetch = async (url) => String(url).includes("package.json")
-    ? new Response(JSON.stringify({ version: "0.19.0" }), { status: 200 })
+    ? new Response(JSON.stringify({ version: "0.19.1" }), { status: 200 })
     : publishedImageResponse("222222222222bbbbbbbb");
   const noop = () => {};
   const service = new SystemManagementService({
@@ -156,7 +156,7 @@ test("compares update builds even when the semantic version is unchanged", async
   }, { info: noop, warn: noop, error: noop, debug: noop });
   try {
     const status = await service.checkForUpdates({ allow_beta_updates: false });
-    assert.equal(status.current_version, "0.19.0");
+    assert.equal(status.current_version, "0.19.1");
     assert.equal(status.current_build, "111111111111");
     assert.equal(status.latest_build, "222222222222");
     assert.equal(status.update_available, true);
@@ -177,7 +177,7 @@ test("runs automatic update checks once per day and restores their persisted res
   global.fetch = async (url) => {
     fetchCount += 1;
     return String(url).includes("package.json")
-      ? new Response(JSON.stringify({ version: "0.19.0" }), { status: 200 })
+      ? new Response(JSON.stringify({ version: "0.19.1" }), { status: 200 })
       : publishedImageResponse("bbbbbbbbbbbb22222222");
   };
   const noop = () => {};
@@ -204,7 +204,7 @@ test("runs automatic update checks once per day and restores their persisted res
     const status = service.getSystemInfo().version_status;
     assert.equal(fetchCount, 2);
     assert.equal(status.channel, "beta");
-    assert.equal(status.latest_version, "0.19.0");
+    assert.equal(status.latest_version, "0.19.1");
     assert.equal(status.update_available, true);
     assert.equal(fs.existsSync(path.join(dataDir, "version-status.json")), true);
 
@@ -337,7 +337,7 @@ test("keeps the installed beta until main catches up, then requests stable autom
     assert.equal(restored.beta_exit_policy.mode, "wait_for_stable");
     restoredService.stopAutomaticChecks();
 
-    stableVersion = "0.19.0";
+    stableVersion = "0.19.1";
     stableBuild = "aaaaaaaaaaaa11111111";
     const caughtUp = await service.checkForUpdates();
     assert.equal(caughtUp.current_build, caughtUp.latest_build);

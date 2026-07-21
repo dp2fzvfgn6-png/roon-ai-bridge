@@ -3,6 +3,10 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
+## 0.19.1 Beta - Unreleased
+
+- Development continues on the `beta` branch from the v0.19.0 stable release.
+
 ## 0.19.0 - 2026-07-21
 
 - GitHub Actions now validates every change and publishes ready-to-run,
