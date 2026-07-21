@@ -13,6 +13,7 @@ type VersionStatus = {
   latest_version: string | null;
   latest_build: string | null;
   update_available: boolean | null;
+  image_available: boolean | null;
   checked_at: string | null;
   error: string | null;
 };
@@ -25,6 +26,12 @@ type BetaExitPolicy = {
 };
 
 type UpdateChannel = "stable" | "beta";
+
+class PublishedImageUnavailableError extends Error {
+  constructor(readonly channel: UpdateChannel) {
+    super(`No published ${channel} image is available`);
+  }
+}
 
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TEMPORARY_PLAYLIST_EXPIRY_DAYS = 7;
@@ -143,6 +150,7 @@ export class SystemManagementService {
       latest_version: null,
       latest_build: null,
       update_available: null,
+      image_available: null,
       checked_at: null,
       error: null
     };
@@ -480,7 +488,7 @@ export class SystemManagementService {
       const publishedCommit = typeof publishedRun?.head_sha === "string"
         ? publishedRun.head_sha
         : null;
-      if (!publishedCommit) throw new Error(`No published ${channel} image is available`);
+      if (!publishedCommit) throw new PublishedImageUnavailableError(channel);
 
       const packageResponse = await fetch(
         `https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/${publishedCommit}/package.json`,
@@ -510,6 +518,7 @@ export class SystemManagementService {
         latest_version: latest,
         latest_build: latestBuild,
         update_available: updateAvailable,
+        image_available: true,
         checked_at: new Date().toISOString(),
         error: null
       };
@@ -530,21 +539,27 @@ export class SystemManagementService {
         });
       }
     } catch (error) {
+      const noPublishedImage = error instanceof PublishedImageUnavailableError;
       const sameChannel = this.versionStatus.channel === channel;
       this.versionStatus = {
         current_version: APP_VERSION,
         current_build: currentBuild(),
         channel,
-        latest_version: sameChannel ? this.versionStatus.latest_version : null,
-        latest_build: sameChannel ? this.versionStatus.latest_build : null,
-        update_available: sameChannel ? this.versionStatus.update_available : null,
+        latest_version: noPublishedImage ? null : sameChannel ? this.versionStatus.latest_version : null,
+        latest_build: noPublishedImage ? null : sameChannel ? this.versionStatus.latest_build : null,
+        update_available: noPublishedImage ? false : sameChannel ? this.versionStatus.update_available : null,
+        image_available: noPublishedImage ? false : sameChannel ? this.versionStatus.image_available : null,
         checked_at: new Date().toISOString(),
-        error: error instanceof Error ? error.message : String(error)
+        error: noPublishedImage ? null : error instanceof Error ? error.message : String(error)
       };
-      this.logger.warn("Update check failed", {
-        channel,
-        error: this.versionStatus.error
-      });
+      if (noPublishedImage) {
+        this.logger.info("No published image is available for the selected update channel", { channel });
+      } else {
+        this.logger.warn("Update check failed", {
+          channel,
+          error: this.versionStatus.error
+        });
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -709,6 +724,10 @@ export class SystemManagementService {
           typeof parsed.update_available === "boolean"
             ? parsed.update_available
             : null,
+        image_available:
+          typeof parsed.image_available === "boolean"
+            ? parsed.image_available
+            : null,
         checked_at:
           typeof parsed.checked_at === "string" ? parsed.checked_at : null,
         error: typeof parsed.error === "string" ? parsed.error : null
@@ -741,6 +760,7 @@ export class SystemManagementService {
       latest_version: null,
       latest_build: null,
       update_available: null,
+      image_available: null,
       checked_at: null,
       error: null
     };

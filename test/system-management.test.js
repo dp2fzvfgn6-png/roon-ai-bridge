@@ -461,3 +461,28 @@ test("host update watcher is standalone and always publishes terminal failures",
   assert.match(imageUpdater, /container_ready/);
   assert.doesNotMatch(imageUpdater, /docker compose up -d --build/);
 });
+
+test("reports an unpublished stable image as an expected unavailable state", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-no-stable-image-"));
+  const previousFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+  const noop = () => {};
+  const service = new SystemManagementService({
+    port: 3000,
+    portalPort: 3001,
+    dataDir,
+    updateChannel: "stable",
+    automaticUpdateChecks: false
+  }, { info: noop, warn: noop, error: noop, debug: noop });
+  try {
+    const status = await service.checkForUpdates();
+    assert.equal(status.image_available, false);
+    assert.equal(status.update_available, false);
+    assert.equal(status.latest_version, null);
+    assert.equal(status.error, null);
+  } finally {
+    service.stopAutomaticChecks();
+    global.fetch = previousFetch;
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});

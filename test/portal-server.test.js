@@ -401,6 +401,8 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /channel==='beta'\?' \(beta\)'/);
     assert.match(portalScriptText, /channel==='beta'\?' \(beta\)'/);
     assert.match(portalScriptText, /status\.update_available===true&&Boolean\(status\.latest_version\)/);
+    assert.match(portalScriptText, /status\.image_available===false/);
+    assert.match(portalScriptText, /Todavía no hay una versión estable publicada\. Se mantendrá instalada la versión beta/);
     assert.match(portalScriptText, /\$\("#available-update"\)\.hidden=!hasAvailable/);
     assert.match(portalScriptText, /\$\("#request-update"\)\.hidden=!hasAvailable/);
     assert.match(portalScriptText, /function renderAvailableUpdateNotice/);
