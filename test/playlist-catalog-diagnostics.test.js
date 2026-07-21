@@ -1,0 +1,139 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+
+const { PlaylistCatalogDiagnosticsService } = require("../dist/services/playlistCatalogDiagnosticsService");
+const {
+  catalogIntentForTrack,
+  trackCatalogIdentityV2
+} = require("../dist/services/playlists/trackCatalogIdentity");
+
+function track() {
+  return {
+    track_id: "track-born-wild",
+    query: "Born To Be Wild Steppenwolf",
+    roon_item_key: "roon:born-wild",
+    title: "Born To Be Wild",
+    artist: "Mars Bonfire, Steppenwolf",
+    album: "Live Steppenwolf",
+    image_key: "cover-live",
+    cover: { image_key: "cover-live" },
+    position: 1,
+    metadata: null,
+    audio_metadata: {
+      title: "Born To Be Wild",
+      artist: "Mars Bonfire, Steppenwolf"
+    },
+    user_metadata: {
+      llm_hints: {
+        recording_intent: "standard",
+        required_credits: [{ name: "Steppenwolf", role: "primary" }]
+      }
+    },
+    identity: {
+      version: 1,
+      catalog_separated: true,
+      fingerprint: "sha256:test",
+      title: "Born To Be Wild",
+      artist: "Mars Bonfire, Steppenwolf",
+      album: "Live Steppenwolf",
+      album_artist: "Steppenwolf",
+      duration_seconds: null,
+      isrc: null,
+      release_year: null,
+      track_number: null,
+      disc_number: null,
+      version_hint: "studio",
+      source: null,
+      canonical_query: "Born To Be Wild Steppenwolf"
+    },
+    resolution: {
+      status: "manual",
+      selection_origin: "portal_user",
+      selected_result_id: "media:born-wild",
+      selected_candidate: {
+        title: "Born To Be Wild",
+        artist: "Mars Bonfire, Steppenwolf"
+      }
+    },
+    roon_binding: {
+      state: "stale",
+      item_key: "roon:born-wild",
+      reusable: false,
+      last_observed_at: null
+    },
+    created_at: "2026-01-01T00:00:00.000Z"
+  };
+}
+
+const exact = {
+  status: "exact",
+  reason: "unique_compatible_recording",
+  metadata: {
+    recording_id: "mb-recording-born-wild",
+    title: "Born to Be Wild",
+    artist: "Steppenwolf",
+    album: null,
+    disambiguation: "original studio recording",
+    duration_seconds: 211,
+    release_year: 1968,
+    original_release_year: 1968,
+    isrc: null,
+    isrcs: [],
+    composers: ["Mars Bonfire"],
+    lyricists: [],
+    genres: ["rock"],
+    confidence: "medium"
+  },
+  candidates: []
+};
+
+test("identity V2 keeps the proposed artist separate from Roon display credits", () => {
+  const value = track();
+  const intent = catalogIntentForTrack(value);
+  const identity = trackCatalogIdentityV2(value, intent, exact);
+  assert.deepEqual(intent.primary_artists, ["Steppenwolf"]);
+  assert.deepEqual(identity.credits.primary_artists.map((credit) => credit.name), ["Steppenwolf"]);
+  assert.deepEqual(identity.credits.composers.map((credit) => credit.name), ["Mars Bonfire"]);
+  assert.deepEqual(identity.credits.roon_unclassified.map((credit) => credit.name), ["Mars Bonfire", "Steppenwolf"]);
+  assert.equal(identity.roon_selection.locked, true);
+  assert.equal(identity.shadow, true);
+});
+
+test("identity V2 recovers a legacy primary artist from the stored query without trusting credit order", () => {
+  const value = track();
+  value.title = "Won't Get Fooled Again (Remastered 2022)";
+  value.query = "Won't Get Fooled Again The Who";
+  value.artist = "Pete Townshend, The Who";
+  value.audio_metadata = { title: value.title, artist: value.artist };
+  value.user_metadata = null;
+  value.identity.title = value.title;
+  value.identity.artist = value.artist;
+  value.identity.version_hint = "remaster";
+  value.resolution.selected_candidate = { title: value.title, artist: value.artist };
+
+  const intent = catalogIntentForTrack(value);
+  assert.deepEqual(intent.primary_artists, ["The Who"]);
+  assert.equal(intent.source, "stored_query");
+  assert.equal(intent.recording_intent, "remaster");
+});
+
+test("playlist catalog diagnostics are read-only and report the cache state", async () => {
+  const value = track();
+  const before = JSON.stringify(value);
+  const service = new PlaylistCatalogDiagnosticsService(
+    { getPlaylist: () => ({ playlist_id: "p1", tracks: [value] }) },
+    { lookup: async (input) => {
+      assert.equal(input.artist, "Steppenwolf");
+      assert.equal(input.version_hint, "standard");
+      return exact;
+    } },
+    { summary: () => ({ provider: "musicbrainz", total_entries: 1, active_entries: 1, expired_entries: 0, statuses: { exact: 1 } }) }
+  );
+
+  const result = await service.analyze("p1", [value.track_id]);
+  assert.equal(result.mode, "shadow");
+  assert.equal(result.mutates_playlist, false);
+  assert.equal(result.identity_contract_version, 2);
+  assert.equal(result.statuses.candidate_recording, 1);
+  assert.equal(JSON.stringify(value), before);
+});

@@ -58,7 +58,8 @@ test("creates a new database from the canonical versioned schema", () => withTem
       "volume_limits",
       "action_logs",
       "system_events",
-      "extension_registry"
+      "extension_registry",
+      "metadata_provider_cache"
     ]) {
       assert.ok(tables.includes(expected), `missing ${expected}`);
     }

@@ -20,7 +20,6 @@ export function closeHttpServer(
       server.closeAllConnections?.();
       finish("forced");
     }, Math.max(1, timeoutMs));
-    timer.unref();
 
     server.close((error) => {
       if (error) {

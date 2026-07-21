@@ -159,6 +159,12 @@ edition silently. Playlist mutations include `resolution_summary` and are
 only returned with `verified: true` when every track is resolved or explicitly
 selected. Explicit model selections record `selection_origin: "model"`; the
 legacy `manual` status alone must not be described as human verification.
+
+Starting with v0.20.0 beta.1, `roon_analyze_playlist` accepts up to ten explicit
+`catalog_track_ids` and returns an identity V2 MusicBrainz diagnostic in shadow
+mode. The diagnostic separates proposed primary artists, MusicBrainz work
+credits and role-unknown Roon display credits. It is read-only and must not be
+used as evidence that the stored playlist was migrated or repaired.
 Generated playlist artwork uses an explicit two-step MCP flow.
 `roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
 name and returns its description, bounded track context, generation requirements

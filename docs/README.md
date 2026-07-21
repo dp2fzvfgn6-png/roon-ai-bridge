@@ -1,6 +1,6 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.19.1 beta repository:
+This documentation covers the current v0.20.0 beta repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
@@ -12,6 +12,7 @@ This documentation covers the current v0.19.1 beta repository:
 - [Architecture Refactor Plan](architecture-refactor-plan.md)
 - [v0.19.0 Validation](v0.19.0-validation.md)
 - [v0.19.1 Playlist Metadata Coherence Validation](v0.19.1-playlist-metadata-coherence-validation.md)
+- [v0.20.0 Beta 1 MusicBrainz Shadow Validation](v0.20.0-beta.1-musicbrainz-shadow-validation.md)
 - [v0.18.0 Release Notes](v0.18.0-release-notes.md)
 - [v0.18.0 Validation](v0.18.0-validation.md)
 - [v0.18.0 Architecture Validation](v0.18.0-architecture-validation.md)

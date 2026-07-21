@@ -1,4 +1,6 @@
+import crypto from "crypto";
 import { APP_VERSION } from "../config/version";
+import { MetadataProviderCacheService } from "./metadataProviderCacheService";
 
 export type RecordingCatalogMetadata = {
   recording_id: string;
@@ -36,8 +38,13 @@ export type RecordingCatalogResolution = {
 type FetchLike = typeof fetch;
 type JsonRecord = Record<string, unknown>;
 
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const MIN_REQUEST_INTERVAL_MS = 1100;
+const EXACT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CONFLICT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_MIN_REQUEST_INTERVAL_MS = 1100;
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_BASE_MS = 1000;
+const MUSICBRAINZ_PROVIDER = "musicbrainz";
 
 function objectValue(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : null;
@@ -192,7 +199,39 @@ export class RecordingMetadataService {
   private requestChain: Promise<void> = Promise.resolve();
   private lastRequestAt = 0;
 
-  constructor(private readonly fetchImpl: FetchLike = fetch) {}
+  private readonly persistentCache?: MetadataProviderCacheService;
+  private readonly minRequestIntervalMs: number;
+  private readonly maxRetries: number;
+  private readonly retryBaseMs: number;
+  private readonly sleep: (milliseconds: number) => Promise<void>;
+
+  constructor(
+    private readonly fetchImpl: FetchLike = fetch,
+    options: {
+      cache?: MetadataProviderCacheService;
+      minRequestIntervalMs?: number;
+      maxRetries?: number;
+      retryBaseMs?: number;
+      sleep?: (milliseconds: number) => Promise<void>;
+    } = {}
+  ) {
+    this.persistentCache = options.cache;
+    this.minRequestIntervalMs = Math.max(0, options.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS);
+    this.maxRetries = Math.max(0, options.maxRetries ?? DEFAULT_MAX_RETRIES);
+    this.retryBaseMs = Math.max(0, options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS);
+    this.sleep = options.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  }
+
+  private retryDelay(response: Response, attempt: number): number {
+    const retryAfter = response.headers.get("retry-after");
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+      const date = Date.parse(retryAfter);
+      if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+    }
+    return this.retryBaseMs * (2 ** attempt);
+  }
 
   private async requestJson(url: URL): Promise<JsonRecord> {
     let releaseRequest: () => void = () => undefined;
@@ -200,27 +239,67 @@ export class RecordingMetadataService {
     this.requestChain = new Promise<void>((resolve) => { releaseRequest = resolve; });
     await previous;
     try {
-      const waitMs = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - this.lastRequestAt));
-      if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
-      try {
-        const response = await this.fetchImpl(url, {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": `RoonAI-Bridge/${APP_VERSION} (https://github.com/dp2fzvfgn6-png/roon-ai-bridge)`
-          },
-          signal: controller.signal
-        });
-        this.lastRequestAt = Date.now();
-        if (!response.ok) throw new Error(`MusicBrainz returned HTTP ${response.status}`);
-        return await response.json() as JsonRecord;
-      } finally {
-        clearTimeout(timeout);
+      for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+        const waitMs = Math.max(0, this.minRequestIntervalMs - (Date.now() - this.lastRequestAt));
+        if (waitMs) await this.sleep(waitMs);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+        try {
+          const response = await this.fetchImpl(url, {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": `RoonAI-Bridge/${APP_VERSION} (https://github.com/dp2fzvfgn6-png/roon-ai-bridge)`
+            },
+            signal: controller.signal
+          });
+          this.lastRequestAt = Date.now();
+          if (response.ok) return await response.json() as JsonRecord;
+          const retryable = response.status === 429 || response.status === 503;
+          if (!retryable || attempt === this.maxRetries) {
+            throw new Error(`MusicBrainz returned HTTP ${response.status}`);
+          }
+          await this.sleep(this.retryDelay(response, attempt));
+        } finally {
+          clearTimeout(timeout);
+        }
       }
+      throw new Error("MusicBrainz request failed after retries");
     } finally {
       releaseRequest();
     }
+  }
+
+  private cacheKey(input: {
+    title: string;
+    artist: string;
+    album?: string | null;
+    version_hint?: string | null;
+    isrc?: string | null;
+    duration_seconds?: number | null;
+  }): string {
+    const material = [
+      normalize(input.title), normalize(input.artist), releaseKey(input.album),
+      normalize(input.version_hint), normalize(input.isrc), input.duration_seconds || ""
+    ].join("|");
+    return `recording-resolution:${crypto.createHash("sha256").update(material).digest("hex")}`;
+  }
+
+  private remember(cacheKey: string, value: RecordingCatalogResolution): RecordingCatalogResolution {
+    const ttlMs = value.status === "exact"
+      ? EXACT_CACHE_TTL_MS
+      : value.status === "conflict"
+        ? CONFLICT_CACHE_TTL_MS
+        : NOT_FOUND_CACHE_TTL_MS;
+    this.cache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
+    this.persistentCache?.set({
+      provider: MUSICBRAINZ_PROVIDER,
+      cacheKey,
+      entityType: "recording_resolution",
+      status: value.status,
+      payload: value,
+      ttlMs
+    });
+    return value;
   }
 
   private async search(title: string, artist: string, album?: string | null): Promise<JsonRecord[]> {
@@ -245,12 +324,14 @@ export class RecordingMetadataService {
     isrc?: string | null;
     duration_seconds?: number | null;
   }): Promise<RecordingCatalogResolution> {
-    const cacheKey = [
-      normalize(input.title), normalize(input.artist), releaseKey(input.album),
-      normalize(input.version_hint), normalize(input.isrc), input.duration_seconds || ""
-    ].join("|");
+    const cacheKey = this.cacheKey(input);
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const persisted = this.persistentCache?.get<RecordingCatalogResolution>(MUSICBRAINZ_PROVIDER, cacheKey);
+    if (persisted) {
+      this.cache.set(cacheKey, { expiresAt: Date.parse(persisted.expires_at), value: persisted.payload });
+      return persisted.payload;
+    }
 
     const searchTitle = baseRecordingTitle(input.title) || input.title;
     const releaseAlias = input.album ? releaseSearchAlias(input.album) : null;
@@ -289,8 +370,7 @@ export class RecordingMetadataService {
         metadata: null,
         candidates: []
       };
-      this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });
-      return value;
+      return this.remember(cacheKey, value);
     }
 
     const strongest = ranked.filter((candidate) => candidate.strength === ranked[0].strength);
@@ -301,8 +381,7 @@ export class RecordingMetadataService {
         metadata: null,
         candidates: snapshots
       };
-      this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });
-      return value;
+      return this.remember(cacheKey, value);
     }
 
     const selected = strongest[0];
@@ -369,7 +448,6 @@ export class RecordingMetadataService {
       metadata,
       candidates: [candidateSnapshot(detail)]
     };
-    this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });
-    return value;
+    return this.remember(cacheKey, value);
   }
 }

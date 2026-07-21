@@ -93,3 +93,23 @@ test("MusicBrainz recording metadata resolves an explicitly named mix and follow
   assert.deepEqual(result.metadata.genres, ["rock"]);
   assert.equal(result.metadata.release_year, 2023);
 });
+
+test("MusicBrainz retries bounded 503 responses before reporting a result", async () => {
+  let requests = 0;
+  const waits = [];
+  const service = new RecordingMetadataService(async () => {
+    requests += 1;
+    if (requests === 1) return new Response("busy", { status: 503 });
+    return new Response(JSON.stringify({ recordings: [] }), { status: 200 });
+  }, {
+    minRequestIntervalMs: 0,
+    maxRetries: 2,
+    retryBaseMs: 0,
+    sleep: async (milliseconds) => { waits.push(milliseconds); }
+  });
+
+  const result = await service.lookup({ title: "Unknown", artist: "Unknown" });
+  assert.equal(result.status, "not_found");
+  assert.equal(requests, 2);
+  assert.deepEqual(waits, [0]);
+});

@@ -218,6 +218,17 @@ CREATE TABLE IF NOT EXISTS extension_registry (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS metadata_provider_cache (
+  provider TEXT NOT NULL,
+  cache_key TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY (provider, cache_key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_virtual_playlist_tracks_playlist
   ON virtual_playlist_tracks (playlist_id, position);
 
@@ -250,11 +261,15 @@ CREATE INDEX IF NOT EXISTS idx_action_logs_tool
 
 CREATE INDEX IF NOT EXISTS idx_system_events_component
   ON system_events (component, level, timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_metadata_provider_cache_expiry
+  ON metadata_provider_cache (provider, expires_at);
 `;
 
 export const DATABASE_MIGRATION_IDS = [
   "001_base_schema",
-  "002_legacy_schema_upgrade"
+  "002_legacy_schema_upgrade",
+  "003_metadata_provider_cache"
 ] as const;
 
 export const databaseImplemented = true;
@@ -354,7 +369,8 @@ export class SqliteDatabase {
     const applied = new Set(this.appliedMigrations());
     const migrations: Array<{ id: string; apply: () => void }> = [
       { id: DATABASE_MIGRATION_IDS[0], apply: () => this.db.exec(SCHEMA_SQL) },
-      { id: DATABASE_MIGRATION_IDS[1], apply: () => this.ensureCurrentSchema() }
+      { id: DATABASE_MIGRATION_IDS[1], apply: () => this.ensureCurrentSchema() },
+      { id: DATABASE_MIGRATION_IDS[2], apply: () => this.ensureMetadataProviderCache() }
     ];
 
     for (const migration of migrations) {
@@ -484,6 +500,23 @@ export class SqliteDatabase {
         ON action_logs (tool_or_endpoint, timestamp);
       CREATE INDEX IF NOT EXISTS idx_system_events_component
         ON system_events (component, level, timestamp);
+    `);
+  }
+
+  private ensureMetadataProviderCache(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS metadata_provider_cache (
+        provider TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        PRIMARY KEY (provider, cache_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_metadata_provider_cache_expiry
+        ON metadata_provider_cache (provider, expires_at);
     `);
   }
 

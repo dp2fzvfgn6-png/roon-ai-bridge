@@ -570,12 +570,32 @@ export class IntentGateway extends TransportIntentHandler {
     return normalizeServiceResult("roon_play_playlist_track", `Playlist track sent to ${zone.display_name}.`, result, false);
   }
 
-  analyzePlaylist(input: { playlist_id: string; include_duplicates?: boolean }): OperationResult {
+  async analyzePlaylist(input: {
+    playlist_id: string;
+    include_duplicates?: boolean;
+    catalog_track_ids?: string[];
+  }): Promise<OperationResult> {
     const validation = this.context.playlistService.validatePlaylist(input.playlist_id);
     const duplicates = input.include_duplicates
       ? this.context.playlistService.deduplicatePlaylist(input.playlist_id, { dry_run: true })
       : null;
-    return completed("roon_analyze_playlist", "Playlist analysis completed.", { validation, duplicates }, { verified: true });
+    if (input.catalog_track_ids?.length && !this.context.playlistCatalogDiagnosticsService) {
+      throw new ApiError("NOT_IMPLEMENTED", "MusicBrainz shadow diagnostics are not configured");
+    }
+    const catalogDiagnostics = input.catalog_track_ids?.length
+      ? await this.context.playlistCatalogDiagnosticsService!.analyze(
+          input.playlist_id,
+          input.catalog_track_ids
+        )
+      : null;
+    return completed(
+      "roon_analyze_playlist",
+      catalogDiagnostics
+        ? `Playlist analysis and ${catalogDiagnostics.inspected_track_count} shadow catalog diagnostics completed.`
+        : "Playlist analysis completed.",
+      { validation, duplicates, catalog_diagnostics: catalogDiagnostics },
+      { verified: true }
+    );
   }
 
   async resolvePlaylist(input: {

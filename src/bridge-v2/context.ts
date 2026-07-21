@@ -11,6 +11,7 @@ import { ToolAccessService } from "../services/toolAccessService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
 import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
 import { PlaylistRepairService } from "../services/playlistRepairService";
+import { PlaylistCatalogDiagnosticsService } from "../services/playlistCatalogDiagnosticsService";
 import { ApiKeyRecord } from "../services/apiKeyService";
 import { Logger } from "../utils/logger";
 import { SystemManagementService } from "../services/systemManagementService";
@@ -25,6 +26,7 @@ export type BridgeV2Context = {
   playlistBuildService?: PlaylistBuildService;
   playlistMetadataEnrichmentService?: PlaylistMetadataEnrichmentService;
   playlistRepairService?: PlaylistRepairService;
+  playlistCatalogDiagnosticsService?: PlaylistCatalogDiagnosticsService;
   systemManagementService?: SystemManagementService;
   zonePresetService: ZonePresetService;
   volumeLimitService: VolumeLimitService;

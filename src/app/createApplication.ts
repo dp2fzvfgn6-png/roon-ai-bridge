@@ -8,10 +8,12 @@ import { ApiKeyService } from "../services/apiKeyService";
 import { DiagnosticsService } from "../services/diagnosticsService";
 import { ExtensionManagerService } from "../services/extensionManagerService";
 import { HomeHistoryService } from "../services/homeHistoryService";
+import { MetadataProviderCacheService } from "../services/metadataProviderCacheService";
 import { OAuthService } from "../services/oauthService";
 import { OutputVolumeSettingsService } from "../services/outputVolumeSettingsService";
 import { PlaylistService } from "../services/playlistService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
+import { PlaylistCatalogDiagnosticsService } from "../services/playlistCatalogDiagnosticsService";
 import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
 import { PlaylistRepairService } from "../services/playlistRepairService";
 import { PortalAuthService } from "../services/portalAuthService";
@@ -49,7 +51,17 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
   const playlistService = new PlaylistService(config, database);
   const oauthService = new OAuthService(config);
   const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
-  const recordingMetadataService = new RecordingMetadataService();
+  const metadataProviderCacheService = new MetadataProviderCacheService(database);
+  metadataProviderCacheService.purgeExpired();
+  const recordingMetadataService = new RecordingMetadataService(fetch, {
+    cache: metadataProviderCacheService
+  });
+  const playlistCatalogDiagnosticsService = new PlaylistCatalogDiagnosticsService(
+    playlistService,
+    recordingMetadataService,
+    metadataProviderCacheService,
+    logger
+  );
   const playlistMetadataEnrichmentService = new PlaylistMetadataEnrichmentService(
     playlistService,
     mediaService,
@@ -87,6 +99,7 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
     playlistBuildService,
     playlistMetadataEnrichmentService,
     playlistRepairService,
+    playlistCatalogDiagnosticsService,
     mediaService,
     systemManagementService,
     zonePresetService,
@@ -125,6 +138,9 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
       playlistBuildService,
       playlistMetadataEnrichmentService,
       playlistRepairService,
+      playlistCatalogDiagnosticsService,
+      recordingMetadataService,
+      metadataProviderCacheService,
       oauthService,
       mediaService,
       apiKeyService,

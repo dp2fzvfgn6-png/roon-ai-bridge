@@ -3,6 +3,16 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
+## 0.20.0 Beta 1 - Unreleased
+
+- Add the additive identity V2 shadow contract without changing stored playlist
+  identity or manual Roon selections.
+- Persist MusicBrainz recording-resolution results in SQLite with status-aware
+  expiry, request serialization and bounded retries for HTTP 429/503 responses.
+- Extend `roon_analyze_playlist` with optional, read-only MusicBrainz diagnostics
+  for up to ten selected playlist tracks.
+- Keep the portal manual search and reassignment workflow unchanged.
+
 ## 0.19.1 Beta - Unreleased
 
 - Playlist metadata now keeps the selected recording identity separate from

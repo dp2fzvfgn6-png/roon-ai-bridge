@@ -373,6 +373,39 @@ test("v2 playlist repair forwards selected tracks and force mode", async () => {
   assert.equal(options.force, true);
 });
 
+test("v2 playlist analysis can add read-only identity V2 shadow diagnostics", async () => {
+  const context = gatewayContext(roonClient(), {});
+  context.playlistService = {
+    validatePlaylist: () => ({ valid: true }),
+    deduplicatePlaylist: () => ({ duplicates: [] })
+  };
+  let received;
+  context.playlistCatalogDiagnosticsService = {
+    analyze: async (playlistId, trackIds) => {
+      received = { playlistId, trackIds };
+      return {
+        mode: "shadow",
+        mutates_playlist: false,
+        identity_contract_version: 2,
+        inspected_track_count: trackIds.length,
+        statuses: { exact_recording: trackIds.length },
+        tracks: []
+      };
+    }
+  };
+  const gateway = new IntentGateway(context);
+
+  const result = await gateway.analyzePlaylist({
+    playlist_id: "p1",
+    catalog_track_ids: ["t1", "t2"]
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(received, { playlistId: "p1", trackIds: ["t1", "t2"] });
+  assert.equal(result.data.catalog_diagnostics.mode, "shadow");
+  assert.equal(result.data.catalog_diagnostics.mutates_playlist, false);
+});
+
 test("v2 playlist update can repair one track with an exact search result", async () => {
   const media = {
     get: () => ({
