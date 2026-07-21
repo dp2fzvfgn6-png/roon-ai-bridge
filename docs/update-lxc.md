@@ -1,46 +1,42 @@
 # Update Existing LXC
 
-The Proxmox installer is only for the Proxmox host. It uses host commands such as:
+The normal update remains the button in the administration portal. A push to
+`main` or `beta` first passes the tests in GitHub Actions. GitHub then builds the
+Docker image. Only after that image exists does RoonIA offer it as an update.
+Nothing needs to be compiled on the user's computer or inside the LXC.
 
-- `pct`
-- `pveam`
-- `pvesh`
+## What The Portal Update Does
 
-Do not use the installer inside the LXC.
+1. Downloads the ready-to-run `stable` or `beta` image from GHCR.
+2. Stops the current container gracefully.
+3. Creates a dated backup under `data/backups/`.
+4. Starts the downloaded image without building source code.
+5. Waits until Docker reports the application as healthy.
+6. Keeps the five newest pre-update backups.
 
-## Update From Inside The LXC
+If the new container does not start or become healthy, the updater restores the
+previous image, `.env` file and data backup before reporting the failure.
 
-Run:
+## First Update From An Older Installation
+
+The first update after upgrading from the old source-building system should be
+started normally from the portal. That bridge update refreshes the host scripts
+and then installs the published image. Later updates use only the image flow.
+
+It is also possible to refresh the updater manually from inside the LXC:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```
 
-The updater:
-
-- Enters `/opt/roon-ai-bridge`.
-- Fetches latest GitHub changes.
-- Runs `git pull --ff-only`.
-- Publishes download, build, restart and verification stages for the portal.
-- Rebuilds and restarts the app with Docker Compose, embedding the Git commit
-  as the visible build identifier.
-- Verifies that the updated container is running before reporting success.
-
-The systemd watcher installs the versioned `scripts/lxc-apply-update.sh` file
-directly. It does not generate shell source or require Node.js on the LXC host.
-Every accepted request ends by writing either `completed` or `failed` to
-`data/update-status.json`, so the portal cannot remain indefinitely in a
-preparation state after an updater error.
-
-Equivalent manual commands:
+For a beta installation, use:
 
 ```bash
-cd /opt/roon-ai-bridge
-git fetch origin main
-git checkout main
-git pull --ff-only origin main
-docker compose up -d --build
+GIT_REF=beta bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/beta/scripts/lxc-update-app.sh)"
 ```
+
+The Proxmox creation script must only be run on the Proxmox host. It uses host
+commands such as `pct`, `pveam` and `pvesh`.
 
 ## Update From The Proxmox Host
 
@@ -50,17 +46,31 @@ Replace `230` with the LXC VMID:
 pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
 ```
 
-## Logs After Update
+## Manual Image Commands
 
-Inside the LXC:
+These commands skip the backup and rollback orchestration, so the portal or
+versioned updater is preferred:
+
+```bash
+cd /opt/roon-ai-bridge
+docker compose pull
+docker compose up -d --no-build
+```
+
+## Logs And Installed Release
 
 ```bash
 cd /opt/roon-ai-bridge
 docker compose logs -f
+cat data/installed-release.json
 ```
 
-From the Proxmox host:
+`installed-release.json` contains the installed version, Git revision, channel,
+image ID and registry digest. It contains no credentials.
 
-```bash
-pct exec 230 -- bash -lc "cd /opt/roon-ai-bridge && docker compose logs -f"
-```
+## One-Time GHCR Setting
+
+The package `ghcr.io/dp2fzvfgn6-png/roon-ai-bridge` must be public so normal
+installations can download it without a GitHub token. After the first workflow
+publication, open the package settings on GitHub and change its visibility to
+public. This is a one-time repository-owner action.

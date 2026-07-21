@@ -3,9 +3,20 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.18.1 Beta - Unreleased
+## 0.19.0 Beta - Unreleased
 
-- Development continues on the `beta` branch from the v0.18.0 stable release.
+- GitHub Actions now validates every change and publishes ready-to-run,
+  multi-architecture Docker images for the `stable` and `beta` channels.
+- LXC installation and portal updates download those images instead of
+  compiling the application inside the LXC. Updates back up application data,
+  verify container health and restore the previous release after a failure.
+- Replaced the former MIT declaration with PolyForm Noncommercial 1.0.0 and an
+  explicit policy that prohibits paid installation, maintenance and support.
+- Added recorded, transactional SQLite migrations and removed duplicate schema
+  files without changing existing user data.
+- Corrected malformed UTF-8 Spanish text and added a source-encoding guard.
+- Added ordered SIGTERM/SIGINT shutdown for HTTP servers, Roon discovery,
+  background checks, logs and SQLite.
 
 ## 0.18.0 - 2026-07-20
 

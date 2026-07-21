@@ -1,14 +1,16 @@
 # Roon AI Bridge Documentation
 
-This documentation covers the current v0.18.0 repository:
+This documentation covers the current v0.19.0 repository:
 
 - [Overview](overview.md)
 - [Proxmox LXC Install](install-proxmox-lxc.md)
+- [Docker Install](install-docker.md)
 - [Update Existing LXC](update-lxc.md)
 - [Configuration](configuration.md)
 - [HTTP API](api.md)
 - [Architecture](architecture.md)
 - [Architecture Refactor Plan](architecture-refactor-plan.md)
+- [v0.19.0 Validation](v0.19.0-validation.md)
 - [v0.18.0 Release Notes](v0.18.0-release-notes.md)
 - [v0.18.0 Validation](v0.18.0-validation.md)
 - [v0.18.0 Architecture Validation](v0.18.0-architecture-validation.md)
@@ -66,7 +68,7 @@ This documentation covers the current v0.18.0 repository:
 Quick install from the Proxmox host:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Quick update from inside the LXC:

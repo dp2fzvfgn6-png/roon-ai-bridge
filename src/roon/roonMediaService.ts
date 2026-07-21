@@ -80,9 +80,9 @@ type MediaReference = MediaResult & {
 
 const CATEGORY_TITLE: Record<MediaType, string[]> = {
   track: ["tracks", "canciones"],
-  album: ["albums", "Ã¡lbumes", "albumes"],
+  album: ["albums", "álbumes", "albumes"],
   artist: ["artists", "artistas"],
-  playlist: ["playlists", "listas de reproducciÃ³n", "listas"]
+  playlist: ["playlists", "listas de reproducción", "listas"]
 };
 
 const ACTION_TITLES: Record<MediaActionMode, string[]> = {
@@ -94,9 +94,9 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "play playlist",
     "play",
     "reproducir ahora",
-    "reproducir Ã¡lbum",
+    "reproducir álbum",
     "reproducir artista",
-    "reproducir canciÃ³n",
+    "reproducir canción",
     "reproducir lista"
   ],
   play_next: [
@@ -104,8 +104,8 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "play next",
     "add to next",
     "add as next",
-    "aÃ±adir siguiente",
-    "aÃ±adir como siguiente",
+    "añadir siguiente",
+    "añadir como siguiente",
     "reproducir siguiente"
   ],
   append: [
@@ -116,8 +116,8 @@ const ACTION_TITLES: Record<MediaActionMode, string[]> = {
     "add to queue end",
     "add last",
     "append to queue",
-    "aÃ±adir al final",
-    "aÃ±adir al final de la cola"
+    "añadir al final",
+    "añadir al final de la cola"
   ]
 };
 
@@ -144,9 +144,9 @@ const ENTITY_DETAIL_ACTION_TITLES: Record<"artist" | "album", string[]> = {
     "ir al artista",
     "ver artista",
     "informacion del artista",
-    "informaciÃ³n del artista",
+    "información del artista",
     "pagina del artista",
-    "pÃ¡gina del artista"
+    "página del artista"
   ],
   album: [
     "go to album",
@@ -155,15 +155,15 @@ const ENTITY_DETAIL_ACTION_TITLES: Record<"artist" | "album", string[]> = {
     "album details",
     "album info",
     "album",
-    "Ã¡lbum",
+    "álbum",
     "ir al album",
-    "ir al Ã¡lbum",
+    "ir al álbum",
     "ver album",
-    "ver Ã¡lbum",
+    "ver álbum",
     "informacion del album",
-    "informaciÃ³n del Ã¡lbum",
+    "información del álbum",
     "pagina del album",
-    "pÃ¡gina del Ã¡lbum"
+    "página del álbum"
   ]
 };
 
@@ -193,7 +193,7 @@ type LibraryIndex = {
 };
 
 function artistContentCount(subtitle: string | null | undefined): number | null {
-  const match = normalize(subtitle || "").match(/(?:^|\s)(\d+)\s+(?:albums?|albumes|Ã¡lbumes)(?:\s|$)/);
+  const match = normalize(subtitle || "").match(/(?:^|\s)(\d+)\s+(?:albums?|albumes|álbumes)(?:\s|$)/);
   return match ? Number.parseInt(match[1], 10) : null;
 }
 
@@ -452,9 +452,9 @@ function directMatchScore(result: MediaResult, directItems: BrowseItem[]): numbe
     const typeMatches = (
       result.media_type === "artist" && ["artist", "artista"].includes(directKind)
     ) || (
-      result.media_type === "album" && ["album", "Ã¡lbum"].includes(directKind)
+      result.media_type === "album" && ["album", "álbum"].includes(directKind)
     ) || (
-      result.media_type === "track" && ["track", "song", "pista", "cancion", "canciÃ³n"].includes(directKind)
+      result.media_type === "track" && ["track", "song", "pista", "cancion", "canción"].includes(directKind)
     );
     if (!imageMatches && !artistMatches && !typeMatches) continue;
     let candidate = 70;
@@ -1068,7 +1068,7 @@ export class RoonMediaService {
     for (const strategy of strategies) {
       if (strategy === "broaden") add(request.previousQuery || original, strategy);
       if (strategy === "remove_context") {
-        add(original.replace(/\b(peaky blinders|soundtrack|episode|scene|temporada|capitulo|capÃ­tulo)\b/gi, " "), strategy);
+        add(original.replace(/\b(peaky blinders|soundtrack|episode|scene|temporada|capitulo|capítulo)\b/gi, " "), strategy);
       }
       if (strategy === "title_only") {
         add(original.replace(/\b(by|de|feat\.?|featuring|peaky blinders|soundtrack)\b.*$/i, " "), strategy);

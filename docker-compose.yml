@@ -1,13 +1,16 @@
 services:
   roon-ai-bridge:
+    image: ghcr.io/dp2fzvfgn6-png/roon-ai-bridge:${ROONIA_IMAGE_TAG:-stable}
     build:
       context: .
       args:
+        APP_VERSION: ${APP_VERSION:-0.19.0}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         INSTALLED_CHANNEL: ${INSTALLED_CHANNEL:-stable}
     container_name: roon-ai-bridge
     network_mode: host
     restart: unless-stopped
+    stop_grace_period: 15s
     env_file:
       - .env
     environment:

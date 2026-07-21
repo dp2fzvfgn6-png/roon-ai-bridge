@@ -9,6 +9,12 @@ const {
   SystemManagementService
 } = require("../dist/services/systemManagementService");
 
+function publishedImageResponse(build) {
+  return new Response(JSON.stringify({
+    workflow_runs: [{ head_sha: build, conclusion: "success" }]
+  }), { status: 200 });
+}
+
 test("persists safe runtime ports and emits a fixed update request", () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "roonia-system-"));
   const config = {
@@ -103,6 +109,7 @@ test("persists safe runtime ports and emits a fixed update request", () => {
     assert.equal(requested.action, "update");
     assert.equal(requested.channel, "stable");
     assert.equal(file.target, "main");
+    assert.equal(file.image_tag, "stable");
     assert.equal(Object.prototype.hasOwnProperty.call(file, "command"), false);
 
     const betaService = new SystemManagementService({
@@ -124,6 +131,7 @@ test("persists safe runtime ports and emits a fixed update request", () => {
     assert.equal(betaRequested.channel, "beta");
     assert.equal(betaRequested.target, "beta");
     assert.equal(betaFile.target, "beta");
+    assert.equal(betaFile.image_tag, "beta");
     assert.equal(betaService.requestUpdate({ allow_beta_updates: false }).target, "main");
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -136,8 +144,8 @@ test("compares update builds even when the semantic version is unchanged", async
   const previousCommit = process.env.GIT_COMMIT;
   process.env.GIT_COMMIT = "111111111111aaaaaaaa";
   global.fetch = async (url) => String(url).includes("package.json")
-    ? new Response(JSON.stringify({ version: "0.18.1" }), { status: 200 })
-    : new Response(JSON.stringify({ sha: "222222222222bbbbbbbb" }), { status: 200 });
+    ? new Response(JSON.stringify({ version: "0.19.0" }), { status: 200 })
+    : publishedImageResponse("222222222222bbbbbbbb");
   const noop = () => {};
   const service = new SystemManagementService({
     port: 3000,
@@ -148,7 +156,7 @@ test("compares update builds even when the semantic version is unchanged", async
   }, { info: noop, warn: noop, error: noop, debug: noop });
   try {
     const status = await service.checkForUpdates({ allow_beta_updates: false });
-    assert.equal(status.current_version, "0.18.1");
+    assert.equal(status.current_version, "0.19.0");
     assert.equal(status.current_build, "111111111111");
     assert.equal(status.latest_build, "222222222222");
     assert.equal(status.update_available, true);
@@ -169,8 +177,8 @@ test("runs automatic update checks once per day and restores their persisted res
   global.fetch = async (url) => {
     fetchCount += 1;
     return String(url).includes("package.json")
-      ? new Response(JSON.stringify({ version: "0.18.1" }), { status: 200 })
-      : new Response(JSON.stringify({ sha: "bbbbbbbbbbbb22222222" }), { status: 200 });
+      ? new Response(JSON.stringify({ version: "0.19.0" }), { status: 200 })
+      : publishedImageResponse("bbbbbbbbbbbb22222222");
   };
   const noop = () => {};
   const config = {
@@ -196,7 +204,7 @@ test("runs automatic update checks once per day and restores their persisted res
     const status = service.getSystemInfo().version_status;
     assert.equal(fetchCount, 2);
     assert.equal(status.channel, "beta");
-    assert.equal(status.latest_version, "0.18.1");
+    assert.equal(status.latest_version, "0.19.0");
     assert.equal(status.update_available, true);
     assert.equal(fs.existsSync(path.join(dataDir, "version-status.json")), true);
 
@@ -279,7 +287,7 @@ test("keeps the installed beta until main catches up, then requests stable autom
     fetchCount += 1;
     return String(url).includes("package.json")
       ? new Response(JSON.stringify({ version: stableVersion }), { status: 200 })
-      : new Response(JSON.stringify({ sha: "bbbbbbbbbbbb22222222" }), { status: 200 });
+      : publishedImageResponse("bbbbbbbbbbbb22222222");
   };
   const noop = () => {};
   const service = new SystemManagementService({
@@ -328,7 +336,7 @@ test("keeps the installed beta until main catches up, then requests stable autom
     assert.equal(restored.beta_exit_policy.mode, "wait_for_stable");
     restoredService.stopAutomaticChecks();
 
-    stableVersion = "0.18.1";
+    stableVersion = "0.19.0";
     const caughtUp = await service.checkForUpdates();
     assert.equal(caughtUp.update_available, true);
     const switched = service.getSystemInfo();
@@ -430,9 +438,23 @@ test("host update watcher is standalone and always publishes terminal failures",
     path.join(__dirname, "..", "scripts", "lxc-update-app.sh"),
     "utf8"
   );
+  const imageUpdater = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "lxc-image-update.sh"),
+    "utf8"
+  );
   assert.doesNotMatch(watcher, /node\s+-p/);
   assert.match(watcher, /"state":"failed"/);
   assert.match(watcher, /La actualización no se pudo completar/);
+  assert.match(watcher, /installed-release\.json/);
+  assert.match(watcher, /"image_tag"/);
   assert.match(installer, /install -m 0755 "\$\{APP_DIR\}\/scripts\/lxc-apply-update\.sh"/);
+  assert.match(installer, /install -m 0755 "\$\{APP_DIR\}\/scripts\/lxc-image-update\.sh"/);
+  assert.match(installer, /roon-ai-bridge-image-update/);
   assert.doesNotMatch(installer, /cat >\/usr\/local\/sbin\/roon-ai-bridge-apply-update/);
+  assert.match(imageUpdater, /docker compose pull/);
+  assert.match(imageUpdater, /docker compose up -d --no-build/);
+  assert.match(imageUpdater, /pre-update-/);
+  assert.match(imageUpdater, /restore_previous_release/);
+  assert.match(imageUpdater, /container_ready/);
+  assert.doesNotMatch(imageUpdater, /docker compose up -d --build/);
 });

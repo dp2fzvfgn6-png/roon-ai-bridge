@@ -27,6 +27,7 @@ import { ApplicationContext } from "./context";
 export type ApplicationRuntime = {
   context: ApplicationContext;
   database: SqliteDatabase;
+  shutdown(): void;
 };
 
 export function createApplication(config: AppConfig): ApplicationRuntime {
@@ -104,8 +105,18 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
     manifestContext
   );
 
+  let shutDown = false;
   return {
     database,
+    shutdown() {
+      if (shutDown) return;
+      shutDown = true;
+      logger.info("Stopping application services");
+      systemManagementService.stopAutomaticChecks();
+      roonClient.stop();
+      logger.info("Application services stopped; closing database");
+      database.close();
+    },
     context: {
       config,
       logger,

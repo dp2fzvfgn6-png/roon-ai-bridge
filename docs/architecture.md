@@ -34,7 +34,7 @@ src/
       playlistContracts.ts         public playlist contracts
       playlistCoverPolicy.ts       cover validation and normalization
     ...                            other application services
-  db/                              active SQLite adapter and schema
+  db/                              SQLite adapter and versioned migrations
   bridge-v2/
     context.ts                     MCP application boundary
     intentGateway.ts               stable intent facade
@@ -90,12 +90,17 @@ stable facades while pure contracts and policies move into focused modules.
    widget entry points over Streamable HTTP.
 9. Typed media search creates short-lived references and re-resolves selected
    media in a fresh Roon Browse session before acting.
+10. On SIGTERM or SIGINT, both HTTP listeners stop accepting work before Roon
+    discovery, scheduled checks, logs and SQLite are closed in order.
 
 ## Persistence
 
-`db/schema.sql` defines the active SQLite model, including application
-settings, cores, cached zones, playlists and tracks, history, preferences and
-search data. RoonIA persists Roon authorization state in
+`src/db/database.ts` is the single source of truth for the SQLite model and its
+ordered migration IDs. Every migration runs transactionally and is recorded in
+`schema_migrations`, so an existing database is upgraded once without deleting
+playlists or settings. The model includes application settings, cores, cached
+zones, playlists and tracks, history, preferences and search data. RoonIA
+persists Roon authorization state in
 `data/roonstate.json`, SQLite application state in `data/roonia.sqlite`, and
 private OAuth clients/codes/tokens in `data/oauth-store.json`.
 
@@ -108,3 +113,15 @@ Runtime port, update-channel and public bridge/portal URL overrides live in
 `data/runtime-config.json`. Update requests and staged results use
 `data/update-request.json` and `data/update-status.json` as a narrow handoff
 between the app container and the LXC systemd watcher.
+
+## Build And Installation Flow
+
+Pushes and pull requests are validated by GitHub Actions. Successful pushes to
+`main` and `beta` publish multi-architecture images to GHCR with `stable` and
+`beta` tags. The portal only offers a commit after its image workflow succeeded.
+
+The LXC keeps a sparse Git checkout containing Compose and host scripts, not a
+Node.js build environment. During an update, it pulls the selected image, makes
+a pre-update data backup, stops the current container gracefully and verifies
+the replacement health. A failed replacement restores the previous image,
+environment and data.

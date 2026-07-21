@@ -424,12 +424,19 @@ EOF
 }
 
 deploy_app() {
+  local image_channel="stable"
+  [[ "${GIT_REF}" == "beta" ]] && image_channel="beta"
+
   log "Deploying ${APP_NAME} from ${REPO_URL} (${GIT_REF})"
   run_in_lxc "
     set -Eeuo pipefail
     rm -rf /opt/${APP_NAME}
-    git clone --branch '${GIT_REF}' '${REPO_URL}' /opt/${APP_NAME}
+    git clone --depth 1 --branch '${GIT_REF}' --filter=blob:none --no-checkout \
+      '${REPO_URL}' /opt/${APP_NAME}
     cd /opt/${APP_NAME}
+    git sparse-checkout init --no-cone
+    git sparse-checkout set '/docker-compose.yml' '/.env.example' '/scripts/'
+    git checkout '${GIT_REF}'
     mkdir -p data
     cat > .env <<EOF
 PORT=${PORT}
@@ -442,8 +449,10 @@ ENABLE_BROWSE=true
 ENABLE_MCP=false
 ENABLE_AUTH=false
 API_TOKEN=
+ROONIA_IMAGE_TAG=${image_channel}
+INSTALLED_CHANNEL=${image_channel}
 EOF
-    docker compose up -d --build
+    GIT_REF='${GIT_REF}' bash scripts/lxc-update-app.sh
   "
 }
 

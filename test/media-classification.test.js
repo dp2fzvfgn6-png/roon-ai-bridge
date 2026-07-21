@@ -82,6 +82,21 @@ test("keeps artist catalog playback separate from artist radio", () => {
   );
 });
 
+test("recognizes accented Spanish media actions", () => {
+  assert.equal(
+    chooseMediaAction([{ title: "Reproducir álbum", item_key: "album-action", hint: "action" }], "album", "replace_queue").item_key,
+    "album-action"
+  );
+  assert.equal(
+    chooseMediaAction([{ title: "Reproducir canción", item_key: "track-action", hint: "action" }], "track", "replace_queue").item_key,
+    "track-action"
+  );
+  assert.equal(
+    chooseMediaAction([{ title: "Añadir al final de la cola", item_key: "append-action", hint: "action" }], "track", "append").item_key,
+    "append-action"
+  );
+});
+
 test("ranks matching artist metadata above an unrelated exact album title", () => {
   const unrelatedAlbum = {
     result_id: "one",

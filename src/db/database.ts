@@ -252,6 +252,11 @@ CREATE INDEX IF NOT EXISTS idx_system_events_component
   ON system_events (component, level, timestamp);
 `;
 
+export const DATABASE_MIGRATION_IDS = [
+  "001_base_schema",
+  "002_legacy_schema_upgrade"
+] as const;
+
 export const databaseImplemented = true;
 
 type LegacyPlaylistTrack = {
@@ -298,6 +303,7 @@ export class SqliteDatabase {
   private readonly dataDir: string;
   private readonly dbPath: string;
   private readonly legacyPlaylistPath: string;
+  private closed = false;
 
   constructor(config: AppConfig) {
     this.dataDir = config.dataDir;
@@ -308,15 +314,22 @@ export class SqliteDatabase {
     this.db = new DatabaseSync(this.dbPath);
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA journal_mode = WAL;");
-    this.db.exec(SCHEMA_SQL);
-    this.migrateSchema();
+    this.applyMigrations();
     this.migrateLegacyPlaylistsIfNeeded();
   }
 
   close(): void {
-    if (this.db && typeof this.db.close === "function") {
+    if (!this.closed && this.db && typeof this.db.close === "function") {
+      this.closed = true;
       this.db.close();
     }
+  }
+
+  appliedMigrations(): string[] {
+    return (this.db
+      .prepare("SELECT migration_id FROM schema_migrations ORDER BY migration_id")
+      .all() as Array<{ migration_id: string }>)
+      .map((row) => row.migration_id);
   }
 
   transaction<T>(fn: () => T): T {
@@ -331,7 +344,32 @@ export class SqliteDatabase {
     }
   }
 
-  private migrateSchema(): void {
+  private applyMigrations(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        migration_id TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    const applied = new Set(this.appliedMigrations());
+    const migrations: Array<{ id: string; apply: () => void }> = [
+      { id: DATABASE_MIGRATION_IDS[0], apply: () => this.db.exec(SCHEMA_SQL) },
+      { id: DATABASE_MIGRATION_IDS[1], apply: () => this.ensureCurrentSchema() }
+    ];
+
+    for (const migration of migrations) {
+      if (applied.has(migration.id)) continue;
+      this.transaction(() => {
+        migration.apply();
+        this.db
+          .prepare("INSERT INTO schema_migrations (migration_id) VALUES (?)")
+          .run(migration.id);
+      });
+      applied.add(migration.id);
+    }
+  }
+
+  private ensureCurrentSchema(): void {
     const playlistColumns = this.db.prepare("PRAGMA table_info(virtual_playlists)").all() as Array<{ name: string }>;
     if (!playlistColumns.some((column) => column.name === "cover_image_key")) {
       this.db.exec("ALTER TABLE virtual_playlists ADD COLUMN cover_image_key TEXT");

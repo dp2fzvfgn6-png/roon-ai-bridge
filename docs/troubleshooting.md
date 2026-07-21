@@ -41,7 +41,7 @@ Inside `/opt/roon-ai-bridge`:
 ```bash
 docker compose down
 rm -f data/roonstate.json
-docker compose up -d --build
+docker compose up -d --no-build
 docker compose logs -f
 ```
 
@@ -67,6 +67,12 @@ cd /opt/roon-ai-bridge
 git status
 git remote -v
 docker compose logs --tail=100
+cat data/update-status.json
+cat data/installed-release.json
 ```
 
-If local files were edited inside the LXC, `git pull --ff-only` may refuse to update. Save or discard those local edits before running the updater again.
+The updater normally keeps the previous version running after an error and
+reports the reason in `update-status.json`. If repository deployment files were
+edited inside the LXC, `git pull --ff-only` may refuse to update; preserve or
+revert those edits before retrying. Do not delete `data/backups/` until the
+installation has been checked.

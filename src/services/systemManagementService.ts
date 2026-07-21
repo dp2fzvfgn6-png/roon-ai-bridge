@@ -28,6 +28,7 @@ type UpdateChannel = "stable" | "beta";
 
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TEMPORARY_PLAYLIST_EXPIRY_DAYS = 7;
+const PUBLISH_WORKFLOW_FILE = "publish-image.yml";
 
 function currentBuild(): string | null {
   const value = process.env.GIT_COMMIT?.trim();
@@ -448,7 +449,7 @@ export class SystemManagementService {
   requestRestart(): { ok: true; action: "restart"; scheduled_in_ms: number } {
     const delay = 750;
     this.logger.warn("Service restart requested");
-    setTimeout(() => process.exit(0), delay).unref();
+    setTimeout(() => process.kill(process.pid, "SIGTERM"), delay).unref();
     return { ok: true, action: "restart", scheduled_in_ms: delay };
   }
 
@@ -463,21 +464,36 @@ export class SystemManagementService {
     const ref = this.updateGitRef(channel);
     try {
       const headers = { "user-agent": `roon-ai-bridge/${APP_VERSION}`, accept: "application/vnd.github+json" };
-      const [packageResponse, commitResponse] = await Promise.all([
-        fetch(`https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/${ref}/package.json`, { headers, signal: controller.signal }),
-        fetch(`https://api.github.com/repos/dp2fzvfgn6-png/roon-ai-bridge/commits/${ref}`, { headers, signal: controller.signal })
-      ]);
-      if (!packageResponse.ok || !commitResponse.ok) {
-        throw new Error(`GitHub returned HTTP ${packageResponse.ok ? commitResponse.status : packageResponse.status}`);
+      const runsResponse = await fetch(
+        `https://api.github.com/repos/dp2fzvfgn6-png/roon-ai-bridge/actions/workflows/${PUBLISH_WORKFLOW_FILE}/runs?branch=${ref}&status=completed&per_page=20`,
+        { headers, signal: controller.signal }
+      );
+      if (!runsResponse.ok) {
+        throw new Error(`GitHub returned HTTP ${runsResponse.status}`);
       }
+      const runs = (await runsResponse.json()) as {
+        workflow_runs?: Array<{ head_sha?: unknown; conclusion?: unknown }>;
+      };
+      const publishedRun = Array.isArray(runs.workflow_runs)
+        ? runs.workflow_runs.find((run) => run.conclusion === "success" && typeof run.head_sha === "string")
+        : null;
+      const publishedCommit = typeof publishedRun?.head_sha === "string"
+        ? publishedRun.head_sha
+        : null;
+      if (!publishedCommit) throw new Error(`No published ${channel} image is available`);
+
+      const packageResponse = await fetch(
+        `https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/${publishedCommit}/package.json`,
+        { headers, signal: controller.signal }
+      );
+      if (!packageResponse.ok) throw new Error(`GitHub returned HTTP ${packageResponse.status}`);
       const body = (await packageResponse.json()) as { version?: unknown };
-      const commit = (await commitResponse.json()) as { sha?: unknown };
       const latest =
         typeof body.version === "string" && body.version.trim()
           ? body.version.trim()
           : null;
       if (!latest) throw new Error("Latest package version is missing");
-      const latestBuild = typeof commit.sha === "string" ? commit.sha.slice(0, 12) : null;
+      const latestBuild = publishedCommit.slice(0, 12);
       if (!latestBuild) throw new Error("Latest build identifier is missing");
       const installedBuild = currentBuild();
       const waitingForStable = Boolean(this.betaExitPolicy && channel === "stable");
@@ -561,7 +577,8 @@ export class SystemManagementService {
           current_version: APP_VERSION,
           current_build: currentBuild(),
           channel,
-          target
+          target,
+          image_tag: channel
         },
         null,
         2

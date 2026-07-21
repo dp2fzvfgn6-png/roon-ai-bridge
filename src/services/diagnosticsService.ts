@@ -1,7 +1,7 @@
 import { AppConfig } from "../config/env";
 import { APP_VERSION } from "../config/version";
 import { RoonClient } from "../roon/roonClient";
-import { SqliteDatabase } from "../db/database";
+import { DATABASE_MIGRATION_IDS, SqliteDatabase } from "../db/database";
 import { ActionLogService } from "./actionLogService";
 import { TechnicalLogService } from "./technicalLogService";
 import { ExtensionManagerService } from "./extensionManagerService";
@@ -84,11 +84,12 @@ export class DiagnosticsService {
   readyChecks(): Record<string, unknown> {
     const database = this.database.db.prepare("SELECT 1 AS ok").get()?.ok === 1;
     const manifest = buildToolsManifest(this.mcpContext);
+    const appliedMigrations = this.database.appliedMigrations();
     const checks = {
       database,
       roon_core: this.roonClient.isCoreConnected() || this.roonClient.getCoreName() !== null,
       mcp_tools: Number(manifest.tools_count) > 0,
-      migrations: true
+      migrations: DATABASE_MIGRATION_IDS.every((id) => appliedMigrations.includes(id))
     };
     return {
       ok: Object.values(checks).every(Boolean),
@@ -111,7 +112,7 @@ export class DiagnosticsService {
     const rows = this.database.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
     return {
       connected: true,
-      migrations_applied: ["base_schema", "observability_v0_16_0"],
+      migrations_applied: this.database.appliedMigrations(),
       tables: rows.map((row: any) => row.name)
     };
   }

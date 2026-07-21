@@ -18,6 +18,7 @@ import { applyZoneEvent } from "./roonStateCache";
 
 export type RoonClient = {
   start(): void;
+  stop(): void;
   getCoreName(): string | null;
   isCoreConnected(): boolean;
   isTransportReady(): boolean;
@@ -50,6 +51,8 @@ export function createRoonClient(
   let zonesById = new Map<string, RoonZone>();
   let outputsById = new Map<string, RoonOutput>();
   let knownOutputsById = new Map<string, RoonOutput>();
+  let started = false;
+  let stopped = false;
 
   function portalWebsite(): string {
     const address = Object.values(os.networkInterfaces())
@@ -372,11 +375,33 @@ export function createRoonClient(
 
   return {
     start() {
+      if (started && !stopped) return;
+      started = true;
+      stopped = false;
       logger.info("Starting Roon Core discovery");
       logger.info(
         "Authorization pending: enable the extension in Roon Settings > Setup > Extensions"
       );
       roon.start_discovery();
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      logger.info("Stopping Roon Core discovery and connections");
+      try {
+        (roon as any).stop_discovery?.();
+      } finally {
+        (roon as any).disconnect_all?.();
+        currentCore = null;
+        transport = null;
+        browse = null;
+        image = null;
+        transportReady = false;
+        browseReady = false;
+        imageReady = false;
+        zonesById = new Map();
+        outputsById = new Map();
+      }
     },
     getCoreName() {
       return currentCore ? currentCore.display_name : null;

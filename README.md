@@ -1,15 +1,26 @@
 # Roon AI Bridge
 
 Local Roon extension with HTTP/MCP APIs, focused ChatGPT widgets and a secure
-administration portal. The current stable package is v0.18.0. It extends the
+administration portal. The current development package is v0.19.0. It extends the
 canonical MCP v2 surface with deterministic media discovery, strict playlist
 creation, six cache-busted v19 widgets and a modular internal architecture.
 
-See the [changelog](CHANGELOG.md), [v0.18.0 release notes](docs/v0.18.0-release-notes.md)
-and [release validation](docs/v0.18.0-validation.md).
+See the [changelog](CHANGELOG.md) and [v0.19.0 validation](docs/v0.19.0-validation.md).
 
 This project does not expose anything to the internet by itself. It does not
 implement OpenAI API calls, Cloudflare automation or direct TIDAL write access.
+
+## License
+
+RoonIA is source-available at no charge for personal and other noncommercial
+purposes under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial
+use is not permitted without prior express written permission. This includes
+charging to install, configure, update, maintain or support RoonIA, offering it
+as a paid service, or bundling it with a commercial product. See the practical
+[commercial-use policy](COMMERCIAL_USE.md) for examples.
+
+Third-party components retain their own licenses. RoonIA is an independent
+project and is not affiliated with or endorsed by Roon Labs.
 
 ## Architecture
 
@@ -24,23 +35,21 @@ src/
   api/             Express server and HTTP routes
   portal/          portal server and focused route modules
   services/        application services and focused playlist policies
-  db/              SQLite schema and persistence adapter
+  db/              SQLite adapter and versioned migrations
   bridge-v2/       active MCP intents, transports and Apps resources
   security/        future security notes
   utils/           logger, errors and validation
 portal/
   features/        extracted browser features behind the existing portal shell
-db/
-  schema.sql       SQLite schema
 data/
   roonstate.json   runtime Roon authorization state
 ```
 
-v0.18.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
+v0.19.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 `node-roon-api-browse`, native `node:sqlite` and
 `@modelcontextprotocol/sdk`.
 
-## v0.18.0 Scope
+## Current Scope
 
 - Register the Roon extension.
 - Authorize it from `Settings > Setup > Extensions`.
@@ -188,14 +197,16 @@ curl https://roon.example.com/roon/status \
 
 ## Proxmox LXC Deployment
 
-There are two paths:
+There are three supported paths:
 
-- Automatic installer from the Proxmox host.
-- Manual installation inside an existing LXC.
+- Automatic installer from the Proxmox host, using a ready-to-run image.
+- Docker Compose on an existing Linux machine or LXC.
+- A local source build for development.
 
 Full documentation lives in [docs/](docs/README.md):
 
 - [Proxmox LXC install](docs/install-proxmox-lxc.md)
+- [Docker install](docs/install-docker.md)
 - [Update existing LXC](docs/update-lxc.md)
 - [Configuration](docs/configuration.md)
 - [HTTP API](docs/api.md)
@@ -215,7 +226,7 @@ Full documentation lives in [docs/](docs/README.md):
 
 ## Automatic Proxmox Installer
 
-The script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) is designed to run as `root` on the Proxmox host. It creates the LXC, enables `nesting/keyctl`, installs Docker inside the container, clones this repo and starts the app with Docker Compose.
+The script [scripts/proxmox-create-lxc.sh](scripts/proxmox-create-lxc.sh) is designed to run as `root` on the Proxmox host. It creates the LXC, enables `nesting/keyctl`, installs Docker, downloads only the deployment files and starts the ready-to-run image. The LXC does not compile the application.
 
 If you run it without variables, it asks for the configuration and uses defaults when you press Enter. When Proxmox can detect available options, the installer shows numbered choices for template storage, Debian template, root filesystem storage and network bridge. You can select a number, type a custom value or press Enter for the default.
 
@@ -229,7 +240,7 @@ The network defaults match your Roon VM network screenshot:
 Interactive one-liner:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Example with DHCP:
@@ -240,7 +251,7 @@ ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Example with static IP and VLAN:
@@ -254,7 +265,7 @@ VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
 REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=rootfs-fix')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Useful variables:
@@ -297,11 +308,13 @@ To update the app from inside the LXC, use [scripts/lxc-update-app.sh](scripts/l
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```
 
-It runs:
+It performs:
 
 - `git fetch`
 - `git pull --ff-only`
-- `docker compose up -d --build`
+- `docker compose pull`
+- a data backup, graceful stop and `docker compose up -d --no-build`
+- a health check and automatic rollback if the new image fails
 
 You can also trigger the update from the Proxmox host:
 
@@ -309,7 +322,7 @@ You can also trigger the update from the Proxmox host:
 pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
 ```
 
-## Manual Installation
+## Manual LXC Preparation
 
 1. Create a dedicated Debian/Ubuntu LXC named `roon-ai-bridge`.
 2. Put it on the same bridge/VLAN as Roon Core.
@@ -337,15 +350,19 @@ apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker
 
 If the LXC uses Ubuntu, change the Docker URL to `https://download.docker.com/linux/ubuntu`.
 
-## Install The Project
+## Install The Project From A Ready Image
 
 ```bash
 cd /opt
 git clone https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git roon-ai-bridge
 cd /opt/roon-ai-bridge
 cp .env.example .env
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 ```
+
+For a normal Linux server, a direct `docker run` option, channel selection and
+source-build instructions, see [Docker install](docs/install-docker.md).
 
 View logs:
 
