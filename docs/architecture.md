@@ -86,7 +86,7 @@ stable facades while pure contracts and policies move into focused modules.
    playlists, configuration and administration.
 7. `src/bridge-v2/mcp/index.ts` launches the same MCP v2 server used by the HTTP
    transport when `pnpm run mcp` is invoked.
-8. `POST /mcp` and `GET /mcp` expose the 35 canonical intents and six focused
+8. `POST /mcp` and `GET /mcp` expose the 36 canonical intents and six focused
    widget entry points over Streamable HTTP.
 9. Typed media search creates short-lived references and re-resolves selected
    media in a fresh Roon Browse session before acting.

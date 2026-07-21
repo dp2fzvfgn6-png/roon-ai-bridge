@@ -27,12 +27,12 @@ export type ApiContext = ApplicationContext;
 
 export function createServer(context: ApiContext): express.Express {
   const app = express();
-  const playlistBuildService = new PlaylistBuildService(
+  // Keep one build-session owner for compatibility with manually composed test/embedded contexts.
+  const playlistBuildService = context.playlistBuildService || new PlaylistBuildService(
     context.playlistService,
     context.mediaService,
     context.logger
   );
-
   app.use(express.json({ limit: "8mb" }));
   app.use(createHealthRouter(context));
   app.use(createOAuthRouter(context));

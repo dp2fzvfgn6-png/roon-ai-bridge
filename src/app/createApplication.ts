@@ -11,6 +11,9 @@ import { HomeHistoryService } from "../services/homeHistoryService";
 import { OAuthService } from "../services/oauthService";
 import { OutputVolumeSettingsService } from "../services/outputVolumeSettingsService";
 import { PlaylistService } from "../services/playlistService";
+import { PlaylistBuildService } from "../services/playlistBuildService";
+import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
+import { PlaylistRepairService } from "../services/playlistRepairService";
 import { PortalAuthService } from "../services/portalAuthService";
 import { SystemManagementService } from "../services/systemManagementService";
 import { createObservedLogger, TechnicalLogService } from "../services/technicalLogService";
@@ -44,6 +47,24 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
   const playlistService = new PlaylistService(config, database);
   const oauthService = new OAuthService(config);
   const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
+  const playlistMetadataEnrichmentService = new PlaylistMetadataEnrichmentService(
+    playlistService,
+    mediaService,
+    logger
+  );
+  const playlistRepairService = new PlaylistRepairService(
+    playlistService,
+    mediaService,
+    playlistMetadataEnrichmentService,
+    logger
+  );
+  const playlistBuildService = new PlaylistBuildService(
+    playlistService,
+    mediaService,
+    logger,
+    "streaming_first",
+    playlistMetadataEnrichmentService
+  );
   const apiKeyService = new ApiKeyService(config, database);
   const toolAccessService = new ToolAccessService(database);
   const portalAuthService = new PortalAuthService(config, database);
@@ -58,6 +79,9 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
     logger,
     roonClient,
     playlistService,
+    playlistBuildService,
+    playlistMetadataEnrichmentService,
+    playlistRepairService,
     mediaService,
     systemManagementService,
     zonePresetService,
@@ -83,6 +107,9 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
       logger,
       roonClient,
       playlistService,
+      playlistBuildService,
+      playlistMetadataEnrichmentService,
+      playlistRepairService,
       oauthService,
       mediaService,
       apiKeyService,

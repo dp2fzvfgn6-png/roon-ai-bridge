@@ -311,6 +311,11 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /if\(!state\.debugMode\)return ""/);
     assert.match(portalScriptText, /function playlistTrackMatches/);
     assert.match(portalScriptText, /playlistTrackMatches\(track,item\)/);
+    assert.match(portalScriptText, /function playlistResolutionIssue/);
+    assert.match(portalScriptText, /data-repair-playlist-track/);
+    assert.match(portalScriptText, /data-select-playlist-match/);
+    assert.match(portalScriptText, /data-refresh-playlist-metadata/);
+    assert.match(portalScriptText, /playlist-repair-search-form/);
     assert.match(portalScriptText, /data-toggle-reorder/);
     assert.match(portalScriptText, /tracks\/reorder/);
     assert.match(portalScriptText, /playlistForm\(state\.selectedPlaylist,\{context:true\}\)/);

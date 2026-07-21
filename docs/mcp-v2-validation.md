@@ -5,7 +5,7 @@ playlist additions below have automated local validation only.
 
 ## Contract checks
 
-- `tools/list` exposes 41 tools: 35 canonical intents and six model-visible
+- `tools/list` exposes 42 tools: 36 canonical intents and six model-visible
   widget entry points.
 - All descriptions start with `Use this when...`.
 - Every tool declares a discriminated output schema.

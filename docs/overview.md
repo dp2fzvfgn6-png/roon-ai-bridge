@@ -18,7 +18,7 @@ The current v0.18.0 beta keeps the deployed scope intentionally focused:
 - Start playback from a simple query.
 - Read queue snapshots and perform basic queue actions.
 - Store and play local virtual playlists.
-- Expose 35 canonical intent tools over stdio and Streamable HTTP.
+- Expose 36 canonical intent tools over stdio and Streamable HTTP.
 - Offer six model-visible read-only widget entry points.
 - Resolve zone/output names and query-to-action flows inside one MCP call.
 - Optionally protect the HTTP API with a Bearer API token.

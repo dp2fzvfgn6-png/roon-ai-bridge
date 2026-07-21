@@ -531,7 +531,7 @@ Run from `/opt/roon-ai-bridge`:
 DATA_DIR=/opt/roon-ai-bridge/data ENABLE_BROWSE=true npm run mcp
 ```
 
-The active MCP v2 facade exposes 35 canonical intent tools and six focused
+The active MCP v2 facade exposes 36 canonical intent tools and six focused
 model-visible read-only widget entry points. It replaces
 the previous 89-tool catalog without legacy aliases. Named zones and outputs
 are resolved inside each intent, and playback tools can search and act in one

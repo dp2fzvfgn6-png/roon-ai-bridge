@@ -511,6 +511,31 @@ curl -X POST http://localhost:3000/playlists/bad-bunny-test/resolve \
   -d '{"force":false,"source_preference":"highest_quality"}'
 ```
 
+Refresh only the audio metadata of already-resolved entries without changing
+their recording identity:
+
+```bash
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/metadata/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"force":false}'
+```
+
+For one missing or ambiguous track, request fresh candidates and then persist
+an explicit playable selection. The `result_id` is temporary, so the selection
+must be submitted from the same active Roon search session:
+
+```bash
+curl "http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID>/candidates?query=bad%20bunny%20monaco"
+
+curl -X POST http://localhost:3000/playlists/bad-bunny-test/tracks/<TRACK_ID>/match \
+  -H "Content-Type: application/json" \
+  -d '{"result_id":"<RESULT_ID>","selection_reason":"explicit_user_selection"}'
+```
+
+`POST /playlists/:playlist_id/tracks/:track_id/repair` retries the strict
+automatic resolver for just that entry. A successful manual or automatic
+repair immediately runs metadata enrichment.
+
 Update one track:
 
 ```bash

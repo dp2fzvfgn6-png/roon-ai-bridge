@@ -16,6 +16,11 @@ import {
 import { TrackResolutionService } from "./trackResolutionService";
 import { ApiError } from "../utils/errors";
 import { Logger } from "../utils/logger";
+import {
+  audioMetadataFromMedia,
+  mergeAudioMetadata,
+  metadataCompleteness
+} from "./playlists/playlistMetadataPolicy";
 
 import {
   CUSTOM_COVER_PREFIX,
@@ -246,29 +251,9 @@ function buildStoredMetadata(input: {
   return Object.keys(stored).length > 0 ? stored : null;
 }
 
-function audioMetadataFromMedia(result: Partial<MediaResult> & Record<string, unknown>): AudioMetadata {
-  return {
-    title: typeof result.title === "string" ? result.title : null,
-    artist: typeof result.artist === "string" ? result.artist : typeof result.subtitle === "string" ? result.subtitle : null,
-    album: typeof result.album === "string" ? result.album : null,
-    album_artist: typeof result.album_artist === "string" ? result.album_artist : null,
-    composer: optionalString(result.composer),
-    genre: result.genre || null,
-    release_year: optionalFiniteInteger(result.release_year),
-    track_number: optionalFiniteInteger(result.track_number),
-    disc_number: optionalFiniteInteger(result.disc_number),
-    duration_seconds: optionalFiniteInteger(result.duration_seconds),
-    isrc: optionalString(result.isrc),
-    version_hint: typeof result.version_hint === "string" ? result.version_hint : null,
-    source: result.source || "unknown",
-    quality: result.quality || null,
-    image_key: typeof result.image_key === "string" ? result.image_key : null,
-    cover: typeof result.image_key === "string" ? { image_key: result.image_key } : null
-  };
-}
-
 function mediaCandidateSnapshot(result: Record<string, unknown>): Record<string, unknown> {
   return {
+    result_id: result.result_id || null,
     media_type: result.media_type || result.type || null,
     title: result.title || null,
     artist: result.artist || result.subtitle || null,
@@ -350,6 +335,7 @@ function identityFromTrack(input: {
   album?: unknown;
   audioMetadata?: AudioMetadata | null;
   existing?: TrackIdentityMetadata | null;
+  preserveExistingFingerprint?: boolean;
 }): TrackIdentityMetadata {
   const audio = input.audioMetadata || {};
   const existing = input.existing || null;
@@ -374,7 +360,9 @@ function identityFromTrack(input: {
 
   return {
     version: 1,
-    fingerprint: `sha256:${crypto.createHash("sha256").update(fingerprintMaterial).digest("hex")}`,
+    fingerprint: input.preserveExistingFingerprint && optionalString(existing?.fingerprint)
+      ? existing!.fingerprint
+      : `sha256:${crypto.createHash("sha256").update(fingerprintMaterial).digest("hex")}`,
     title,
     artist,
     album,
@@ -1354,8 +1342,16 @@ export class PlaylistService {
       if (status === "ambiguous") {
         issues.push({ track_id: track.track_id, type: "ambiguous", severity: "warning", message: "Several close candidates were found", suggested_actions: ["manual_select"] });
       }
-      if (!track.audio_metadata?.title || !track.audio_metadata?.artist) {
-        issues.push({ track_id: track.track_id, type: "missing_metadata", severity: "info", message: "Audio metadata is incomplete", suggested_actions: ["resolve"] });
+      const completeness = metadataCompleteness(track.audio_metadata);
+      if (!completeness.complete) {
+        issues.push({
+          track_id: track.track_id,
+          type: "missing_metadata",
+          severity: "info",
+          message: `Audio metadata is incomplete: ${completeness.missing_fields.join(", ")}`,
+          missing_fields: completeness.missing_fields,
+          suggested_actions: ["refresh_metadata"]
+        });
       }
       positions.set(track.position, [...(positions.get(track.position) || []), track]);
       const normalized = this.duplicateKey(track);
@@ -1393,7 +1389,7 @@ export class PlaylistService {
       error: statusCount("error"),
       unresolved: playlist.tracks.length - resolved - manual,
       ambiguous: statusCount("ambiguous"),
-      missing_metadata: playlist.tracks.filter((track) => !track.audio_metadata?.title || !track.audio_metadata?.artist).length,
+      missing_metadata: playlist.tracks.filter((track) => !metadataCompleteness(track.audio_metadata).complete).length,
       duplicates: issues.filter((issue) => issue.type === "duplicates").length
     };
 
@@ -1524,6 +1520,52 @@ export class PlaylistService {
     });
     this.touchPlaylist(playlistId);
     return this.getPlaylistById(playlistId);
+  }
+
+  updateTrackAudioMetadata(
+    playlistId: string,
+    trackId: string,
+    observed: AudioMetadata,
+    enrichment: Record<string, unknown>
+  ): VirtualPlaylistTrack {
+    const row = this.getTrackRowOrThrow(playlistId, trackId);
+    const currentTrack = this.mapTrack(row);
+    const metadata = parseMetadata(row.metadata_json) || {};
+    const split = splitStoredMetadata(metadata);
+    const audioMetadata = mergeAudioMetadata(currentTrack.audio_metadata, observed);
+    // Enrichment improves descriptive fields but must not redefine the durable
+    // recording identity chosen by the resolver or the user.
+    const identity = currentTrack.identity;
+    const resolution = {
+      ...(split.resolution || {}),
+      metadata_enrichment: enrichment
+    };
+    const imageKey = optionalString(audioMetadata?.image_key) || imageKeyFromMetadata(metadata);
+    const nextAudio = imageKey
+      ? { ...(audioMetadata || {}), image_key: imageKey, cover: { image_key: imageKey } }
+      : audioMetadata;
+    this.database.db.prepare(
+      `UPDATE virtual_playlist_tracks
+       SET title = :title,
+           artist = :artist,
+           album = :album,
+           metadata_json = :metadata_json
+       WHERE playlist_id = :playlist_id AND track_id = :track_id`
+    ).run({
+      playlist_id: playlistId,
+      track_id: trackId,
+      title: optionalString(nextAudio?.title) || row.title,
+      artist: optionalString(nextAudio?.artist) || row.artist,
+      album: optionalString(nextAudio?.album) || row.album,
+      metadata_json: JSON.stringify({
+        ...(nextAudio ? { audio_metadata: nextAudio } : {}),
+        ...(split.user_metadata ? { user_metadata: split.user_metadata } : {}),
+        identity,
+        resolution
+      })
+    });
+    this.touchPlaylist(playlistId);
+    return this.mapTrack(this.getTrackRowOrThrow(playlistId, trackId));
   }
 
   addSearchResultToPlaylist(playlistId: string, input: { result_id?: unknown; position?: unknown; user_metadata?: unknown }, mediaService: RoonMediaService): VirtualPlaylist {
@@ -1993,7 +2035,8 @@ export class PlaylistService {
       artist: row.artist,
       album: row.album,
       audioMetadata: split.audio_metadata,
-      existing: split.identity
+      existing: split.identity,
+      preserveExistingFingerprint: true
     });
     const resolution = canonicalResolution(split.resolution, row.roon_item_key);
 
@@ -2233,7 +2276,7 @@ export class PlaylistService {
     const split = splitStoredMetadata(metadata);
     const accepted = resolution.status === "resolved" || resolution.status === "manual";
     const audioMetadata = accepted && resolution.result
-      ? { ...(split.audio_metadata || {}), ...audioMetadataFromMedia(resolution.result as MediaResult) }
+      ? mergeAudioMetadata(split.audio_metadata, audioMetadataFromMedia(resolution.result as MediaResult))
       : split.audio_metadata;
     const identity = identityFromTrack({
       query: row.query,

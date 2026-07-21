@@ -437,9 +437,24 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
     inputSchema: {
       playlist_id: z.string().min(1),
       track_ids: z.array(z.string().min(1)).min(1).optional(),
-      scope: z.enum(["unresolved", "selected", "all"]).default("unresolved")
+      scope: z.enum(["unresolved", "selected", "all"]).default("unresolved"),
+      selections: z.array(z.object({
+        track_id: z.string().min(1),
+        result_id: z.string().min(1)
+      })).optional()
     }
   }, (input) => gateway.resolvePlaylist(input));
+
+  register("roon_refresh_playlist_metadata", {
+    title: "Refresh RoonIA Playlist Metadata",
+    description: "Use this when resolved playlist tracks need album, duration, year, track number, artwork or other audio metadata refreshed without changing their identity. Use incomplete by default, selected with track_ids for chosen entries, or all for a full refresh. Use roon_resolve_playlist instead when a track is missing, ambiguous or incorrectly associated.",
+    annotations: write,
+    inputSchema: {
+      playlist_id: z.string().min(1),
+      track_ids: z.array(z.string().min(1)).min(1).optional(),
+      scope: z.enum(["incomplete", "selected", "all"]).default("incomplete")
+    }
+  }, (input) => gateway.refreshPlaylistMetadata(input));
 
   register("roon_export_playlist", {
     title: "Export RoonIA Playlist",

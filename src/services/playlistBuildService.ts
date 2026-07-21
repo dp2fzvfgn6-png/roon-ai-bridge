@@ -8,6 +8,7 @@ import {
 import { ApiError } from "../utils/errors";
 import { Logger } from "../utils/logger";
 import { PlaylistService, VirtualPlaylist } from "./playlistService";
+import { PlaylistMetadataEnrichmentService } from "./playlistMetadataEnrichmentService";
 import {
   RankedTrackCandidate,
   TrackResolution,
@@ -258,15 +259,6 @@ function candidateSnapshot(result: MediaResult): Record<string, unknown> {
   return { ...result };
 }
 
-function mergeObserved(base: MediaResult, incoming: MediaResult | null): MediaResult {
-  if (!incoming) return base;
-  const merged = { ...base } as MediaResult & Record<string, unknown>;
-  for (const [key, value] of Object.entries(incoming)) {
-    if (value !== null && value !== undefined && value !== "") merged[key] = value;
-  }
-  return merged;
-}
-
 function creditMatches(expected: string, credits: string[]): boolean {
   const wanted = normalize(expected);
   const combined = normalize(credits.join(" and "));
@@ -407,13 +399,22 @@ function scheduleNoAdjacent(
 
 export class PlaylistBuildService {
   private readonly sessions = new Map<string, BuildSession>();
+  private readonly metadataService: PlaylistMetadataEnrichmentService;
 
   constructor(
     private readonly playlistService: PlaylistService,
     private readonly mediaService: RoonMediaService,
     private readonly logger?: Logger,
-    private readonly sourcePreference: SourcePreference = "streaming_first"
-  ) {}
+    private readonly sourcePreference: SourcePreference = "streaming_first",
+    metadataService?: PlaylistMetadataEnrichmentService
+  ) {
+    this.metadataService = metadataService || new PlaylistMetadataEnrichmentService(
+      playlistService,
+      mediaService,
+      logger,
+      sourcePreference
+    );
+  }
 
   async prepareCandidate(value: unknown): Promise<PlaylistCandidatePreflightResult> {
     const candidate = normalizeCandidate(value, 0, 0);
@@ -718,43 +719,26 @@ export class PlaylistBuildService {
     input: NormalizedCandidate,
     queries: string[]
   ): Promise<{ result: MediaResult; observation: RoonObservation }> {
-    const warnings: string[] = [];
-    const albumResultId = result.links?.album?.result_id || null;
-    let hydrated = result;
-    let albumSnapshot: Record<string, unknown> | null = null;
-    let trackSnapshot: Record<string, unknown> | null = null;
-    if (albumResultId) {
-      try {
-        const detail = await this.mediaService.getAlbumDetail(albumResultId, undefined, 200);
-        albumSnapshot = candidateSnapshot(detail.album);
-        const matchedTrack = detail.tracks.find((track) => hardGate(input, track)) || null;
-        trackSnapshot = matchedTrack ? candidateSnapshot(matchedTrack) : null;
-        hydrated = mergeObserved(hydrated, matchedTrack);
-        hydrated = {
-          ...hydrated,
-          album: hydrated.album || detail.album.title || null,
-          album_artist: hydrated.album_artist || detail.album.album_artist || detail.album.artist || null,
-          release_year: hydrated.release_year || detail.album.release_year || null,
-          image_key: hydrated.image_key || detail.album.image_key || null
-        };
-        warnings.push(...(detail.warnings || []));
-      } catch (error) {
-        warnings.push(`album_detail_failed:${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    const enriched = await this.metadataService.enrichResult(result, {
+      title: input.title,
+      artist: input.artist,
+      album: input.albumHint
+    });
+    const hydrated = enriched.result;
+    const albumResultId = enriched.report.album_result_id;
     return {
       result: hydrated,
       observation: {
-        observed_at: new Date().toISOString(),
+        observed_at: enriched.report.observed_at,
         search_queries: queries,
         search_result: candidateSnapshot(result),
         album_detail: {
           attempted: Boolean(albumResultId),
           album_result_id: albumResultId,
-          album: albumSnapshot,
-          matched_track: trackSnapshot
+          album: hydrated.album ? { title: hydrated.album, artist: hydrated.album_artist } : null,
+          matched_track: candidateSnapshot(hydrated)
         },
-        warnings
+        warnings: enriched.report.warnings
       }
     };
   }

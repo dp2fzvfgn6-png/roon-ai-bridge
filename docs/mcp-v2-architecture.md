@@ -2,7 +2,7 @@
 
 ## Purpose
 
-MCP v2 replaces the previous 89-tool facade with 35 canonical intent tools and
+MCP v2 replaces the previous 89-tool facade with 36 canonical intent tools and
 six focused read-only widget entry points. It is a
 breaking contract with no legacy aliases. The HTTP API, portal and persisted
 user data remain outside this replacement.
@@ -26,7 +26,7 @@ The implementation lives in `src/bridge-v2`:
 - `intents/transportIntentHandler.ts` owns state, playback, volume, power,
   playback-option, grouping and transfer orchestration behind that facade.
 - `mcp/index.ts` is the active stdio entry point.
-- `mcp/tools.ts` owns schemas, annotations and the 35-tool intent catalog.
+- `mcp/tools.ts` owns schemas, annotations and the 36-tool intent catalog.
 - `mcp/server.ts` owns server instructions and HTTP/stdio construction.
 - `widgets/viewService.ts` creates bounded, presentation-ready view models.
 - `widgets/tools.ts` owns six model-visible read-only display entry points.
@@ -146,7 +146,12 @@ before returning.
 An update with `changes.result_id` can repair one incorrect association
 manually.
 `roon_resolve_playlist` can retry unresolved entries, selected `track_ids` or
-the complete playlist. Playlist mutations include `resolution_summary` and are
+the complete playlist. It also accepts explicit `track_id`/`result_id`
+selections after the model or portal user chooses an ambiguous candidate.
+Successful resolution is followed by metadata enrichment without consuming a
+playlist reserve. `roon_refresh_playlist_metadata` refreshes album, duration,
+year, track number, artwork and other observed audio metadata for already
+resolved tracks without changing their recording identity. Playlist mutations include `resolution_summary` and are
 only returned with `verified: true` when every track is resolved or explicitly
 selected. Explicit model selections record `selection_origin: "model"`; the
 legacy `manual` status alone must not be described as human verification.

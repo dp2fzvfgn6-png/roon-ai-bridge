@@ -102,7 +102,7 @@ test("registers the compact MCP v2 intent catalog", () => {
 
   registerBridgeV2Tools(server, context);
 
-  assert.equal(tools.size, 35);
+  assert.equal(tools.size, 36);
   for (const [name, registration] of tools) {
     assert.match(registration.options.description, /^Use this when/);
     assert.ok(registration.options.outputSchema.status, `${name} should declare status output`);
@@ -126,6 +126,7 @@ test("registers the compact MCP v2 intent catalog", () => {
     "roon_prepare_playlist_cover",
     "roon_set_playlist_cover",
     "roon_play_playlist_track",
+    "roon_refresh_playlist_metadata",
     "roon_get_configuration",
     "roon_run_diagnostics"
   ]) assert.ok(tools.has(name), `${name} should be exposed`);
@@ -193,7 +194,7 @@ test("HTTP MCP tools/list exposes v2 intents plus six focused read-only render t
     const payload = await readMcpJson(response);
     const tools = new Map(payload.result.tools.map((tool) => [tool.name, tool]));
 
-    assert.equal(tools.size, 41);
+    assert.equal(tools.size, 42);
     assert.ok(tools.get("roon_get_state").inputSchema.properties.scope);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.zone);
     assert.ok(tools.get("roon_play_media").inputSchema.properties.media);

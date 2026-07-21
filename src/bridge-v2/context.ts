@@ -9,6 +9,8 @@ import { ActionLogService } from "../services/actionLogService";
 import { TechnicalLogService } from "../services/technicalLogService";
 import { ToolAccessService } from "../services/toolAccessService";
 import { PlaylistBuildService } from "../services/playlistBuildService";
+import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
+import { PlaylistRepairService } from "../services/playlistRepairService";
 import { ApiKeyRecord } from "../services/apiKeyService";
 import { Logger } from "../utils/logger";
 import { SystemManagementService } from "../services/systemManagementService";
@@ -21,6 +23,8 @@ export type BridgeV2Context = {
   mediaService: RoonMediaService;
   playlistService: PlaylistService;
   playlistBuildService?: PlaylistBuildService;
+  playlistMetadataEnrichmentService?: PlaylistMetadataEnrichmentService;
+  playlistRepairService?: PlaylistRepairService;
   systemManagementService?: SystemManagementService;
   zonePresetService: ZonePresetService;
   volumeLimitService: VolumeLimitService;

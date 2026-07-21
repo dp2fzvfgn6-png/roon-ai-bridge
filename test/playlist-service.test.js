@@ -859,7 +859,7 @@ test("phase 2 validation, dedupe, sort and export work without modifying on dry 
   assert.equal(validation.summary.unresolved, 3);
   assert.equal(validation.summary.stale, 2);
   assert.equal(validation.summary.missing, 1);
-  assert.equal(validation.summary.missing_metadata, 1);
+  assert.equal(validation.summary.missing_metadata, 3);
   assert.equal(validation.issues.some((issue) => issue.type === "duplicates"), false);
 
   const dedupe = service.deduplicatePlaylist(playlist.playlist_id, { dry_run: true });

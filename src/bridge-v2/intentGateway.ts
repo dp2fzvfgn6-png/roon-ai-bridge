@@ -13,6 +13,8 @@ import {
 import type { MediaType, SourcePreference } from "../roon/roonMediaService";
 import { APP_VERSION } from "../config/version";
 import { PlaylistBuildService } from "../services/playlistBuildService";
+import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
+import { PlaylistRepairService } from "../services/playlistRepairService";
 import {
   MAX_CUSTOM_COVER_BYTES,
   PLAYLIST_COVER_POLICY
@@ -21,12 +23,22 @@ import { downloadToolImage, ToolFileReference } from "../services/toolFileServic
 
 export class IntentGateway extends TransportIntentHandler {
   private readonly playlistBuildService: PlaylistBuildService;
+  private readonly playlistMetadataEnrichmentService: PlaylistMetadataEnrichmentService;
+  private readonly playlistRepairService: PlaylistRepairService;
 
   constructor(context: BridgeV2Context) {
     super(context);
     this.playlistBuildService = context.playlistBuildService || new PlaylistBuildService(
       context.playlistService,
       context.mediaService,
+      context.logger
+    );
+    this.playlistMetadataEnrichmentService = context.playlistMetadataEnrichmentService ||
+      new PlaylistMetadataEnrichmentService(context.playlistService, context.mediaService, context.logger);
+    this.playlistRepairService = context.playlistRepairService || new PlaylistRepairService(
+      context.playlistService,
+      context.mediaService,
+      this.playlistMetadataEnrichmentService,
       context.logger
     );
   }
@@ -570,14 +582,47 @@ export class IntentGateway extends TransportIntentHandler {
     playlist_id: string;
     track_ids?: string[];
     scope?: "unresolved" | "selected" | "all";
+    selections?: Array<{ track_id: string; result_id: string }>;
   }): Promise<OperationResult> {
-    const data = await this.context.playlistService.resolveVirtualPlaylistItems(input.playlist_id, {
-      mediaService: this.context.mediaService,
-      logger: this.context.logger,
-      sourcePreference: "streaming_first",
-      trackIds: input.scope === "selected" ? input.track_ids : undefined,
-      force: input.scope === "all" || input.scope === "selected"
-    });
+    const manual: Array<Awaited<ReturnType<PlaylistRepairService["selectTrack"]>>> = [];
+    for (const selection of input.selections || []) {
+      manual.push(await this.playlistRepairService.selectTrack({
+        playlistId: input.playlist_id,
+        trackId: selection.track_id,
+        resultId: selection.result_id,
+        selectionReason: "explicit_model_selection",
+        selectionOrigin: "model"
+      }));
+    }
+    const manuallySelected = new Set((input.selections || []).map((entry) => entry.track_id));
+    const selectedIds = input.scope === "selected"
+      ? (input.track_ids || []).filter((trackId) => !manuallySelected.has(trackId))
+      : undefined;
+    const shouldResolve = input.scope !== "selected" || Boolean(selectedIds?.length);
+    const legacyPlaylistService = this.context.playlistService as any;
+    const data = shouldResolve && !this.context.playlistRepairService && typeof legacyPlaylistService.getPlaylist !== "function"
+      ? {
+          ...(await legacyPlaylistService.resolveVirtualPlaylistItems(input.playlist_id, {
+            mediaService: this.context.mediaService,
+            logger: this.context.logger,
+            sourcePreference: "streaming_first",
+            trackIds: selectedIds,
+            force: input.scope === "all" || input.scope === "selected"
+          })),
+          enrichment: null
+        }
+      : shouldResolve
+      ? await this.playlistRepairService.repairPlaylist({
+          playlistId: input.playlist_id,
+          trackIds: selectedIds,
+          force: input.scope === "all" || input.scope === "selected",
+          sourcePreference: "streaming_first"
+        })
+      : {
+          playlist: this.context.playlistService.getPlaylist(input.playlist_id),
+          resolution: [],
+          enrichment: null
+        };
     const playlist = data.playlist || (
       typeof (this.context.playlistService as any).getPlaylist === "function"
         ? this.context.playlistService.getPlaylist(input.playlist_id)
@@ -592,7 +637,43 @@ export class IntentGateway extends TransportIntentHandler {
       ...result,
       data: {
         ...(result.data as Record<string, unknown>),
-        resolution_attempts: data.resolution
+        resolution_attempts: data.resolution,
+        metadata_enrichment: data.enrichment,
+        manual_selections: manual.map((entry) => ({
+          track_id: entry.track.track_id,
+          enrichment: entry.enrichment
+        }))
+      }
+    };
+  }
+
+  async refreshPlaylistMetadata(input: {
+    playlist_id: string;
+    track_ids?: string[];
+    scope?: "incomplete" | "selected" | "all";
+  }): Promise<OperationResult> {
+    const data = await this.playlistMetadataEnrichmentService.refreshPlaylist(input.playlist_id, {
+      trackIds: input.scope === "selected" ? input.track_ids : undefined,
+      force: input.scope === "all",
+      sourcePreference: "streaming_first"
+    });
+    const result = this.playlistMutationResult(
+      "roon_refresh_playlist_metadata",
+      "Playlist metadata refresh completed.",
+      data.playlist
+    );
+    return {
+      ...result,
+      data: {
+        ...(result.data as Record<string, unknown>),
+        metadata_refresh: {
+          attempted: data.attempted,
+          completed: data.completed,
+          partial: data.partial,
+          skipped: data.skipped,
+          failed: data.failed,
+          tracks: data.tracks
+        }
       }
     };
   }

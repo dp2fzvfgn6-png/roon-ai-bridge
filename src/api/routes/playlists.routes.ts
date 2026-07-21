@@ -237,16 +237,62 @@ export function createPlaylistsRouter(context: ApiContext): Router {
         force: req.body?.force
       });
       res.json(
-        await context.playlistService.resolveVirtualPlaylistItems(
-          req.params.playlist_id,
-          {
-            mediaService: context.mediaService,
-            logger: context.logger,
-            force: Boolean(req.body?.force),
-            sourcePreference: req.body?.source_preference
-          }
-        )
+        await context.playlistRepairService.repairPlaylist({
+          playlistId: req.params.playlist_id,
+          force: Boolean(req.body?.force),
+          sourcePreference: req.body?.source_preference
+        })
       );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/metadata/refresh", "/virtual-playlists/:playlist_id/metadata/refresh"], async (req, res, next) => {
+    try {
+      context.logger.info("Virtual playlist metadata refresh received", {
+        playlistId: req.params.playlist_id,
+        trackCount: Array.isArray(req.body?.track_ids) ? req.body.track_ids.length : null,
+        force: Boolean(req.body?.force)
+      });
+      res.json(await context.playlistMetadataEnrichmentService.refreshPlaylist(
+        req.params.playlist_id,
+        {
+          trackIds: Array.isArray(req.body?.track_ids) ? req.body.track_ids : undefined,
+          force: Boolean(req.body?.force),
+          sourcePreference: req.body?.source_preference
+        }
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(["/playlists/:playlist_id/tracks/:track_id/repair", "/virtual-playlists/:playlist_id/tracks/:track_id/repair"], async (req, res, next) => {
+    try {
+      res.json(await context.playlistRepairService.repairPlaylist({
+        playlistId: req.params.playlist_id,
+        trackIds: [req.params.track_id],
+        force: true,
+        sourcePreference: req.body?.source_preference
+      }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get(["/playlists/:playlist_id/tracks/:track_id/candidates", "/virtual-playlists/:playlist_id/tracks/:track_id/candidates"], async (req, res, next) => {
+    try {
+      const playlist = context.playlistService.getPlaylist(req.params.playlist_id);
+      const track = playlist.tracks.find((entry) => entry.track_id === req.params.track_id);
+      if (!track) throw new ApiError("PLAYLIST_TRACK_NOT_FOUND", "Virtual playlist track not found");
+      const query = String(req.query.query || track.query || track.identity.canonical_query).trim();
+      res.json(await context.mediaService.search({
+        query,
+        types: ["track"],
+        count: parsePageNumber(req.query.count, 25),
+        sourcePreference: "streaming_first"
+      }));
     } catch (error) {
       next(error);
     }
@@ -298,17 +344,15 @@ export function createPlaylistsRouter(context: ApiContext): Router {
     }
   });
 
-  router.post(["/playlists/:playlist_id/tracks/:track_id/match", "/virtual-playlists/:playlist_id/tracks/:track_id/match"], (req, res, next) => {
+  router.post(["/playlists/:playlist_id/tracks/:track_id/match", "/virtual-playlists/:playlist_id/tracks/:track_id/match"], async (req, res, next) => {
     try {
-      res.json(context.playlistService.setTrackMatch(
-        req.params.playlist_id,
-        req.params.track_id,
-        req.body?.result_id,
-        {
-          mediaService: context.mediaService,
-          selectionReason: req.body?.selection_reason
-        }
-      ));
+      res.json(await context.playlistRepairService.selectTrack({
+        playlistId: req.params.playlist_id,
+        trackId: req.params.track_id,
+        resultId: req.body?.result_id,
+        selectionReason: req.body?.selection_reason,
+        selectionOrigin: "portal_user"
+      }));
     } catch (error) {
       next(error);
     }

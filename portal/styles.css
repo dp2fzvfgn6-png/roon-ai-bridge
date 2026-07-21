@@ -309,6 +309,12 @@ select { color-scheme: dark; }
 .track-title small, .track-album { overflow: hidden; color: var(--text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .row-actions { display: flex; gap: 1px; }
 .row-actions .icon-btn { width: 32px; height: 32px; }
+.playlist-issue-button { width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; background: transparent; }
+.playlist-issue-button .material-symbols-rounded { font-size: 20px; font-variation-settings: "FILL" 1, "wght" 350, "GRAD" -25, "opsz" 24; }
+.playlist-issue-button.ambiguous { color: #efd18f; border-color: rgba(239,209,143,.3); background: rgba(239,209,143,.07); }
+.playlist-issue-button.ambiguous:hover { background: rgba(239,209,143,.14); }
+.playlist-issue-button.missing { color: var(--danger); border-color: rgba(227,111,99,.3); background: rgba(227,111,99,.07); }
+.playlist-issue-button.missing:hover { background: rgba(227,111,99,.14); }
 .add-result-button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .add-result-button .material-symbols-rounded { font-size: 16px; }
 .track-action-button { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--line-strong); color: var(--text); background: transparent; font-size: 10px; }
@@ -327,6 +333,19 @@ select { color-scheme: dark; }
 .playlist-track-list.is-reordering .track-index { color: var(--brand-orange-light); }
 .playlist-track-list.is-reordering .track-index .material-symbols-rounded { font-size: 20px; }
 .playlist-track-row.is-dragging { opacity: .34; background: rgba(193,96,72,.08); }
+.playlist-repair-notice { display: grid; grid-template-columns: auto 1fr; gap: 12px; margin-bottom: 18px; padding: 14px; color: var(--text-soft); border: 1px solid var(--line-strong); background: rgba(255,255,255,.025); }
+.playlist-repair-notice > .material-symbols-rounded { margin-top: 1px; font-variation-settings: "FILL" 1, "wght" 350, "GRAD" -25, "opsz" 24; }
+.playlist-repair-notice strong { display: block; color: var(--text); }
+.playlist-repair-notice p { margin: 5px 0; line-height: 1.5; }
+.playlist-repair-notice small { color: var(--text-dim); }
+.playlist-repair-notice.ambiguous { border-left: 3px solid #efd18f; }
+.playlist-repair-notice.ambiguous > .material-symbols-rounded { color: #efd18f; }
+.playlist-repair-notice.missing { border-left: 3px solid var(--danger); }
+.playlist-repair-notice.missing > .material-symbols-rounded { color: var(--danger); }
+.playlist-repair-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -5px 0 18px; color: var(--text-dim); font-size: 10px; }
+.playlist-repair-actions code { color: var(--text-soft); }
+.repair-candidate-list { margin-top: 8px; }
+.repair-candidate { grid-template-columns: 34px 44px minmax(0,1.45fr) minmax(120px,.9fr) auto; }
 .media-badge { padding: 3px 6px; font-size: 8px; }
 .media-badge.best { color: var(--good); }
 .browse-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; }

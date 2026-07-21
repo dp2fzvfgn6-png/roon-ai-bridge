@@ -295,7 +295,7 @@ test("v2 playlist creation validates model candidates and never trusts result_id
   });
 
   const track = result.data.tracks[0];
-  assert.equal(searches, 1);
+  assert.equal(searches, 2);
   assert.equal(track.roon_item_key, "roon:teardrop");
   assert.equal(track.resolution.status, "resolved");
   assert.equal(track.resolution.selected_result_id, "search:teardrop");
