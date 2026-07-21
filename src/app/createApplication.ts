@@ -15,6 +15,7 @@ import { PlaylistBuildService } from "../services/playlistBuildService";
 import { PlaylistMetadataEnrichmentService } from "../services/playlistMetadataEnrichmentService";
 import { PlaylistRepairService } from "../services/playlistRepairService";
 import { PortalAuthService } from "../services/portalAuthService";
+import { RecordingMetadataService } from "../services/recordingMetadataService";
 import { SystemManagementService } from "../services/systemManagementService";
 import { createObservedLogger, TechnicalLogService } from "../services/technicalLogService";
 import { ToolAccessService } from "../services/toolAccessService";
@@ -47,10 +48,13 @@ export function createApplication(config: AppConfig): ApplicationRuntime {
   const playlistService = new PlaylistService(config, database);
   const oauthService = new OAuthService(config);
   const mediaService = new RoonMediaService(roonClient, config.roonStreamingSource);
+  const recordingMetadataService = new RecordingMetadataService();
   const playlistMetadataEnrichmentService = new PlaylistMetadataEnrichmentService(
     playlistService,
     mediaService,
-    logger
+    logger,
+    "streaming_first",
+    recordingMetadataService
   );
   const playlistRepairService = new PlaylistRepairService(
     playlistService,

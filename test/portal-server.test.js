@@ -318,6 +318,7 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /function refreshPlaylistMetadata/);
     assert.match(portalScriptText, /track_ids:\[track\.track_id\]/);
     assert.match(portalScriptText, /Actualizando \$\{processed\+1\}\/\$\{eligible\.length\}/);
+    assert.match(portalScriptText, /totals\.skipped\} omitidas/);
     assert.match(portalScriptText, /playlist-repair-search-form/);
     assert.match(portalScriptText, /data-toggle-reorder/);
     assert.match(portalScriptText, /tracks\/reorder/);

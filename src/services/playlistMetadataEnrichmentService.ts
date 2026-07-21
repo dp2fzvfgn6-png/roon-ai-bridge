@@ -1,4 +1,4 @@
-import type { MediaResult, RoonMediaService, SourcePreference, VersionHint } from "../roon/roonMediaService";
+import { splitArtistCredit, type MediaResult, type RoonMediaService, type SourcePreference, type VersionHint } from "../roon/roonMediaService";
 import type { Logger } from "../utils/logger";
 import { ApiError } from "../utils/errors";
 import type { AudioMetadata, VirtualPlaylistTrack } from "./playlists/playlistContracts";
@@ -10,6 +10,7 @@ import {
   type MetadataCompleteness
 } from "./playlists/playlistMetadataPolicy";
 import { PlaylistService, type VirtualPlaylistResolutionStatus } from "./playlistService";
+import { RecordingMetadataService } from "./recordingMetadataService";
 import { TrackResolutionService } from "./trackResolutionService";
 
 export type MetadataEnrichmentReport = {
@@ -53,6 +54,26 @@ function sameText(left: unknown, right: unknown): boolean {
   return Boolean(a && b && a === b);
 }
 
+function canonicalTrackTitle(value: unknown): string {
+  return normalize(value)
+    .replace(/\b(?:lp|album|single) version\b.*$/g, "")
+    .replace(/\b(?:live|en vivo|directo|remaster(?:ed)?|remix|mix|radio edit|edit|cover|tribute|demo|alternate take|version|binaural|3d)\b.*$/g, "")
+    .trim();
+}
+
+function sameRecordingTitle(left: unknown, right: unknown): boolean {
+  const a = canonicalTrackTitle(left);
+  const b = canonicalTrackTitle(right);
+  return Boolean(a && b && a === b);
+}
+
+function safeMetadataVariant(candidate: MediaResult, source: MediaResult): boolean {
+  if (source.version_hint && !["studio", "remaster", "unknown"].includes(source.version_hint)) {
+    return candidate.version_hint === source.version_hint;
+  }
+  return !/\b(?:live|en vivo|directo|remix|cover|tribute|demo|alternate take|atmos|binaural|3d)\b/i.test(candidate.title);
+}
+
 function artistMatches(track: { artist?: unknown; subtitle?: unknown }, artist: unknown): boolean {
   const expected = normalize(artist);
   if (!expected) return true;
@@ -69,12 +90,14 @@ function resolutionStatus(track: VirtualPlaylistTrack): VirtualPlaylistResolutio
 
 export class PlaylistMetadataEnrichmentService {
   private readonly activeTrackRefreshes = new Map<string, Promise<{ track: VirtualPlaylistTrack; report: MetadataEnrichmentReport }>>();
+  private readonly artistReleaseCache = new Map<string, { expiresAt: number; promise: Promise<MediaResult[]> }>();
 
   constructor(
     private readonly playlistService: PlaylistService,
     private readonly mediaService: RoonMediaService,
     private readonly logger?: Logger,
-    private readonly sourcePreference: SourcePreference = "streaming_first"
+    private readonly sourcePreference: SourcePreference = "streaming_first",
+    private readonly recordingMetadataService?: RecordingMetadataService
   ) {}
 
   async enrichResult(
@@ -135,9 +158,54 @@ export class PlaylistMetadataEnrichmentService {
       } catch (error) {
         warnings.push(`album_detail_failed:${error instanceof Error ? error.message : String(error)}`);
       }
-    } else {
-      warnings.push("album_reference_unavailable");
     }
+
+    let catalogArtist: string | null = null;
+    if (!result.album) {
+      try {
+        const catalog = await this.enrichFromArtistCatalog(result, hints);
+        if (catalog) {
+          result = mergeMediaResult(result, catalog.metadata);
+          albumResultId = albumResultId || catalog.album_result_id;
+          catalogArtist = catalog.artist;
+          warnings.push(...catalog.warnings);
+        }
+      } catch (error) {
+        warnings.push(`artist_catalog_failed:${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (this.recordingMetadataService && !metadataCompleteness(
+      audioMetadataFromMedia(result as MediaResult & Record<string, unknown>)
+    ).complete) {
+      const artist = catalogArtist || result.artists?.[0]?.title || splitArtistCredit(hints.artist || result.artist)[0] || null;
+      const title = result.title || hints.title || null;
+      if (title && artist) {
+        try {
+          const external = await this.recordingMetadataService.lookup({
+            title,
+            artist,
+            album: result.album || hints.album || null
+          });
+          if (external) {
+            const existingIsrc = (result as MediaResult & { isrc?: string | null }).isrc;
+            result = mergeMediaResult(result, {
+              album: result.album || external.album,
+              duration_seconds: result.duration_seconds || external.duration_seconds,
+              release_year: result.release_year || external.release_year,
+              isrc: existingIsrc || external.isrc
+            } as Partial<MediaResult> & { isrc?: string | null });
+            warnings.push(`musicbrainz_metadata:${external.confidence}`);
+          } else {
+            warnings.push("musicbrainz_recording_not_found");
+          }
+        } catch (error) {
+          warnings.push(`musicbrainz_failed:${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+
+    if (!result.album) warnings.push("album_reference_unavailable");
 
     const audioMetadata = audioMetadataFromMedia(result as MediaResult & Record<string, unknown>);
     const completeness = metadataCompleteness(audioMetadata);
@@ -153,6 +221,94 @@ export class PlaylistMetadataEnrichmentService {
         warnings: Array.from(new Set(warnings))
       }
     };
+  }
+
+  private async enrichFromArtistCatalog(
+    source: MediaResult,
+    hints: { title?: string | null; artist?: string | null; album?: string | null }
+  ): Promise<{
+    artist: string;
+    album_result_id: string;
+    metadata: Partial<MediaResult> & { isrc?: string | null };
+    warnings: string[];
+  } | null> {
+    const title = source.title || hints.title;
+    if (!title) return null;
+    const artistHints = Array.from(new Map([
+      ...(source.artists || []).map((artist) => artist.title),
+      ...splitArtistCredit(hints.artist || source.artist)
+    ].filter(Boolean).map((artist) => [normalize(artist), artist])).values()).slice(0, 5);
+
+    for (const artistHint of artistHints) {
+      const [trackSearch, artistSearch] = await Promise.all([
+        this.mediaService.search({
+          query: [title, artistHint].filter(Boolean).join(" "),
+          types: ["track"],
+          count: 25,
+          sourcePreference: this.sourcePreference
+        }),
+        this.mediaService.search({
+          query: artistHint,
+          types: ["artist"],
+          count: 10,
+          sourcePreference: this.sourcePreference
+        })
+      ]);
+      const artist = artistSearch.results.find((candidate) =>
+        candidate.media_type === "artist" && sameText(candidate.title, artistHint)
+      );
+      if (!artist) continue;
+      const releases = await this.loadArtistReleases(artist.result_id, artistHint);
+      const coverKeys = new Set([
+        source.image_key,
+        ...trackSearch.results.filter((candidate) =>
+          candidate.media_type === "track" &&
+          sameRecordingTitle(candidate.title, title) &&
+          safeMetadataVariant(candidate, source)
+        ).map((candidate) => candidate.image_key)
+      ].filter((value): value is string => Boolean(value)));
+      const release = releases.find((candidate) => candidate.image_key && coverKeys.has(candidate.image_key));
+      if (!release) continue;
+      const detail = await this.mediaService.getAlbumDetail(release.result_id, undefined, 500);
+      const matchedTrack = [...(detail.tracks || []), ...(detail.related_tracks || [])].find((candidate) =>
+        sameRecordingTitle(candidate.title, title) &&
+        artistMatches(candidate, artistHint)
+      ) || null;
+      const matchedIsrc = (matchedTrack as (MediaResult & { isrc?: string | null }) | null)?.isrc;
+      const sourceIsrc = (source as MediaResult & { isrc?: string | null }).isrc;
+      return {
+        artist: artistHint,
+        album_result_id: release.result_id,
+        metadata: {
+          album: detail.album.title || release.title,
+          album_artist: detail.album.album_artist || detail.album.artist || release.artist || artistHint,
+          duration_seconds: matchedTrack?.duration_seconds || source.duration_seconds,
+          release_year: matchedTrack?.release_year || detail.album.release_year || release.release_year,
+          track_number: matchedTrack?.track_number || source.track_number,
+          disc_number: matchedTrack?.disc_number || source.disc_number,
+          isrc: matchedIsrc || sourceIsrc,
+          image_key: source.image_key || matchedTrack?.image_key || detail.album.image_key || release.image_key
+        },
+        warnings: detail.warnings
+      };
+    }
+    return null;
+  }
+
+  private async loadArtistReleases(resultId: string, artist: string): Promise<MediaResult[]> {
+    const key = normalize(artist);
+    const cached = this.artistReleaseCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+    const pending = this.mediaService.listArtistReleases(resultId, undefined, 200)
+      .then((result) => result.releases);
+    const entry = { expiresAt: Date.now() + 10 * 60 * 1000, promise: pending };
+    this.artistReleaseCache.set(key, entry);
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.artistReleaseCache.get(key) === entry) this.artistReleaseCache.delete(key);
+      throw error;
+    }
   }
 
   async refreshTrack(
@@ -192,16 +348,30 @@ export class PlaylistMetadataEnrichmentService {
         return { track, report };
       }
       const resolution = await new TrackResolutionService(this.mediaService).resolve({
-        query: track.identity.canonical_query || track.query,
+        query: track.query || track.identity.canonical_query,
         title: track.identity.title || track.title,
         artist: track.identity.artist || track.artist,
         album: track.identity.album || track.album,
         releaseYear: track.identity.release_year,
         versionHint: track.identity.version_hint as VersionHint | null,
         count: 25,
+        includeExactQuery: false,
         sourcePreference: options.sourcePreference || this.sourcePreference
       });
-      result = resolution.status === "resolved" ? resolution.selected?.result || null : null;
+      const storedImageKey = track.image_key || (typeof track.audio_metadata?.image_key === "string"
+        ? track.audio_metadata.image_key
+        : null);
+      const recovered = resolution.candidates.find((candidate) =>
+        Boolean(storedImageKey && candidate.result.image_key === storedImageKey) &&
+        sameRecordingTitle(candidate.result.title, track.identity.title || track.title)
+      ) || resolution.candidates.find((candidate) =>
+        sameRecordingTitle(candidate.result.title, track.identity.title || track.title) &&
+        artistMatches(candidate.result, track.identity.artist || track.artist) &&
+        safeMetadataVariant(candidate.result, candidate.result)
+      );
+      result = resolution.status === "resolved"
+        ? resolution.selected?.result || null
+        : recovered?.result || null;
       if (!result) {
         const report = this.skippedReport(`identity_${resolution.status}:${resolution.reason}`, track.audio_metadata);
         return { track, report };

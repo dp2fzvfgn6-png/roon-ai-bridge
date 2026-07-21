@@ -207,3 +207,86 @@ test("duplicate refreshes for the same playlist track share one Roon operation",
   assert.equal(first.report.status, "completed");
   assert.equal(second.report.status, "completed");
 });
+
+test("metadata enrichment finds an album through the artist catalog and fills duration from MusicBrainz", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Catalog fallback",
+    tracks: [{ query: "Riders on the Storm The Doors", title: "Riders On The Storm", artist: "The Doors", resolution: { status: "resolved" } }]
+  });
+  const sparse = mediaTrack({
+    title: "Riders On The Storm",
+    artist: "The Doors",
+    artists: [{ type: "artist", title: "The Doors", artist: null, result_id: null }],
+    album: null,
+    duration_seconds: null,
+    image_key: "single-cover",
+    links: { artist: null, artists: [], album: null }
+  });
+  const release = mediaTrack({ result_id: "la-woman", media_type: "album", type: "album", title: "L.A. Woman", artist: "The Doors", image_key: "album-cover" });
+  const media = {
+    async getTrackMetadata() { throw new Error("album action unavailable"); },
+    async search(input) {
+      if (input.types.length === 1 && input.types[0] === "album") return { results: [] };
+      return { results: [
+        mediaTrack({ result_id: "artist", media_type: "artist", type: "artist", title: "The Doors", artist: "The Doors" }),
+        mediaTrack({ result_id: "lp-track", title: "Riders On The Storm ( LP Version )", artist: "The Doors", image_key: "album-cover", version_hint: "alternate" })
+      ] };
+    },
+    async listArtistReleases() { return { releases: [release] }; },
+    async getAlbumDetail() {
+      return {
+        album: release,
+        tracks: [mediaTrack({ title: "Riders On The Storm ( LP Version )", artist: "The Doors", album: "L.A. Woman", duration_seconds: null, track_number: 10 })],
+        related_tracks: [],
+        warnings: []
+      };
+    }
+  };
+  const recordingMetadata = {
+    async lookup(input) {
+      assert.deepEqual(input, { title: "Riders On The Storm", artist: "The Doors", album: "L.A. Woman" });
+      return { recording_id: "mbid", title: input.title, artist: input.artist, album: input.album, duration_seconds: 432, release_year: 1971, isrc: null, confidence: "high" };
+    }
+  };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media, undefined, "streaming_first", recordingMetadata);
+  const result = await service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse });
+
+  assert.equal(result.report.status, "completed");
+  assert.equal(result.track.album, "L.A. Woman");
+  assert.equal(result.track.audio_metadata.duration_seconds, 432);
+  assert.equal(result.track.audio_metadata.track_number, 10);
+  assert.equal(result.track.audio_metadata.release_year, 1971);
+  assert.equal(result.report.warnings.includes("musicbrainz_metadata:high"), true);
+});
+
+test("manual playlist associations can reuse their matching candidate when re-resolution is ambiguous", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Manual identity",
+    tracks: [{
+      query: "Song Artist",
+      title: "Song",
+      artist: "Artist",
+      audio_metadata: { title: "Song", artist: "Artist", image_key: "chosen-cover" },
+      resolution: { status: "manual", selection_origin: "portal_user" }
+    }]
+  });
+  const chosen = mediaTrack({ result_id: "chosen", image_key: "chosen-cover", album: null, duration_seconds: null, links: { artist: null, artists: [], album: null } });
+  const competing = mediaTrack({ result_id: "competing", image_key: "other-cover", album: null, duration_seconds: null, links: { artist: null, artists: [], album: null } });
+  const media = {
+    async search() { return { results: [chosen, competing] }; },
+    async getTrackMetadata(resultId) {
+      assert.equal(resultId, "chosen");
+      return mediaTrack({ result_id: "chosen", album: "Album", duration_seconds: 180 });
+    },
+    async getAlbumDetail() { throw new Error("not needed"); }
+  };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media);
+  const result = await service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id);
+
+  assert.equal(result.report.status, "completed");
+  assert.equal(result.track.resolution.status, "manual");
+  assert.equal(result.track.album, "Album");
+  assert.equal(result.track.audio_metadata.duration_seconds, 180);
+});
