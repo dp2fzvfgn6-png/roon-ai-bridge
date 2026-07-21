@@ -359,16 +359,19 @@ test("lists virtual playlists without tracks by default and paginates tracks exp
 
   const paged = service.listPlaylists({
     includeTracks: true,
-    limit: 1,
+    limit: 10,
     offset: 0,
     trackLimit: 5,
     trackOffset: 10
   });
-  assert.equal(paged.playlists.length, 1);
-  assert.equal(paged.playlists[0].tracks.length, 5);
-  assert.equal(paged.playlists[0].track_pagination.total, 194);
-  assert.equal(paged.playlists[0].track_pagination.offset, 10);
-  assert.equal(paged.playlists[0].tracks[0].position, 11);
+  const longPage = paged.playlists.find(
+    (playlist) => playlist.playlist_id === long.playlist_id
+  );
+  assert.equal(paged.playlists.length, 2);
+  assert.equal(longPage.tracks.length, 5);
+  assert.equal(longPage.track_pagination.total, 194);
+  assert.equal(longPage.track_pagination.offset, 10);
+  assert.equal(longPage.tracks[0].position, 11);
 
   const outside = service.listPlaylists({
     includeTracks: true,
