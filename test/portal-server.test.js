@@ -318,7 +318,12 @@ test("serves portal assets publicly but protects every administration endpoint",
     assert.match(portalScriptText, /function refreshPlaylistMetadata/);
     assert.match(portalScriptText, /track_ids:\[track\.track_id\]/);
     assert.match(portalScriptText, /Actualizando \$\{processed\+1\}\/\$\{eligible\.length\}/);
-    assert.match(portalScriptText, /totals\.skipped\} omitidas/);
+    assert.match(portalScriptText, /totals\.conflict\} con conflicto/);
+    assert.match(portalScriptText, /totals\.unverified\} sin verificar/);
+    assert.match(portalScriptText, /function metadataRows/);
+    assert.match(portalScriptText, /Ver JSON técnico completo/);
+    assert.match(portalScriptText, /Reasignar canción/);
+    assert.match(portalStylesText, /\.playlist-issue-button \{[^}]*border: 0;[^}]*background: transparent;/);
     assert.match(portalScriptText, /const restartProgressStages=\[\['restarting','Reiniciando'\],\['verifying','Verificando'\],\['completed','Completado'\]\]/);
     assert.match(portalScriptText, /false,restartProgressStages/);
     assert.match(portalScriptText, /progressModal\('Verificando el reinicio','verifying'/);

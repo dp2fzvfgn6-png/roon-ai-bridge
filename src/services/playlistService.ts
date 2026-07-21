@@ -18,8 +18,8 @@ import { ApiError } from "../utils/errors";
 import { Logger } from "../utils/logger";
 import {
   audioMetadataFromMedia,
-  mergeAudioMetadata,
-  metadataCompleteness
+  metadataCompleteness,
+  replaceCatalogAudioMetadata
 } from "./playlists/playlistMetadataPolicy";
 
 import {
@@ -360,6 +360,7 @@ function identityFromTrack(input: {
 
   return {
     version: 1,
+    catalog_separated: true,
     fingerprint: input.preserveExistingFingerprint && optionalString(existing?.fingerprint)
       ? existing!.fingerprint
       : `sha256:${crypto.createHash("sha256").update(fingerprintMaterial).digest("hex")}`,
@@ -530,14 +531,25 @@ function normalizeTrackInput(
     resolution: objectValue(payload.resolution) || objectValue(payload.resolution_metadata)
   }) || {};
   const split = splitStoredMetadata(storedMetadata);
-  storedMetadata.identity = identityFromTrack({
-    query,
-    title,
-    artist,
-    album: optionalString(payload.album),
-    audioMetadata: split.audio_metadata,
-    existing: split.identity
-  });
+  const selectedCandidate = objectValue(split.resolution?.selected_candidate);
+  const selectionBackedIdentity = Boolean(selectedCandidate && objectValue(split.resolution?.metadata_enrichment));
+  storedMetadata.identity = identityFromTrack(selectionBackedIdentity
+    ? {
+        query,
+        title: selectedCandidate?.title,
+        artist: selectedCandidate?.artist,
+        album: selectedCandidate?.album,
+        audioMetadata: audioMetadataFromMedia(selectedCandidate as MediaResult & Record<string, unknown>),
+        existing: null
+      }
+    : {
+        query,
+        title,
+        artist,
+        album: optionalString(payload.album),
+        audioMetadata: split.audio_metadata,
+        existing: split.identity
+      });
   storedMetadata.resolution = canonicalResolution(
     split.resolution,
     optionalString(payload.roon_item_key)
@@ -1532,7 +1544,7 @@ export class PlaylistService {
     const currentTrack = this.mapTrack(row);
     const metadata = parseMetadata(row.metadata_json) || {};
     const split = splitStoredMetadata(metadata);
-    const audioMetadata = mergeAudioMetadata(currentTrack.audio_metadata, observed);
+    const audioMetadata = replaceCatalogAudioMetadata(currentTrack.audio_metadata, observed);
     // Enrichment improves descriptive fields but must not redefine the durable
     // recording identity chosen by the resolver or the user.
     const identity = currentTrack.identity;
@@ -1556,7 +1568,9 @@ export class PlaylistService {
       track_id: trackId,
       title: optionalString(nextAudio?.title) || row.title,
       artist: optionalString(nextAudio?.artist) || row.artist,
-      album: optionalString(nextAudio?.album) || row.album,
+      // Album is a replaceable release observation. Clear a legacy value when
+      // the selected track and artwork cannot verify that release.
+      album: optionalString(nextAudio?.album),
       metadata_json: JSON.stringify({
         ...(nextAudio ? { audio_metadata: nextAudio } : {}),
         ...(split.user_metadata ? { user_metadata: split.user_metadata } : {}),
@@ -2029,15 +2043,32 @@ export class PlaylistService {
     const metadata = parseMetadata(row.metadata_json);
     const split = splitStoredMetadata(metadata);
     const imageKey = imageKeyFromMetadata(metadata);
-    const identity = identityFromTrack({
-      query: row.query,
-      title: row.title,
-      artist: row.artist,
-      album: row.album,
-      audioMetadata: split.audio_metadata,
-      existing: split.identity,
-      preserveExistingFingerprint: true
-    });
+    const hasStoredIdentity = Boolean(split.identity?.version === 1 && optionalString(split.identity?.fingerprint));
+    const selectedCandidate = objectValue(split.resolution?.selected_candidate);
+    const selectionBackedIdentity = Boolean(
+      hasStoredIdentity && selectedCandidate && objectValue(split.resolution?.metadata_enrichment)
+    );
+    const identity = selectionBackedIdentity
+      ? {
+          ...identityFromTrack({
+            query: row.query,
+            title: selectedCandidate?.title,
+            artist: selectedCandidate?.artist,
+            album: selectedCandidate?.album,
+            audioMetadata: audioMetadataFromMedia(selectedCandidate as MediaResult & Record<string, unknown>),
+            existing: null
+          }),
+          fingerprint: split.identity!.fingerprint
+        }
+      : identityFromTrack({
+          query: row.query,
+          title: hasStoredIdentity ? split.identity?.title : row.title,
+          artist: hasStoredIdentity ? split.identity?.artist : row.artist,
+          album: hasStoredIdentity ? split.identity?.album : row.album,
+          audioMetadata: hasStoredIdentity ? null : split.audio_metadata,
+          existing: split.identity,
+          preserveExistingFingerprint: true
+        });
     const resolution = canonicalResolution(split.resolution, row.roon_item_key);
 
     return {
@@ -2270,35 +2301,54 @@ export class PlaylistService {
       result?: Record<string, unknown>;
       candidates?: Record<string, unknown>[];
       selectionOrigin?: "automatic" | "model" | "portal_user" | "unknown_explicit";
+      preserveCatalogMetadata?: boolean;
     }
   ): VirtualPlaylistResolutionResult {
     const metadata = parseMetadata(row.metadata_json) || {};
     const split = splitStoredMetadata(metadata);
     const accepted = resolution.status === "resolved" || resolution.status === "manual";
-    const audioMetadata = accepted && resolution.result
-      ? mergeAudioMetadata(split.audio_metadata, audioMetadataFromMedia(resolution.result as MediaResult))
+    const selectedAudio = accepted && resolution.result
+      ? audioMetadataFromMedia(resolution.result as MediaResult)
+      : null;
+    const audioMetadata = selectedAudio
+      ? resolution.preserveCatalogMetadata
+        ? split.audio_metadata || selectedAudio
+        : replaceCatalogAudioMetadata(split.audio_metadata, selectedAudio)
       : split.audio_metadata;
-    const identity = identityFromTrack({
-      query: row.query,
-      title: accepted ? resolution.result?.title : row.title,
-      artist: accepted ? resolution.result?.artist || resolution.result?.subtitle : row.artist,
-      album: accepted ? resolution.result?.album : row.album,
-      audioMetadata,
-      existing: split.identity
-    });
+    const identity = accepted && resolution.result && !resolution.preserveCatalogMetadata
+      ? identityFromTrack({
+          query: row.query,
+          title: resolution.result.title,
+          artist: resolution.result.artist || resolution.result.subtitle,
+          album: resolution.result.album,
+          audioMetadata: selectedAudio,
+          existing: null
+        })
+      : identityFromTrack({
+          query: row.query,
+          title: split.identity?.title || row.title,
+          artist: split.identity?.artist || row.artist,
+          album: split.identity?.album,
+          audioMetadata: null,
+          existing: split.identity,
+          preserveExistingFingerprint: true
+        });
     const resolvedAt = nowIso();
     const nextMetadata: Record<string, unknown> = {
       ...(split.user_metadata ? { user_metadata: split.user_metadata } : {}),
       ...(audioMetadata ? { audio_metadata: audioMetadata } : {}),
       identity,
       resolution: {
+        ...(resolution.preserveCatalogMetadata ? split.resolution || {} : {}),
         status: resolution.status,
         query: resolution.query,
         selected_result_id: resolution.result?.result_id || null,
         selected_roon_item_key: resolution.roonItemKey,
-        selected_candidate: accepted && resolution.result
-          ? mediaCandidateSnapshot(resolution.result)
-          : null,
+        selected_candidate: resolution.preserveCatalogMetadata
+          ? split.resolution?.selected_candidate || (accepted && resolution.result ? mediaCandidateSnapshot(resolution.result) : null)
+          : accepted && resolution.result
+            ? mediaCandidateSnapshot(resolution.result)
+            : null,
         score: resolution.score,
         confidence: resolutionConfidence({
           status: resolution.status,
@@ -2308,9 +2358,13 @@ export class PlaylistService {
           candidates: resolution.candidates
         }),
         reason: resolution.reason,
-        selection_origin: resolution.selectionOrigin || (resolution.status === "manual" ? "unknown_explicit" : "automatic"),
+        selection_origin: resolution.preserveCatalogMetadata
+          ? split.resolution?.selection_origin || resolution.selectionOrigin || (resolution.status === "manual" ? "unknown_explicit" : "automatic")
+          : resolution.selectionOrigin || (resolution.status === "manual" ? "unknown_explicit" : "automatic"),
         resolved_at: resolvedAt,
-        candidates: resolution.candidates?.map(mediaCandidateSnapshot) || [],
+        candidates: resolution.preserveCatalogMetadata
+          ? split.resolution?.candidates || resolution.candidates?.map(mediaCandidateSnapshot) || []
+          : resolution.candidates?.map(mediaCandidateSnapshot) || [],
         binding: {
           state: resolution.roonItemKey ? "stale" : "missing",
           item_key: resolution.roonItemKey,
@@ -2513,7 +2567,8 @@ export class PlaylistService {
           roonItemKey: resolvedCandidate.result.roon_item_key,
           score: resolvedCandidate.score,
           reason: "reconstructed_for_playback",
-          result: resolvedCandidate.result as unknown as Record<string, unknown>
+          result: resolvedCandidate.result as unknown as Record<string, unknown>,
+          preserveCatalogMetadata: true
         });
         this.touchPlaylist(playlistId);
       }

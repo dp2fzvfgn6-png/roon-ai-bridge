@@ -447,7 +447,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_refresh_playlist_metadata", {
     title: "Refresh RoonIA Playlist Metadata",
-    description: "Use this when resolved playlist tracks need album, duration, year, track number, artwork or other audio metadata refreshed without changing their identity. Use incomplete by default, selected with track_ids for chosen entries, or all for a full refresh. Use roon_resolve_playlist instead when a track is missing, ambiguous or incorrectly associated.",
+    description: "Use this when resolved playlist tracks need coherent recording, release, duration, credits, year, source or artwork metadata refreshed without changing their selected identity. Results distinguish exact, partial, conflict and unverified metadata instead of guessing across editions. Use incomplete by default, selected with track_ids for chosen entries, or all for a full refresh. Use roon_resolve_playlist instead when a track is missing, ambiguous or incorrectly associated.",
     annotations: write,
     inputSchema: {
       playlist_id: z.string().min(1),

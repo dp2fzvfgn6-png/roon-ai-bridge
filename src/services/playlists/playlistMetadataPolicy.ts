@@ -16,6 +16,32 @@ export type MetadataCompleteness = {
   missing_fields: CoreAudioMetadataField[];
 };
 
+export type PlaylistMetadataStatus = "exact" | "partial" | "conflict" | "unverified";
+
+const ENRICHED_CATALOG_FIELDS = new Set([
+  "album",
+  "album_artist",
+  "composer",
+  "composers",
+  "lyricists",
+  "genre",
+  "genres",
+  "release_year",
+  "original_release_year",
+  "track_number",
+  "disc_number",
+  "duration_seconds",
+  "isrc",
+  "isrcs",
+  "source",
+  "source_confidence",
+  "quality",
+  "recording",
+  "release",
+  "field_provenance",
+  "metadata_status"
+]);
+
 function present(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim().length > 0;
@@ -46,10 +72,31 @@ export function audioMetadataFromMedia(
     isrc: result.isrc,
     version_hint: result.version_hint,
     source: result.source,
+    source_confidence: result.source_confidence,
     quality: result.quality,
     image_key: imageKey || null,
     cover: imageKey ? { image_key: imageKey } : null
   });
+}
+
+/**
+ * Catalog enrichment is a replaceable observation, not part of the selected
+ * recording identity. Remove a previous observation before applying a fresh
+ * one so a failed or conflicting refresh cannot leave an album or duration
+ * from another edition behind.
+ */
+export function replaceCatalogAudioMetadata(
+  existing: AudioMetadata | null | undefined,
+  observed: AudioMetadata | null | undefined
+): AudioMetadata | null {
+  const retained = Object.fromEntries(
+    Object.entries(existing || {}).filter(([field]) => !ENRICHED_CATALOG_FIELDS.has(field))
+  );
+  const merged = {
+    ...retained,
+    ...compactMetadata(observed || {})
+  };
+  return Object.keys(merged).length ? merged : null;
 }
 
 export function mergeAudioMetadata(

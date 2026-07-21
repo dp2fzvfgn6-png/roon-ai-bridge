@@ -520,6 +520,15 @@ curl -X POST http://localhost:3000/playlists/bad-bunny-test/metadata/refresh \
   -d '{"force":false}'
 ```
 
+The refresh replaces the previous catalog observation atomically. It preserves
+the selected recording identity and user metadata, verifies that the track,
+album edition and artwork belong together, and returns `conflict` and
+`unverified` counts alongside the legacy completed/partial/skipped/failed
+totals. Each track stores `audio_metadata.metadata_status` as `exact`,
+`partial`, `conflict` or `unverified`, plus separate `recording`, `release` and
+`field_provenance` objects. Unverified external data is not copied into the
+track merely to fill an empty field.
+
 For one missing or ambiguous track, request fresh candidates and then persist
 an explicit playable selection. The `result_id` is temporary, so the selection
 must be submitted from the same active Roon search session:

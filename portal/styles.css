@@ -309,12 +309,11 @@ select { color-scheme: dark; }
 .track-title small, .track-album { overflow: hidden; color: var(--text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .row-actions { display: flex; gap: 1px; }
 .row-actions .icon-btn { width: 32px; height: 32px; }
-.playlist-issue-button { width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; background: transparent; }
+.playlist-issue-button { width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0; border: 0; background: transparent; transition: opacity .15s,transform .15s; }
 .playlist-issue-button .material-symbols-rounded { font-size: 20px; font-variation-settings: "FILL" 1, "wght" 350, "GRAD" -25, "opsz" 24; }
-.playlist-issue-button.ambiguous { color: #efd18f; border-color: rgba(239,209,143,.3); background: rgba(239,209,143,.07); }
-.playlist-issue-button.ambiguous:hover { background: rgba(239,209,143,.14); }
-.playlist-issue-button.missing { color: var(--danger); border-color: rgba(227,111,99,.3); background: rgba(227,111,99,.07); }
-.playlist-issue-button.missing:hover { background: rgba(227,111,99,.14); }
+.playlist-issue-button.ambiguous { color: #efd18f; }
+.playlist-issue-button.missing { color: var(--danger); }
+.playlist-issue-button:hover { opacity: .78; transform: scale(1.08); }
 .add-result-button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .add-result-button .material-symbols-rounded { font-size: 16px; }
 .track-action-button { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--line-strong); color: var(--text); background: transparent; font-size: 10px; }
@@ -630,6 +629,13 @@ dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
 .track-technical { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
 .track-technical h3 { margin: 6px 0 12px; }
 .track-technical pre { max-height: 360px; margin: 0; padding: 14px; overflow: auto; color: #b9d3c4; background: #070908; font: 10px/1.55 ui-monospace,monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.track-technical details { margin-top: 14px; border: 1px solid var(--line); background: #070908; }
+.track-technical summary { padding: 11px 14px; color: var(--text-soft); cursor: pointer; font-size: 10px; }
+.track-technical details pre { max-height: 440px; border-top: 1px solid var(--line); }
+.track-metadata-section { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+.track-metadata-section h3 { margin: 6px 0 12px; }
+.track-metadata-section .track-facts { margin-top: 0; }
+.track-facts strong.wrap-value { white-space: normal; overflow-wrap: anywhere; }
 .entity-section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .entity-section-head h3 { margin: 5px 0 0; }
 .modal-search { display: grid; grid-template-columns: 28px minmax(0,1fr) auto; align-items: center; gap: 8px; margin-bottom: 26px; padding: 8px 8px 8px 14px; border: 1px solid var(--line-strong); background: var(--bg); }

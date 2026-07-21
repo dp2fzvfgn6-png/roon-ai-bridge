@@ -1306,6 +1306,18 @@ test("production playlist playback reconstructs fresh media references from pers
       { query: "old noisy two", roon_item_key: "stale:two", title: "Two", artist: "Artist", album: "Album" }
     ]
   });
+  service.updateTrackAudioMetadata(playlist.playlist_id, playlist.tracks[0].track_id, {
+    title: "One",
+    artist: "Artist",
+    album: "Verified Album",
+    duration_seconds: 321,
+    metadata_status: "exact",
+    release: { title: "Verified Album", verified_by: "test" }
+  }, {
+    status: "completed",
+    metadata_status: "exact",
+    observed_at: new Date().toISOString()
+  });
   const searches = [];
   const plays = [];
   const mediaService = {
@@ -1376,6 +1388,11 @@ test("production playlist playback reconstructs fresh media references from pers
   assert.deepEqual(plays.map((call) => call.resultId), ["fresh:One", "fresh:Two"]);
   assert.equal(controlCalls, 1);
   assert.ok(result.results.every((entry) => entry.cached_roon_item_key_used === false));
+  const playedTrack = service.getPlaylist(playlist.playlist_id).tracks[0];
+  assert.equal(playedTrack.audio_metadata.album, "Verified Album");
+  assert.equal(playedTrack.audio_metadata.duration_seconds, 321);
+  assert.equal(playedTrack.audio_metadata.metadata_status, "exact");
+  assert.equal(playedTrack.resolution.metadata_enrichment.metadata_status, "exact");
 });
 
 test("playback retries the original resolved query when enriched artist credits are too restrictive", async () => {

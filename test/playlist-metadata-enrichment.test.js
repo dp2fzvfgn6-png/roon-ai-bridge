@@ -79,7 +79,7 @@ function mediaTrack(overrides = {}) {
   };
 }
 
-test("metadata refresh hydrates album data and never erases an existing observed value", async () => {
+test("metadata refresh replaces stale catalog observations without changing the selected identity", async () => {
   const playlistService = new PlaylistService(tempConfig());
   const playlist = playlistService.createPlaylist({
     name: "Metadata",
@@ -114,8 +114,9 @@ test("metadata refresh hydrates album data and never erases an existing observed
   assert.equal(result.track.audio_metadata.duration_seconds, 245);
   assert.equal(result.track.audio_metadata.track_number, 4);
   assert.equal(result.track.audio_metadata.release_year, 1999);
-  assert.equal(result.track.audio_metadata.composer, "Stored Composer");
+  assert.equal(result.track.audio_metadata.composer, undefined);
   assert.equal(result.track.identity.fingerprint, identityFingerprint);
+  assert.equal(result.report.metadata_status, "exact", JSON.stringify(result.report));
   assert.deepEqual(result.report.completeness.missing_fields, []);
 });
 
@@ -177,6 +178,7 @@ test("metadata enrichment opens a resolved track detail when search results omit
   assert.equal(result.track.audio_metadata.duration_seconds, 241);
   assert.equal(result.track.audio_metadata.track_number, 1);
   assert.equal(result.track.audio_metadata.release_year, 2001);
+  assert.equal(result.track.identity.album, null);
   assert.equal(result.report.warnings.includes("album_reference_unavailable"), false);
 });
 
@@ -208,7 +210,7 @@ test("duplicate refreshes for the same playlist track share one Roon operation",
   assert.equal(second.report.status, "completed");
 });
 
-test("metadata enrichment finds an album through the artist catalog and fills duration from MusicBrainz", async () => {
+test("metadata enrichment never borrows an album from a different candidate cover", async () => {
   const playlistService = new PlaylistService(tempConfig());
   const playlist = playlistService.createPlaylist({
     name: "Catalog fallback",
@@ -243,21 +245,132 @@ test("metadata enrichment finds an album through the artist catalog and fills du
       };
     }
   };
+  const recordingMetadata = { async lookup() { throw new Error("unverified releases must not anchor MusicBrainz metadata"); } };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media, undefined, "streaming_first", recordingMetadata);
+  const result = await service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse });
+
+  assert.equal(result.report.status, "partial");
+  assert.equal(result.report.metadata_status, "unverified");
+  assert.equal(result.track.album, null);
+  assert.equal(result.track.audio_metadata.duration_seconds, undefined);
+  assert.equal(result.report.warnings.includes("release_reference_unavailable"), true);
+});
+
+test("metadata refresh repairs a legacy identity polluted by an earlier enrichment", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Legacy enrichment",
+    tracks: [{ query: "Song Artist", title: "Song", artist: "Artist", resolution: { status: "resolved" } }]
+  });
+  const track = playlist.tracks[0];
+  const database = playlistService.database.db;
+  const row = database.prepare(
+    "SELECT metadata_json FROM virtual_playlist_tracks WHERE playlist_id = ? AND track_id = ?"
+  ).get(playlist.playlist_id, track.track_id);
+  const stored = JSON.parse(row.metadata_json);
+  delete stored.identity.catalog_separated;
+  stored.identity.album = "Wrong compilation";
+  stored.identity.duration_seconds = 999;
+  stored.audio_metadata = {
+    ...stored.audio_metadata,
+    album: "Wrong compilation",
+    duration_seconds: 999,
+    image_key: "selected-cover"
+  };
+  stored.resolution.selected_candidate = {
+    result_id: "original-selection",
+    media_type: "track",
+    title: "Song",
+    artist: "Artist",
+    album: null,
+    duration_seconds: null,
+    version_hint: "studio",
+    source: "tidal",
+    image_key: "selected-cover"
+  };
+  stored.resolution.metadata_enrichment = { status: "completed" };
+  database.prepare(
+    "UPDATE virtual_playlist_tracks SET album = ?, metadata_json = ? WHERE playlist_id = ? AND track_id = ?"
+  ).run("Wrong compilation", JSON.stringify(stored), playlist.playlist_id, track.track_id);
+
+  const legacyFingerprint = stored.identity.fingerprint;
+  const source = mediaTrack({
+    album: null,
+    duration_seconds: null,
+    image_key: "selected-cover",
+    links: { artist: null, artists: [], album: null }
+  });
+  const media = {
+    async getTrackMetadata() { throw new Error("no direct release"); },
+    async search() { return { results: [] }; },
+    async listArtistReleases() { return { releases: [] }; }
+  };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media);
+  const result = await service.refreshTrack(playlist.playlist_id, track.track_id, { result: source });
+
+  assert.equal(result.track.identity.fingerprint, legacyFingerprint);
+  assert.equal(result.track.identity.catalog_separated, true);
+  assert.equal(result.track.identity.album, null);
+  assert.equal(result.track.identity.duration_seconds, null);
+  assert.equal(result.track.album, null);
+  assert.equal(result.track.audio_metadata.album, undefined);
+  assert.equal(result.track.audio_metadata.duration_seconds, undefined);
+});
+
+test("metadata enrichment fills recording facts only after the selected cover verifies the release", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Verified release",
+    tracks: [{ query: "Song Artist", title: "Song", artist: "Artist", resolution: { status: "resolved" } }]
+  });
+  const sparse = mediaTrack({ album: null, duration_seconds: null, image_key: "album-cover", links: { artist: null, artists: [], album: null } });
+  const release = mediaTrack({ result_id: "album", type: "album", media_type: "album", title: "Album", image_key: "album-cover" });
+  const media = {
+    async getTrackMetadata() { throw new Error("no direct album action"); },
+    async search(input) {
+      return input.types[0] === "artist"
+        ? { results: [mediaTrack({ result_id: "artist", type: "artist", media_type: "artist", title: "Artist", artist: "Artist" })] }
+        : { results: [] };
+    },
+    async listArtistReleases() { return { releases: [release] }; },
+    async getAlbumDetail() {
+      return { album: release, tracks: [mediaTrack({ image_key: "album-cover", duration_seconds: null, track_number: 2 })], related_tracks: [], warnings: [] };
+    }
+  };
   const recordingMetadata = {
     async lookup(input) {
-      assert.deepEqual(input, { title: "Riders On The Storm", artist: "The Doors", album: "L.A. Woman" });
-      return { recording_id: "mbid", title: input.title, artist: input.artist, album: input.album, duration_seconds: 432, release_year: 1971, isrc: null, confidence: "high" };
+      assert.equal(input.album, "Album");
+      return {
+        status: "exact",
+        reason: "unique_compatible_recording",
+        candidates: [],
+        metadata: {
+          recording_id: "mbid",
+          title: "Song",
+          artist: "Artist",
+          album: "Album",
+          disambiguation: "original studio mix",
+          duration_seconds: 201,
+          release_year: 1999,
+          original_release_year: 1999,
+          isrc: "TEST123",
+          isrcs: ["TEST123"],
+          composers: ["Composer"],
+          lyricists: [],
+          genres: ["rock"],
+          confidence: "high"
+        }
+      };
     }
   };
   const service = new PlaylistMetadataEnrichmentService(playlistService, media, undefined, "streaming_first", recordingMetadata);
   const result = await service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse });
 
-  assert.equal(result.report.status, "completed");
-  assert.equal(result.track.album, "L.A. Woman");
-  assert.equal(result.track.audio_metadata.duration_seconds, 432);
-  assert.equal(result.track.audio_metadata.track_number, 10);
-  assert.equal(result.track.audio_metadata.release_year, 1971);
-  assert.equal(result.report.warnings.includes("musicbrainz_metadata:high"), true);
+  assert.equal(result.report.metadata_status, "exact", JSON.stringify(result.report));
+  assert.equal(result.track.audio_metadata.duration_seconds, 201);
+  assert.equal(result.track.audio_metadata.composer, "Composer");
+  assert.deepEqual(result.track.audio_metadata.genres, ["rock"]);
+  assert.equal(result.track.identity.album, null);
 });
 
 test("manual playlist associations can reuse their matching candidate when re-resolution is ambiguous", async () => {
@@ -278,7 +391,7 @@ test("manual playlist associations can reuse their matching candidate when re-re
     async search() { return { results: [chosen, competing] }; },
     async getTrackMetadata(resultId) {
       assert.equal(resultId, "chosen");
-      return mediaTrack({ result_id: "chosen", album: "Album", duration_seconds: 180 });
+      return mediaTrack({ result_id: "chosen", image_key: "chosen-cover", album: "Album", duration_seconds: 180 });
     },
     async getAlbumDetail() { throw new Error("not needed"); }
   };

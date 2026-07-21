@@ -4,8 +4,35 @@ import type { Logger } from "../../utils/logger";
 export type VirtualPlaylistTrackMetadata = Record<string, unknown>;
 export type AudioMetadata = Record<string, unknown>;
 export type ResolutionMetadata = Record<string, unknown>;
+export type PlaylistRecordingMetadata = {
+  musicbrainz_id: string;
+  title: string;
+  artist: string | null;
+  disambiguation: string | null;
+  duration_seconds: number | null;
+  isrcs: string[];
+  composers: string[];
+  lyricists: string[];
+  genres: string[];
+  confidence: "high" | "medium";
+};
+export type PlaylistReleaseMetadata = {
+  title: string;
+  album_artist: string | null;
+  image_key: string | null;
+  source: string | null;
+  source_confidence: string | null;
+  release_year: number | null;
+  original_release_year: number | null;
+  track_number: number | null;
+  disc_number: number | null;
+  release_type: string | null;
+  verified_by: string;
+  confidence: "high" | "medium";
+};
 export type TrackIdentityMetadata = {
   version: 1;
+  catalog_separated: true;
   fingerprint: string;
   title: string | null;
   artist: string | null;

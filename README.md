@@ -71,7 +71,10 @@ v0.19.0 uses Node.js 24, `node-roon-api`, `node-roon-api-transport`,
 - Store local virtual playlists in SQLite.
 - Create expiring working playlists for activity, mood and occasion requests,
   then promote a liked result to a normal saved playlist without rebuilding it.
-- Create, read, update, delete and reorder playlist tracks by stable query with saved metadata.
+- Create, read, update, delete and reorder playlist tracks by stable identity
+  with separately verified recording, release, source and user metadata.
+- Refresh coherent playlist metadata from Roon and MusicBrainz without
+  silently mixing album editions, artwork or recording versions.
 - Play or enqueue a virtual playlist through Roon.
 - Expose MCP tools for status, zones, playback, volume, search, queue and virtual playlists.
 - Serve an independent administration portal on port `3001`.

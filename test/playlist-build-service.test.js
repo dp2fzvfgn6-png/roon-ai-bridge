@@ -315,10 +315,15 @@ test("playlist build hydrates the selected track and stores the complete Roon ob
   assert.equal(stored.audio_metadata.release_year, 1999);
   assert.equal(stored.audio_metadata.duration_seconds, 245);
   assert.equal(stored.audio_metadata.isrc, "GBTEST990001");
+  assert.equal(stored.audio_metadata.metadata_status, "exact");
+  assert.equal(stored.audio_metadata.release.title, "Observed Album");
+  assert.equal(stored.identity.album, null);
   assert.equal(stored.user_metadata.llm_hints.album, "Hint Album");
   assert.equal(stored.user_metadata.llm_hints.release_year, 2000);
   assert.equal(stored.resolution.roon_observation.album_detail.attempted, true);
   assert.equal(stored.resolution.roon_observation.album_detail.matched_track.isrc, "GBTEST990001");
+  assert.equal(stored.resolution.metadata_enrichment.metadata_status, "exact");
+  assert.equal(stored.resolution.selected_candidate.album, null);
   assert.equal(stored.resolution.selection_origin, "automatic");
   assert.equal(stored.resolution.readiness, "ready");
 });

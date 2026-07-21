@@ -1,24 +1,44 @@
 import { splitArtistCredit, type MediaResult, type RoonMediaService, type SourcePreference, type VersionHint } from "../roon/roonMediaService";
 import type { Logger } from "../utils/logger";
 import { ApiError } from "../utils/errors";
-import type { AudioMetadata, VirtualPlaylistTrack } from "./playlists/playlistContracts";
+import type {
+  AudioMetadata,
+  PlaylistRecordingMetadata,
+  PlaylistReleaseMetadata,
+  VirtualPlaylistTrack
+} from "./playlists/playlistContracts";
 import {
   audioMetadataFromMedia,
-  mergeAudioMetadata,
   mergeMediaResult,
   metadataCompleteness,
-  type MetadataCompleteness
+  replaceCatalogAudioMetadata,
+  type MetadataCompleteness,
+  type PlaylistMetadataStatus
 } from "./playlists/playlistMetadataPolicy";
 import { PlaylistService, type VirtualPlaylistResolutionStatus } from "./playlistService";
-import { RecordingMetadataService } from "./recordingMetadataService";
+import {
+  RecordingMetadataService,
+  type RecordingCatalogCandidate,
+  type RecordingCatalogMetadata
+} from "./recordingMetadataService";
 import { TrackResolutionService } from "./trackResolutionService";
+
+type FieldProvenance = Record<string, {
+  source: "roon" | "musicbrainz";
+  confidence: "high" | "medium" | "low";
+}>;
 
 export type MetadataEnrichmentReport = {
   status: "completed" | "partial" | "skipped" | "failed";
+  metadata_status: PlaylistMetadataStatus;
   observed_at: string;
   source_result_id: string | null;
   album_result_id: string | null;
   completeness: MetadataCompleteness;
+  recording: PlaylistRecordingMetadata | null;
+  release: PlaylistReleaseMetadata | null;
+  field_provenance: FieldProvenance;
+  conflicts: Array<{ type: string; message: string; candidates?: RecordingCatalogCandidate[] }>;
   warnings: string[];
 };
 
@@ -35,6 +55,8 @@ export type PlaylistMetadataRefreshResult = {
   partial: number;
   skipped: number;
   failed: number;
+  conflict: number;
+  unverified: number;
   tracks: Array<{ track_id: string; report: MetadataEnrichmentReport }>;
   playlist: ReturnType<PlaylistService["getPlaylist"]>;
 };
@@ -44,8 +66,10 @@ function normalize(value: unknown): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function sameText(left: unknown, right: unknown): boolean {
@@ -56,8 +80,9 @@ function sameText(left: unknown, right: unknown): boolean {
 
 function canonicalTrackTitle(value: unknown): string {
   return normalize(value)
-    .replace(/\b(?:lp|album|single) version\b.*$/g, "")
-    .replace(/\b(?:live|en vivo|directo|remaster(?:ed)?|remix|mix|radio edit|edit|cover|tribute|demo|alternate take|version|binaural|3d)\b.*$/g, "")
+    .replace(/\b(?:lp|album|single) version\b/g, " ")
+    .replace(/\bremaster(?:ed)?\b(?:\s+(?:19|20)\d{2})?/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -67,11 +92,30 @@ function sameRecordingTitle(left: unknown, right: unknown): boolean {
   return Boolean(a && b && a === b);
 }
 
-function safeMetadataVariant(candidate: MediaResult, source: MediaResult): boolean {
-  if (source.version_hint && !["studio", "remaster", "unknown"].includes(source.version_hint)) {
-    return candidate.version_hint === source.version_hint;
+type VersionFamily = "live" | "remix" | "edit" | "demo" | "alternate" | "immersive" | "remaster" | "studio";
+
+function versionFamily(title: unknown, hint?: unknown): VersionFamily {
+  const value = normalize([title, hint].filter(Boolean).join(" "));
+  if (/\b(?:live|concert|en vivo|directo)\b/.test(value)) return "live";
+  if (/\bremix\b/.test(value)) return "remix";
+  if (/\b(?:radio edit|single edit|edit)\b/.test(value)) return "edit";
+  if (/\b(?:demo|session|take)\b/.test(value)) return "demo";
+  if (/\b(?:atmos|5 1|binaural|3d)\b/.test(value)) return "immersive";
+  if (/\b(?:alternate|alternative)\b/.test(value)) return "alternate";
+  if (/\bremaster(?:ed)?\b/.test(value)) return "remaster";
+  return "studio";
+}
+
+function versionCompatible(candidate: MediaResult, source: MediaResult): boolean {
+  const expected = versionFamily(source.title, source.version_hint);
+  const actual = versionFamily(candidate.title, candidate.version_hint);
+  if (expected === actual) return true;
+  if (expected === "studio" && /\b(?:lp|album) version\b/i.test(candidate.title)) return true;
+  if (expected === "remaster" && actual === "studio") {
+    const expectedYear = normalize(source.title).match(/\b(?:19|20)\d{2}\b/)?.[0];
+    return Boolean(expectedYear && normalize(candidate.title).includes(expectedYear));
   }
-  return !/\b(?:live|en vivo|directo|remix|cover|tribute|demo|alternate take|atmos|binaural|3d)\b/i.test(candidate.title);
+  return false;
 }
 
 function artistMatches(track: { artist?: unknown; subtitle?: unknown }, artist: unknown): boolean {
@@ -88,6 +132,25 @@ function resolutionStatus(track: VirtualPlaylistTrack): VirtualPlaylistResolutio
     : track.roon_item_key ? "stale" : "missing";
 }
 
+function sourceConfidence(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "medium" ? value : "low";
+}
+
+function recordingSnapshot(metadata: RecordingCatalogMetadata): PlaylistRecordingMetadata {
+  return {
+    musicbrainz_id: metadata.recording_id,
+    title: metadata.title,
+    artist: metadata.artist,
+    disambiguation: metadata.disambiguation,
+    duration_seconds: metadata.duration_seconds,
+    isrcs: metadata.isrcs,
+    composers: metadata.composers,
+    lyricists: metadata.lyricists,
+    genres: metadata.genres,
+    confidence: metadata.confidence
+  };
+}
+
 export class PlaylistMetadataEnrichmentService {
   private readonly activeTrackRefreshes = new Map<string, Promise<{ track: VirtualPlaylistTrack; report: MetadataEnrichmentReport }>>();
   private readonly artistReleaseCache = new Map<string, { expiresAt: number; promise: Promise<MediaResult[]> }>();
@@ -100,199 +163,316 @@ export class PlaylistMetadataEnrichmentService {
     private readonly recordingMetadataService?: RecordingMetadataService
   ) {}
 
+  private async verifiedRelease(
+    source: MediaResult,
+    albumResultId: string
+  ): Promise<{
+    result: MediaResult;
+    release: PlaylistReleaseMetadata;
+    warnings: string[];
+  } | null> {
+    const detail = await this.mediaService.getAlbumDetail(albumResultId, undefined, 500);
+    const matched = [...(detail.tracks || []), ...(detail.related_tracks || [])].find((candidate) =>
+      sameRecordingTitle(candidate.title, source.title) &&
+      artistMatches(candidate, source.artist) &&
+      versionCompatible(candidate, source)
+    ) || null;
+    if (!matched) return null;
+    const releaseImage = detail.album.image_key || matched.image_key || null;
+    if (source.image_key && releaseImage && source.image_key !== releaseImage) return null;
+    const merged = mergeMediaResult(mergeMediaResult(source, matched), {
+      album: detail.album.title,
+      album_artist: detail.album.album_artist || detail.album.artist,
+      release_year: matched.release_year || detail.album.release_year,
+      track_number: matched.track_number,
+      disc_number: matched.disc_number,
+      source: matched.source !== "unknown" ? matched.source : detail.album.source,
+      source_confidence: matched.source !== "unknown"
+        ? matched.source_confidence
+        : detail.album.source_confidence,
+      image_key: source.image_key || releaseImage
+    });
+    return {
+      result: merged,
+      release: {
+        title: detail.album.title,
+        album_artist: detail.album.album_artist || detail.album.artist,
+        image_key: releaseImage,
+        source: merged.source === "unknown" ? null : merged.source,
+        source_confidence: merged.source === "unknown" ? null : merged.source_confidence,
+        release_year: merged.release_year || null,
+        original_release_year: null,
+        track_number: merged.track_number || null,
+        disc_number: merged.disc_number || null,
+        release_type: detail.album.release_type || null,
+        verified_by: "roon_album_membership_and_cover",
+        confidence: "high"
+      },
+      warnings: detail.warnings || []
+    };
+  }
+
   async enrichResult(
     source: MediaResult,
     hints: { title?: string | null; artist?: string | null; album?: string | null } = {}
   ): Promise<EnrichedMediaResult> {
+    const observedAt = new Date().toISOString();
     const warnings: string[] = [];
+    const conflicts: MetadataEnrichmentReport["conflicts"] = [];
+    const provenance: FieldProvenance = {
+      title: { source: "roon", confidence: "high" },
+      artist: { source: "roon", confidence: source.confidence || "medium" },
+      image_key: { source: "roon", confidence: source.image_key ? "high" : "low" },
+      version_hint: { source: "roon", confidence: "medium" }
+    };
     let result = source;
-    if ((!source.album || !source.duration_seconds) && typeof this.mediaService.getTrackMetadata === "function") {
+    let albumResultId = result.links?.album?.result_id || null;
+    let release: PlaylistReleaseMetadata | null = null;
+
+    if (albumResultId) {
       try {
-        result = mergeMediaResult(result, await this.mediaService.getTrackMetadata(source.result_id));
+        const verified = await this.verifiedRelease(source, albumResultId);
+        if (verified) {
+          result = verified.result;
+          release = verified.release;
+          warnings.push(...verified.warnings);
+        }
+      } catch (error) {
+        warnings.push(`album_detail_failed:${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (!release && typeof this.mediaService.getTrackMetadata === "function") {
+      try {
+        const detail = await this.mediaService.getTrackMetadata(source.result_id);
+        const detailAlbumId = detail.links?.album?.result_id || albumResultId;
+        let verified: Awaited<ReturnType<PlaylistMetadataEnrichmentService["verifiedRelease"]>> = null;
+        if (detailAlbumId) {
+          try {
+            verified = await this.verifiedRelease(source, detailAlbumId);
+          } catch (error) {
+            warnings.push(`album_detail_failed:${error instanceof Error ? error.message : String(error)}`);
+          }
+          if (verified) {
+            result = verified.result;
+            release = verified.release;
+            albumResultId = detailAlbumId;
+            warnings.push(...verified.warnings);
+          }
+        }
+        if (!verified && detail.album && (!source.image_key || !detail.image_key || source.image_key === detail.image_key) && versionCompatible(detail, source)) {
+          result = mergeMediaResult(result, detail);
+          release = {
+            title: detail.album,
+            album_artist: detail.album_artist || detail.artist,
+            image_key: detail.image_key || source.image_key,
+            source: detail.source === "unknown" ? null : detail.source,
+            source_confidence: detail.source === "unknown" ? null : detail.source_confidence,
+            release_year: detail.release_year || null,
+            original_release_year: null,
+            track_number: detail.track_number || null,
+            disc_number: detail.disc_number || null,
+            release_type: detail.release_type || null,
+            verified_by: "roon_direct_album_navigation",
+            confidence: "high"
+          };
+        }
       } catch (error) {
         warnings.push(`track_detail_failed:${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    let albumResultId = result.links?.album?.result_id || null;
-    const albumTitle = result.album || hints.album || null;
 
-    if (!albumResultId && albumTitle && !metadataCompleteness(
-      audioMetadataFromMedia(result as MediaResult & Record<string, unknown>)
-    ).complete) {
+    const requestedAlbum = result.album || hints.album || null;
+    if (!release && requestedAlbum) {
       try {
         const search = await this.mediaService.search({
-          query: [albumTitle, source.album_artist || source.artist || hints.artist].filter(Boolean).join(" "),
+          query: [requestedAlbum, source.album_artist || source.artist || hints.artist].filter(Boolean).join(" "),
           types: ["album"],
           count: 10,
           sourcePreference: this.sourcePreference
         });
         const exact = search.results.find((candidate) =>
           candidate.media_type === "album" &&
-          sameText(candidate.title, albumTitle) &&
+          sameText(candidate.title, requestedAlbum) &&
           artistMatches(candidate, source.album_artist || source.artist || hints.artist)
         );
-        albumResultId = exact?.result_id || null;
-        if (!albumResultId) warnings.push("album_search_no_exact_match");
+        if (exact) {
+          const verified = await this.verifiedRelease(source, exact.result_id);
+          if (verified) {
+            result = verified.result;
+            release = verified.release;
+            albumResultId = exact.result_id;
+            warnings.push(...verified.warnings);
+          }
+        }
       } catch (error) {
         warnings.push(`album_search_failed:${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    if (albumResultId) {
+    if (!release && source.image_key) {
       try {
-        const detail = await this.mediaService.getAlbumDetail(albumResultId, undefined, 500);
-        const candidates = [...(detail.tracks || []), ...(detail.related_tracks || [])];
-        const matchedTrack = candidates.find((candidate) =>
-          sameText(candidate.title, source.title || hints.title) &&
-          artistMatches(candidate, source.artist || hints.artist)
-        ) || null;
-        result = mergeMediaResult(result, matchedTrack);
-        result = mergeMediaResult(result, {
-          album: result.album || detail.album.title,
-          album_artist: result.album_artist || detail.album.album_artist || detail.album.artist,
-          release_year: result.release_year || detail.album.release_year,
-          image_key: result.image_key || detail.album.image_key
-        });
-        warnings.push(...detail.warnings);
-        if (!matchedTrack) warnings.push("album_track_not_found");
-      } catch (error) {
-        warnings.push(`album_detail_failed:${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    let catalogArtist: string | null = null;
-    if (!result.album) {
-      try {
-        const catalog = await this.enrichFromArtistCatalog(result, hints);
-        if (catalog) {
-          result = mergeMediaResult(result, catalog.metadata);
-          albumResultId = albumResultId || catalog.album_result_id;
-          catalogArtist = catalog.artist;
-          warnings.push(...catalog.warnings);
+        const artistHints = Array.from(new Map([
+          ...(source.artists || []).map((artist) => artist.title),
+          ...splitArtistCredit(hints.artist || source.artist)
+        ].filter(Boolean).map((artist) => [normalize(artist), artist])).values()).slice(0, 5);
+        for (const artistHint of artistHints) {
+          const artistSearch = await this.mediaService.search({
+            query: artistHint,
+            types: ["artist"],
+            count: 10,
+            sourcePreference: this.sourcePreference
+          });
+          const artist = artistSearch.results.find((candidate) =>
+            candidate.media_type === "artist" && sameText(candidate.title, artistHint)
+          );
+          if (!artist) continue;
+          const releases = await this.loadArtistReleases(artist.result_id, artistHint);
+          const matchingCovers = releases.filter((candidate) => candidate.image_key === source.image_key);
+          for (const candidate of matchingCovers) {
+            const verified = await this.verifiedRelease(source, candidate.result_id);
+            if (!verified) continue;
+            result = verified.result;
+            release = verified.release;
+            albumResultId = candidate.result_id;
+            warnings.push(...verified.warnings);
+            break;
+          }
+          if (release) break;
         }
       } catch (error) {
         warnings.push(`artist_catalog_failed:${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    if (this.recordingMetadataService && !metadataCompleteness(
-      audioMetadataFromMedia(result as MediaResult & Record<string, unknown>)
-    ).complete) {
-      const artist = catalogArtist || result.artists?.[0]?.title || splitArtistCredit(hints.artist || result.artist)[0] || null;
-      const title = result.title || hints.title || null;
-      if (title && artist) {
-        try {
-          const external = await this.recordingMetadataService.lookup({
-            title,
-            artist,
-            album: result.album || hints.album || null
+    if (!release && requestedAlbum) {
+      conflicts.push({
+        type: "release_mismatch",
+        message: "The requested album could not be verified against the selected Roon track and artwork."
+      });
+    }
+
+    let recording: PlaylistRecordingMetadata | null = null;
+    let external: RecordingCatalogMetadata | null = null;
+    const title = result.title || hints.title || null;
+    const artist = release?.album_artist || result.album_artist || result.artists?.[0]?.title ||
+      splitArtistCredit(hints.artist || result.artist)[0] || null;
+    const resultIsrc = typeof (result as MediaResult & { isrc?: unknown }).isrc === "string"
+      ? String((result as MediaResult & { isrc?: string }).isrc)
+      : null;
+    if (this.recordingMetadataService && title && artist) {
+      try {
+        const resolved = await this.recordingMetadataService.lookup({
+          title,
+          artist,
+          album: release?.title || null,
+          version_hint: result.version_hint,
+          isrc: resultIsrc,
+          duration_seconds: result.duration_seconds || null
+        });
+        if (resolved.status === "conflict") {
+          conflicts.push({
+            type: "recording_conflict",
+            message: "Several MusicBrainz recordings remain compatible with the selected Roon track.",
+            candidates: resolved.candidates
           });
-          if (external) {
-            const existingIsrc = (result as MediaResult & { isrc?: string | null }).isrc;
-            result = mergeMediaResult(result, {
-              album: result.album || external.album,
-              duration_seconds: result.duration_seconds || external.duration_seconds,
-              release_year: result.release_year || external.release_year,
-              isrc: existingIsrc || external.isrc
-            } as Partial<MediaResult> & { isrc?: string | null });
-            warnings.push(`musicbrainz_metadata:${external.confidence}`);
+        } else if (resolved.status === "exact" && resolved.metadata) {
+          if (release || resultIsrc) {
+            external = resolved.metadata;
+            recording = recordingSnapshot(external);
           } else {
-            warnings.push("musicbrainz_recording_not_found");
+            warnings.push("musicbrainz_exact_but_unanchored");
           }
-        } catch (error) {
-          warnings.push(`musicbrainz_failed:${error instanceof Error ? error.message : String(error)}`);
+        } else {
+          warnings.push("musicbrainz_recording_not_found");
+        }
+      } catch (error) {
+        warnings.push(`musicbrainz_failed:${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    const audio = audioMetadataFromMedia(result as MediaResult & Record<string, unknown>);
+    if (release) {
+      audio.album = release.title;
+      audio.album_artist = release.album_artist;
+      audio.release_year = release.release_year;
+      audio.track_number = release.track_number;
+      audio.disc_number = release.disc_number;
+      if (release.source) {
+        audio.source = release.source;
+        audio.source_confidence = release.source_confidence;
+      }
+      audio.release = release;
+      for (const field of ["album", "album_artist", "release_year", "track_number", "disc_number", "source"]) {
+        if (audio[field] !== null && audio[field] !== undefined && audio[field] !== "") {
+          provenance[field] = { source: "roon", confidence: release.confidence };
         }
       }
+    } else {
+      delete audio.album;
+      delete audio.album_artist;
+      delete audio.release_year;
+      delete audio.track_number;
+      delete audio.disc_number;
     }
-
-    if (!result.album) warnings.push("album_reference_unavailable");
-
-    const audioMetadata = audioMetadataFromMedia(result as MediaResult & Record<string, unknown>);
-    const completeness = metadataCompleteness(audioMetadata);
-    return {
-      result,
-      audio_metadata: audioMetadata,
-      report: {
-        status: completeness.complete ? "completed" : "partial",
-        observed_at: new Date().toISOString(),
-        source_result_id: source.result_id || null,
-        album_result_id: albumResultId,
-        completeness,
-        warnings: Array.from(new Set(warnings))
+    if (external && recording) {
+      if (!audio.duration_seconds && external.duration_seconds) {
+        audio.duration_seconds = external.duration_seconds;
+        provenance.duration_seconds = { source: "musicbrainz", confidence: external.confidence };
       }
-    };
-  }
-
-  private async enrichFromArtistCatalog(
-    source: MediaResult,
-    hints: { title?: string | null; artist?: string | null; album?: string | null }
-  ): Promise<{
-    artist: string;
-    album_result_id: string;
-    metadata: Partial<MediaResult> & { isrc?: string | null };
-    warnings: string[];
-  } | null> {
-    const title = source.title || hints.title;
-    if (!title) return null;
-    const artistHints = Array.from(new Map([
-      ...(source.artists || []).map((artist) => artist.title),
-      ...splitArtistCredit(hints.artist || source.artist)
-    ].filter(Boolean).map((artist) => [normalize(artist), artist])).values()).slice(0, 5);
-
-    for (const artistHint of artistHints) {
-      const [trackSearch, artistSearch] = await Promise.all([
-        this.mediaService.search({
-          query: [title, artistHint].filter(Boolean).join(" "),
-          types: ["track"],
-          count: 25,
-          sourcePreference: this.sourcePreference
-        }),
-        this.mediaService.search({
-          query: artistHint,
-          types: ["artist"],
-          count: 10,
-          sourcePreference: this.sourcePreference
-        })
-      ]);
-      const artist = artistSearch.results.find((candidate) =>
-        candidate.media_type === "artist" && sameText(candidate.title, artistHint)
-      );
-      if (!artist) continue;
-      const releases = await this.loadArtistReleases(artist.result_id, artistHint);
-      const coverKeys = new Set([
-        source.image_key,
-        ...trackSearch.results.filter((candidate) =>
-          candidate.media_type === "track" &&
-          sameRecordingTitle(candidate.title, title) &&
-          safeMetadataVariant(candidate, source)
-        ).map((candidate) => candidate.image_key)
-      ].filter((value): value is string => Boolean(value)));
-      const release = releases.find((candidate) => candidate.image_key && coverKeys.has(candidate.image_key));
-      if (!release) continue;
-      const detail = await this.mediaService.getAlbumDetail(release.result_id, undefined, 500);
-      const matchedTrack = [...(detail.tracks || []), ...(detail.related_tracks || [])].find((candidate) =>
-        sameRecordingTitle(candidate.title, title) &&
-        artistMatches(candidate, artistHint)
-      ) || null;
-      const matchedIsrc = (matchedTrack as (MediaResult & { isrc?: string | null }) | null)?.isrc;
-      const sourceIsrc = (source as MediaResult & { isrc?: string | null }).isrc;
-      return {
-        artist: artistHint,
-        album_result_id: release.result_id,
-        metadata: {
-          album: detail.album.title || release.title,
-          album_artist: detail.album.album_artist || detail.album.artist || release.artist || artistHint,
-          duration_seconds: matchedTrack?.duration_seconds || source.duration_seconds,
-          release_year: matchedTrack?.release_year || detail.album.release_year || release.release_year,
-          track_number: matchedTrack?.track_number || source.track_number,
-          disc_number: matchedTrack?.disc_number || source.disc_number,
-          isrc: matchedIsrc || sourceIsrc,
-          image_key: source.image_key || matchedTrack?.image_key || detail.album.image_key || release.image_key
-        },
-        warnings: detail.warnings
-      };
+      if (!audio.release_year && external.release_year) {
+        audio.release_year = external.release_year;
+        provenance.release_year = { source: "musicbrainz", confidence: external.confidence };
+      }
+      if (external.original_release_year) {
+        audio.original_release_year = external.original_release_year;
+        provenance.original_release_year = { source: "musicbrainz", confidence: external.confidence };
+      }
+      if (external.isrc) {
+        audio.isrc = external.isrc;
+        provenance.isrc = { source: "musicbrainz", confidence: external.confidence };
+      }
+      audio.isrcs = external.isrcs;
+      audio.composers = external.composers;
+      audio.composer = external.composers.join(", ");
+      audio.lyricists = external.lyricists;
+      audio.genres = external.genres;
+      audio.genre = external.genres.join(", ");
+      audio.recording = recording;
+      for (const field of ["isrcs", "composers", "lyricists", "genres"]) {
+        if (audio[field] !== null && audio[field] !== undefined && audio[field] !== "") {
+          provenance[field] = { source: "musicbrainz", confidence: external.confidence };
+        }
+      }
+      if (release && external.release_year && !release.release_year) release.release_year = external.release_year;
+      if (release && external.original_release_year) release.original_release_year = external.original_release_year;
     }
-    return null;
+
+    const completeness = metadataCompleteness(audio);
+    const metadataStatus: PlaylistMetadataStatus = conflicts.length
+      ? "conflict"
+      : release && completeness.complete && (Boolean(result.duration_seconds) || Boolean(recording?.duration_seconds))
+        ? "exact"
+        : release || recording
+          ? "partial"
+          : "unverified";
+    audio.metadata_status = metadataStatus;
+    audio.field_provenance = provenance;
+    if (!release) warnings.push("release_reference_unavailable");
+    const report: MetadataEnrichmentReport = {
+      status: metadataStatus === "exact" ? "completed" : "partial",
+      metadata_status: metadataStatus,
+      observed_at: observedAt,
+      source_result_id: source.result_id || null,
+      album_result_id: albumResultId,
+      completeness,
+      recording,
+      release,
+      field_provenance: provenance,
+      conflicts,
+      warnings: Array.from(new Set(warnings))
+    };
+    return { result, audio_metadata: audio, report };
   }
 
   private async loadArtistReleases(resultId: string, artist: string): Promise<MediaResult[]> {
@@ -351,7 +531,7 @@ export class PlaylistMetadataEnrichmentService {
         query: track.query || track.identity.canonical_query,
         title: track.identity.title || track.title,
         artist: track.identity.artist || track.artist,
-        album: track.identity.album || track.album,
+        album: track.identity.album,
         releaseYear: track.identity.release_year,
         versionHint: track.identity.version_hint as VersionHint | null,
         count: 25,
@@ -363,11 +543,10 @@ export class PlaylistMetadataEnrichmentService {
         : null);
       const recovered = resolution.candidates.find((candidate) =>
         Boolean(storedImageKey && candidate.result.image_key === storedImageKey) &&
-        sameRecordingTitle(candidate.result.title, track.identity.title || track.title)
-      ) || resolution.candidates.find((candidate) =>
         sameRecordingTitle(candidate.result.title, track.identity.title || track.title) &&
         artistMatches(candidate.result, track.identity.artist || track.artist) &&
-        safeMetadataVariant(candidate.result, candidate.result)
+        versionFamily(candidate.result.title, candidate.result.version_hint) ===
+          versionFamily(track.identity.title || track.title, track.identity.version_hint)
       );
       result = resolution.status === "resolved"
         ? resolution.selected?.result || null
@@ -382,32 +561,23 @@ export class PlaylistMetadataEnrichmentService {
       const enriched = await this.enrichResult(result, {
         title: track.identity.title || track.title,
         artist: track.identity.artist || track.artist,
-        album: track.identity.album || track.album
+        album: track.identity.album
       });
-      const merged = mergeAudioMetadata(track.audio_metadata, enriched.audio_metadata) || {};
-      const completeness = metadataCompleteness(merged);
-      const report = {
-        ...enriched.report,
-        status: completeness.complete ? "completed" as const : "partial" as const,
-        completeness
-      };
-      const updated = this.playlistService.updateTrackAudioMetadata(playlistId, trackId, merged, report);
+      const replaced = replaceCatalogAudioMetadata(track.audio_metadata, enriched.audio_metadata) || {};
+      const completeness = metadataCompleteness(replaced);
+      const report = { ...enriched.report, completeness };
+      const updated = this.playlistService.updateTrackAudioMetadata(playlistId, trackId, replaced, report);
       this.logger?.info("Playlist track metadata refreshed", {
         playlistId,
         trackId,
         status: report.status,
-        missingFields: completeness.missing_fields
+        metadataStatus: report.metadata_status,
+        missingFields: completeness.missing_fields,
+        conflicts: report.conflicts.length
       });
       return { track: updated, report };
     } catch (error) {
-      const report: MetadataEnrichmentReport = {
-        status: "failed",
-        observed_at: new Date().toISOString(),
-        source_result_id: result.result_id || null,
-        album_result_id: null,
-        completeness: metadataCompleteness(track.audio_metadata),
-        warnings: [error instanceof Error ? error.message : String(error)]
-      };
+      const report = this.failedReport(error, result.result_id || null, track.audio_metadata);
       this.logger?.warn("Playlist track metadata refresh failed", { playlistId, trackId, error: report.warnings[0] });
       return { track, report };
     }
@@ -429,7 +599,7 @@ export class PlaylistMetadataEnrichmentService {
     }
     const tracks = playlist.tracks.filter((track) =>
       (!selected || selected.has(track.track_id)) &&
-      (options.force || !metadataCompleteness(track.audio_metadata).complete)
+      (options.force || track.audio_metadata?.metadata_status !== "exact" || !metadataCompleteness(track.audio_metadata).complete)
     );
     const results: PlaylistMetadataRefreshResult["tracks"] = [];
     for (const track of tracks) {
@@ -440,6 +610,8 @@ export class PlaylistMetadataEnrichmentService {
     }
     const count = (status: MetadataEnrichmentReport["status"]) =>
       results.filter((entry) => entry.report.status === status).length;
+    const metadataCount = (status: PlaylistMetadataStatus) =>
+      results.filter((entry) => entry.report.metadata_status === status).length;
     return {
       playlist_id: playlistId,
       attempted: results.length,
@@ -447,6 +619,8 @@ export class PlaylistMetadataEnrichmentService {
       partial: count("partial"),
       skipped: count("skipped"),
       failed: count("failed"),
+      conflict: metadataCount("conflict"),
+      unverified: metadataCount("unverified"),
       tracks: results,
       playlist: this.playlistService.getPlaylist(playlistId)
     };
@@ -455,11 +629,32 @@ export class PlaylistMetadataEnrichmentService {
   private skippedReport(reason: string, metadata: AudioMetadata | null): MetadataEnrichmentReport {
     return {
       status: "skipped",
+      metadata_status: "unverified",
       observed_at: new Date().toISOString(),
       source_result_id: null,
       album_result_id: null,
       completeness: metadataCompleteness(metadata),
+      recording: null,
+      release: null,
+      field_provenance: {},
+      conflicts: [],
       warnings: [reason]
+    };
+  }
+
+  private failedReport(error: unknown, resultId: string | null, metadata: AudioMetadata | null): MetadataEnrichmentReport {
+    return {
+      status: "failed",
+      metadata_status: "unverified",
+      observed_at: new Date().toISOString(),
+      source_result_id: resultId,
+      album_result_id: null,
+      completeness: metadataCompleteness(metadata),
+      recording: null,
+      release: null,
+      field_provenance: {},
+      conflicts: [],
+      warnings: [error instanceof Error ? error.message : String(error)]
     };
   }
 }

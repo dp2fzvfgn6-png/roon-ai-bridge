@@ -5,7 +5,16 @@ each release lives under [`docs/`](docs/README.md).
 
 ## 0.19.1 Beta - Unreleased
 
-- Development continues on the `beta` branch from the v0.19.0 stable release.
+- Playlist metadata now keeps the selected recording identity separate from
+  replaceable recording and release observations. Refreshes verify album
+  membership, artwork and version coherence before persisting an edition.
+- MusicBrainz enrichment now requires a Roon release or ISRC anchor, reports
+  unresolved recording conflicts instead of choosing by popularity, and adds
+  duration, credits, genres, ISRCs and original release year when verified.
+- Model-created playlists persist the same enrichment report and catalog facts
+  during preflight without changing the existing reserve policy.
+- The debug portal exposes catalog, user and technical metadata in readable
+  grids, formatted JSON, per-track reassignment and unboxed warning icons.
 
 ## 0.19.0 - 2026-07-21
 

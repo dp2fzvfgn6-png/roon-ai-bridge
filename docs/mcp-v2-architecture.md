@@ -149,9 +149,13 @@ manually.
 the complete playlist. It also accepts explicit `track_id`/`result_id`
 selections after the model or portal user chooses an ambiguous candidate.
 Successful resolution is followed by metadata enrichment without consuming a
-playlist reserve. `roon_refresh_playlist_metadata` refreshes album, duration,
-year, track number, artwork and other observed audio metadata for already
-resolved tracks without changing their recording identity. Playlist mutations include `resolution_summary` and are
+playlist reserve. Recording identity and catalog metadata are separate:
+`roon_refresh_playlist_metadata` replaces the recording/release observation for
+already-resolved tracks without changing the selected identity. Album edition,
+artwork, version and track membership must agree before a release is accepted;
+MusicBrainz facts require a verified release or ISRC anchor. The result reports
+`exact`, `partial`, `conflict` or `unverified` instead of selecting a plausible
+edition silently. Playlist mutations include `resolution_summary` and are
 only returned with `verified: true` when every track is resolved or explicitly
 selected. Explicit model selections record `selection_origin: "model"`; the
 legacy `manual` status alone must not be described as human verification.

@@ -672,6 +672,8 @@ export class IntentGateway extends TransportIntentHandler {
           partial: data.partial,
           skipped: data.skipped,
           failed: data.failed,
+          conflict: data.conflict,
+          unverified: data.unverified,
           tracks: data.tracks
         }
       }

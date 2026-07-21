@@ -9,6 +9,7 @@ import { ApiError } from "../utils/errors";
 import { Logger } from "../utils/logger";
 import { PlaylistService, VirtualPlaylist } from "./playlistService";
 import { PlaylistMetadataEnrichmentService } from "./playlistMetadataEnrichmentService";
+import type { AudioMetadata } from "./playlists/playlistContracts";
 import {
   RankedTrackCandidate,
   TrackResolution,
@@ -663,7 +664,16 @@ export class PlaylistBuildService {
 
     const hydrated = await this.hydrate(selected.result, candidate, resolution.queries);
     const result = hydrated.result;
-    const storedTrack = this.storedTrack(candidate, result, resolution, selected, stage, hydrated.observation);
+    const storedTrack = this.storedTrack(
+      candidate,
+      result,
+      resolution,
+      selected,
+      stage,
+      hydrated.observation,
+      hydrated.audioMetadata,
+      hydrated.metadataEnrichment
+    );
     return {
       prepared: {
         input: candidate,
@@ -718,7 +728,12 @@ export class PlaylistBuildService {
     result: MediaResult,
     input: NormalizedCandidate,
     queries: string[]
-  ): Promise<{ result: MediaResult; observation: RoonObservation }> {
+  ): Promise<{
+    result: MediaResult;
+    observation: RoonObservation;
+    audioMetadata: AudioMetadata;
+    metadataEnrichment: Record<string, unknown>;
+  }> {
     const enriched = await this.metadataService.enrichResult(result, {
       title: input.title,
       artist: input.artist,
@@ -728,6 +743,8 @@ export class PlaylistBuildService {
     const albumResultId = enriched.report.album_result_id;
     return {
       result: hydrated,
+      audioMetadata: enriched.audio_metadata,
+      metadataEnrichment: enriched.report,
       observation: {
         observed_at: enriched.report.observed_at,
         search_queries: queries,
@@ -749,9 +766,10 @@ export class PlaylistBuildService {
     resolution: TrackResolution,
     selected: RankedTrackCandidate,
     stage: string,
-    observation: RoonObservation
+    observation: RoonObservation,
+    audioMetadata: AudioMetadata,
+    metadataEnrichment: Record<string, unknown>
   ): Record<string, unknown> {
-    const record = result as MediaResult & Record<string, unknown>;
     const llmHints = {
       album: input.albumHint,
       release_year: input.releaseYearHint,
@@ -765,24 +783,7 @@ export class PlaylistBuildService {
       artist: result.artist || result.subtitle || input.artist,
       album: result.album,
       image_key: result.image_key,
-      audio_metadata: {
-        title: result.title,
-        artist: result.artist || result.subtitle || input.artist,
-        album: result.album,
-        album_artist: result.album_artist,
-        composer: record.composer || null,
-        genre: record.genre || null,
-        release_year: result.release_year ?? null,
-        track_number: result.track_number ?? null,
-        disc_number: result.disc_number ?? null,
-        duration_seconds: result.duration_seconds ?? null,
-        isrc: record.isrc || null,
-        version_hint: result.version_hint,
-        source: result.source,
-        quality: result.quality,
-        image_key: result.image_key,
-        cover: result.image_key ? { image_key: result.image_key } : null
-      },
+      audio_metadata: audioMetadata,
       user_metadata: {
         ...(input.userMetadata || {}),
         llm_hints: llmHints,
@@ -799,6 +800,7 @@ export class PlaylistBuildService {
         stage,
         selected_result_id: result.result_id,
         selected_roon_item_key: result.roon_item_key,
+        selected_candidate: candidateSnapshot(selected.result),
         score: selected.identity_score,
         confidence: selected.identity_score >= 100 ? "high" : "medium",
         reason: resolution.reason,
@@ -806,6 +808,7 @@ export class PlaylistBuildService {
         resolved_at: observation.observed_at,
         candidates: resolution.candidates.map((candidate) => candidateSnapshot(candidate.result)),
         roon_observation: observation,
+        metadata_enrichment: metadataEnrichment,
         persistent_identity: "track_id",
         roon_item_key_persistent: false,
         binding: {
@@ -851,6 +854,7 @@ export class PlaylistBuildService {
       result_id: candidate.result.result_id,
       source: candidate.result.source,
       version_hint: candidate.result.version_hint,
+      metadata_status: objectValue(candidate.storedTrack.audio_metadata)?.metadata_status || "unverified",
       resolution_reason: candidate.resolutionReason
     }));
     return {
