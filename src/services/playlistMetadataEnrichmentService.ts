@@ -68,6 +68,8 @@ function resolutionStatus(track: VirtualPlaylistTrack): VirtualPlaylistResolutio
 }
 
 export class PlaylistMetadataEnrichmentService {
+  private readonly activeTrackRefreshes = new Map<string, Promise<{ track: VirtualPlaylistTrack; report: MetadataEnrichmentReport }>>();
+
   constructor(
     private readonly playlistService: PlaylistService,
     private readonly mediaService: RoonMediaService,
@@ -81,10 +83,19 @@ export class PlaylistMetadataEnrichmentService {
   ): Promise<EnrichedMediaResult> {
     const warnings: string[] = [];
     let result = source;
-    let albumResultId = source.links?.album?.result_id || null;
-    const albumTitle = source.album || hints.album || null;
+    if ((!source.album || !source.duration_seconds) && typeof this.mediaService.getTrackMetadata === "function") {
+      try {
+        result = mergeMediaResult(result, await this.mediaService.getTrackMetadata(source.result_id));
+      } catch (error) {
+        warnings.push(`track_detail_failed:${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    let albumResultId = result.links?.album?.result_id || null;
+    const albumTitle = result.album || hints.album || null;
 
-    if (!albumResultId && albumTitle) {
+    if (!albumResultId && albumTitle && !metadataCompleteness(
+      audioMetadataFromMedia(result as MediaResult & Record<string, unknown>)
+    ).complete) {
       try {
         const search = await this.mediaService.search({
           query: [albumTitle, source.album_artist || source.artist || hints.artist].filter(Boolean).join(" "),
@@ -145,6 +156,23 @@ export class PlaylistMetadataEnrichmentService {
   }
 
   async refreshTrack(
+    playlistId: string,
+    trackId: string,
+    options: { result?: MediaResult; sourcePreference?: SourcePreference } = {}
+  ): Promise<{ track: VirtualPlaylistTrack; report: MetadataEnrichmentReport }> {
+    const refreshKey = `${playlistId}:${trackId}`;
+    const active = this.activeTrackRefreshes.get(refreshKey);
+    if (active) return active;
+    const pending = this.refreshTrackOnce(playlistId, trackId, options);
+    this.activeTrackRefreshes.set(refreshKey, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.activeTrackRefreshes.get(refreshKey) === pending) this.activeTrackRefreshes.delete(refreshKey);
+    }
+  }
+
+  private async refreshTrackOnce(
     playlistId: string,
     trackId: string,
     options: { result?: MediaResult; sourcePreference?: SourcePreference } = {}

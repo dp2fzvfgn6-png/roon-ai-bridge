@@ -1137,6 +1137,48 @@ test("catalog albums discovered through an artist are re-resolved with album and
   assert.equal(detail.ordered, true);
 });
 
+function createTrackAlbumMetadataClient() {
+  const stages = new Map();
+  const browse = {
+    browse(opts, callback) {
+      const session = opts.multi_session_key || "default";
+      if (opts.input) { stages.set(session, "root"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "tracks-category") { stages.set(session, "tracks"); callback(false, { action: "list" }); return; }
+      if (opts.item_key === "song-key") { stages.set(session, "track-actions"); callback(false, { action: "list", list: { title: "Song", hint: "action_list" } }); return; }
+      if (opts.item_key === "go-to-album") { stages.set(session, "album"); callback(false, { action: "list", list: { title: "Album" } }); return; }
+      callback(false, { action: "none" });
+    },
+    load(opts, callback) {
+      const stage = stages.get(opts.multi_session_key || "default");
+      if (stage === "root") { callback(false, { list: { title: "Search", count: 1 }, items: [{ title: "Tracks", item_key: "tracks-category", hint: "list" }] }); return; }
+      if (stage === "tracks") { callback(false, { list: { title: "Tracks", count: 1 }, items: [{ title: "Song", subtitle: "Artist", item_key: "song-key", hint: "action_list", image_key: "cover" }] }); return; }
+      if (stage === "track-actions") { callback(false, { list: { title: "Song", count: 2, hint: "action_list" }, items: [
+        { title: "Play", item_key: "play-song", hint: "action" },
+        { title: "Go to Album", item_key: "go-to-album", hint: "list" }
+      ] }); return; }
+      callback(false, { list: { title: "Album", subtitle: "Artist", count: 2, image_key: "album-cover", release_year: 2001 }, items: [
+        { title: "1. Song", subtitle: "Artist", item_key: "album-song", hint: "action_list", duration_seconds: 241 },
+        { title: "2. Other Song", subtitle: "Artist", item_key: "other-song", hint: "action_list", duration_seconds: 199 }
+      ] });
+    }
+  };
+  return { isCoreConnected: () => true, isBrowseReady: () => true, getBrowse: () => browse };
+}
+
+test("track metadata follows Roon's album navigation and reads the matching album row", async () => {
+  const service = new RoonMediaService(createTrackAlbumMetadataClient(), "tidal");
+  const search = await service.search({ query: "Song Artist", types: ["track"], count: 5 });
+  const metadata = await service.getTrackMetadata(search.results[0].result_id);
+
+  assert.equal(metadata.title, "Song");
+  assert.equal(metadata.album, "Album");
+  assert.equal(metadata.album_artist, "Artist");
+  assert.equal(metadata.duration_seconds, 241);
+  assert.equal(metadata.track_number, 1);
+  assert.equal(metadata.release_year, 2001);
+  assert.equal(metadata.image_key, "album-cover");
+});
+
 function createLinkedCatalogArtistClient({ artist, reportedAlbums, localReleases, catalogItems }) {
   const stages = new Map();
   const browse = {

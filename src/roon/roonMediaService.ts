@@ -1286,6 +1286,178 @@ export class RoonMediaService {
     };
   }
 
+  async getTrackMetadata(
+    resultId: string,
+    zoneId?: string,
+    count = 500
+  ): Promise<MediaResult> {
+    const track = this.getReference(resultId);
+    if (track.media_type !== "track") {
+      throw new ApiError("INVALID_SEARCH_QUERY", "result_id must reference a track", {
+        result_id: resultId,
+        media_type: track.media_type
+      });
+    }
+
+    const detail = await this.openReference(track, zoneId, "track-metadata", Math.min(count, 500));
+    const albumNavigation = this.chooseEntityDetailNavigation(detail.current.items, "album", track.album || "");
+    if (!albumNavigation?.item_key) {
+      throw new ApiError("SEARCH_NO_RESULTS", "Track album detail is not available", {
+        result_id: resultId,
+        reason: "album_navigation_unavailable"
+      });
+    }
+
+    const openedAlbum = await browseCall(detail.browse, {
+      hierarchy: detail.hierarchy,
+      multi_session_key: detail.sessionKey,
+      item_key: albumNavigation.item_key,
+      ...(zoneId ? { zone_or_output_id: zoneId } : {})
+    });
+    if (openedAlbum.action !== "list") {
+      throw new ApiError("SEARCH_NO_RESULTS", "Track album detail is not available", {
+        result_id: resultId,
+        action: openedAlbum.action
+      });
+    }
+
+    let current = detail.hierarchy === "search"
+      ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))
+      : await loadCurrentList(
+          detail.browse,
+          detail.hierarchy,
+          detail.sessionKey,
+          0,
+          Math.max(1, Math.min(count, 200))
+        );
+    const albumTitle = cleanRoonDisplayText(String(
+      current.list?.title || openedAlbum.list?.title || track.album || ""
+    )) || track.album;
+    const albumArtist = cleanRoonDisplayText(
+      pickNestedString(current.list as BrowseItem, ["album_artist", "artist", "artist_name"]) ||
+      String(current.list?.subtitle || "")
+    ) || track.album_artist || track.artist;
+    const albumImageKey = typeof current.list?.image_key === "string"
+      ? current.list.image_key
+      : typeof openedAlbum.list?.image_key === "string"
+        ? openedAlbum.list.image_key
+        : track.image_key;
+    const albumReleaseYear = pickNestedNumber(current.list as BrowseItem, ["release_year", "year"])
+      ?? pickNestedNumber((openedAlbum.list || {}) as BrowseItem, ["release_year", "year"]);
+
+    const tracksEntry = current.items.find(isTrackSection);
+    if (tracksEntry?.item_key) {
+      const openedTracks = await browseCall(detail.browse, {
+        hierarchy: detail.hierarchy,
+        multi_session_key: detail.sessionKey,
+        item_key: tracksEntry.item_key,
+        ...(zoneId ? { zone_or_output_id: zoneId } : {})
+      });
+      if (openedTracks.action === "list") {
+        current = detail.hierarchy === "search"
+          ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))
+          : await loadCurrentList(
+              detail.browse,
+              detail.hierarchy,
+              detail.sessionKey,
+              0,
+              Math.max(1, Math.min(count, 200))
+            );
+      }
+    }
+
+    const rows: Array<{ item: BrowseItem; disc: number | null }> = [];
+    const discEntries = current.items.filter(isDiscSection);
+    if (discEntries.length) {
+      for (let index = 0; index < discEntries.length; index += 1) {
+        const disc = discEntries[index];
+        if (!disc.item_key) continue;
+        const openedDisc = await browseCall(detail.browse, {
+          hierarchy: detail.hierarchy,
+          multi_session_key: detail.sessionKey,
+          item_key: disc.item_key,
+          ...(zoneId ? { zone_or_output_id: zoneId } : {})
+        });
+        if (openedDisc.action !== "list") continue;
+        const loaded = detail.hierarchy === "search"
+          ? await loadCompleteList(detail.browse, "search", detail.sessionKey, Math.max(1, Math.min(count, 500)))
+          : await loadCurrentList(
+              detail.browse,
+              detail.hierarchy,
+              detail.sessionKey,
+              0,
+              Math.max(1, Math.min(count, 200))
+            );
+        loaded.items.filter(isMediaContentItem).forEach((item) => rows.push({ item, disc: index + 1 }));
+      }
+    } else {
+      current.items.filter(isMediaContentItem).forEach((item) => rows.push({ item, disc: null }));
+    }
+
+    const candidates = rows.map(({ item, disc }, ordinal) => {
+      const position = parsedTrackPosition(item);
+      const rawMedia = objectValue(item.media) || {};
+      return this.registerReference(
+        [item.title, item.subtitle, albumTitle].filter(Boolean).join(" "),
+        "track",
+        {
+          ...item,
+          title: position.title,
+          media: {
+            ...rawMedia,
+            album: pickString(rawMedia, ["album", "album_name"]) || albumTitle,
+            album_artist: pickString(rawMedia, ["album_artist", "albumartist", "album_artist_name"]) || albumArtist,
+            artist:
+              pickString(rawMedia, ["artist", "artist_name"]) ||
+              (typeof item.subtitle === "string" ? item.subtitle : track.artist),
+            release_year: pickNumber(rawMedia, ["release_year", "year"]) ?? albumReleaseYear,
+            track_number: position.track,
+            disc_number: position.disc ?? disc,
+            source: pickString(rawMedia, ["source", "provider", "service"]) || track.source
+          },
+          image_key: item.image_key || albumImageKey
+        },
+        ordinal,
+        "search",
+        track.sourcePreference,
+        null,
+        {
+          data_origin: "roon_search_session",
+          completeness: "partial",
+          ordered: true,
+          identity_verified: true
+        }
+      );
+    });
+    const exactTitle = candidates.filter((candidate) => normalize(candidate.title) === normalize(track.title));
+    const matched = exactTitle.find((candidate) =>
+      !track.artist || artistCreditIncludes(candidate.artist || candidate.subtitle, track.artist)
+    ) || exactTitle[0] || null;
+    if (!matched) {
+      throw new ApiError("SEARCH_NO_RESULTS", "Track was not found in its album detail", {
+        result_id: resultId,
+        album: albumTitle,
+        title: track.title
+      });
+    }
+
+    return {
+      ...track,
+      ...matched,
+      title: matched.title || track.title,
+      artist: matched.artist || track.artist,
+      album: matched.album || albumTitle || track.album,
+      album_artist: matched.album_artist || albumArtist || track.album_artist,
+      duration_seconds: matched.duration_seconds ?? track.duration_seconds,
+      release_year: matched.release_year ?? albumReleaseYear ?? track.release_year,
+      track_number: matched.track_number ?? track.track_number,
+      disc_number: matched.disc_number ?? track.disc_number,
+      image_key: matched.image_key || albumImageKey || track.image_key,
+      source: matched.source !== "unknown" ? matched.source : track.source,
+      warnings: Array.from(new Set([...(track.warnings || []), ...(matched.warnings || [])]))
+    };
+  }
+
   async getPlaylistDetail(
     resultId: string,
     zoneId?: string,

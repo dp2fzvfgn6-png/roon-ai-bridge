@@ -151,3 +151,59 @@ test("manual repair validates the selected track, marks it manual and enriches i
   assert.equal(result.track.resolution.selection_origin, "portal_user");
   assert.equal(result.track.audio_metadata.duration_seconds, 200);
 });
+
+test("metadata enrichment opens a resolved track detail when search results omit album and duration", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Sparse search",
+    tracks: [{ query: "Song Artist", title: "Song", artist: "Artist", resolution: { status: "resolved" } }]
+  });
+  let detailCalls = 0;
+  const sparse = mediaTrack({ album: null, album_artist: null, duration_seconds: null, links: { artist: null, artists: [], album: null } });
+  const media = {
+    async getTrackMetadata() {
+      detailCalls += 1;
+      return mediaTrack({ album: "Album", album_artist: "Artist", duration_seconds: 241, track_number: 1, release_year: 2001 });
+    },
+    async search() { return { results: [] }; },
+    async getAlbumDetail() { throw new Error("album search should not be needed"); }
+  };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media);
+  const result = await service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse });
+
+  assert.equal(detailCalls, 1);
+  assert.equal(result.report.status, "completed");
+  assert.equal(result.track.album, "Album");
+  assert.equal(result.track.audio_metadata.duration_seconds, 241);
+  assert.equal(result.track.audio_metadata.track_number, 1);
+  assert.equal(result.track.audio_metadata.release_year, 2001);
+  assert.equal(result.report.warnings.includes("album_reference_unavailable"), false);
+});
+
+test("duplicate refreshes for the same playlist track share one Roon operation", async () => {
+  const playlistService = new PlaylistService(tempConfig());
+  const playlist = playlistService.createPlaylist({
+    name: "Coalesced",
+    tracks: [{ query: "Song Artist", title: "Song", artist: "Artist", resolution: { status: "resolved" } }]
+  });
+  let detailCalls = 0;
+  const sparse = mediaTrack({ album: null, album_artist: null, duration_seconds: null, links: { artist: null, artists: [], album: null } });
+  const media = {
+    async getTrackMetadata() {
+      detailCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return mediaTrack({ album: "Album", duration_seconds: 180 });
+    },
+    async search() { return { results: [] }; },
+    async getAlbumDetail() { throw new Error("album search should not be needed"); }
+  };
+  const service = new PlaylistMetadataEnrichmentService(playlistService, media);
+  const [first, second] = await Promise.all([
+    service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse }),
+    service.refreshTrack(playlist.playlist_id, playlist.tracks[0].track_id, { result: sparse })
+  ]);
+
+  assert.equal(detailCalls, 1);
+  assert.equal(first.report.status, "completed");
+  assert.equal(second.report.status, "completed");
+});
