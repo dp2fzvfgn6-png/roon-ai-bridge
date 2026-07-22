@@ -191,6 +191,16 @@ identity paginates beyond the 25 linked entities returned by a recording
 lookup; a bounded, truncated browse cannot prove that an observed album is
 absent. MusicBrainz include lists are serialized with the literal `+` separator
 required by the API.
+
+Beta.5 corrects the remaining identity-evidence boundary. An ISRC affects
+selection only when it matches an independently observed code; the fact that
+one duplicate happens to have cataloged ISRCs is never a tiebreaker. A legacy
+duration without Roon or release-track provenance is excluded from recording
+matching. Legacy queries recover a primary artist with the exact title at
+either edge. Release resolution searches the recording MBID plus anchor title
+before falling back to bounded browsing, then uses observed year, disc and
+track positions only to narrow candidates. Exact release status still requires
+MusicBrainz to verify the recording as a unique track on that release.
 Generated playlist artwork uses an explicit two-step MCP flow.
 `roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
 name and returns its description, bounded track context, generation requirements

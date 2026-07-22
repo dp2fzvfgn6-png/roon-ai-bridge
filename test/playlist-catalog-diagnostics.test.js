@@ -128,6 +128,23 @@ test("identity V2 recovers a legacy primary artist from the stored query without
   assert.equal(intent.recording_intent, "remaster");
 });
 
+test("identity V2 recovers a legacy primary artist when the stored query puts the artist first", () => {
+  const value = track();
+  value.title = "Paint It Black";
+  value.query = "The Rolling Stones - Paint It Black";
+  value.artist = "Mick Jagger, Keith Richards";
+  value.audio_metadata = { title: value.title, artist: value.artist };
+  value.user_metadata = null;
+  value.identity.title = value.title;
+  value.identity.artist = value.artist;
+  value.identity.album_artist = null;
+  value.resolution.selected_candidate = null;
+
+  const intent = catalogIntentForTrack(value);
+  assert.deepEqual(intent.primary_artists, ["The Rolling Stones"]);
+  assert.equal(intent.source, "stored_query");
+});
+
 test("identity V2 prefers a stored album artist over an unclassified flat credit list", () => {
   const value = track();
   value.title = "Paint It Black";
@@ -221,6 +238,7 @@ test("playlist diagnostics verify a stored recording MBID and flag legacy exact 
     { getPlaylist: () => ({ playlist_id: "p1", tracks: [value] }) },
     { lookup: async (input) => {
       assert.equal(input.recording_id, "mb-recording-born-wild");
+      assert.equal(input.duration_seconds, null);
       return exact;
     } },
     { summary: () => ({ provider: "musicbrainz", total_entries: 1, active_entries: 1, expired_entries: 0, statuses: { exact: 1 } }) },
@@ -234,6 +252,27 @@ test("playlist diagnostics verify a stored recording MBID and flag legacy exact 
     "stored_exact_duration_lacks_release_track_provenance"
   ]);
   assert.equal(JSON.stringify(value), before);
+});
+
+test("playlist diagnostics use a duration only when its provenance is an observed release track", async () => {
+  const value = track();
+  value.audio_metadata = {
+    ...value.audio_metadata,
+    duration_seconds: 211,
+    field_provenance: { duration_seconds: { source: "roon" } }
+  };
+  const service = new PlaylistCatalogDiagnosticsService(
+    { getPlaylist: () => ({ playlist_id: "p1", tracks: [value] }) },
+    { lookup: async (input) => {
+      assert.equal(input.duration_seconds, 211);
+      return exact;
+    } },
+    { summary: () => ({ provider: "musicbrainz", total_entries: 0, active_entries: 0, expired_entries: 0, statuses: {} }) },
+    undefined,
+    { resolve: async () => null }
+  );
+
+  await service.analyze("p1", [value.track_id]);
 });
 
 test("playlist diagnostics flag a stored exact release that conflicts with the catalog", async () => {

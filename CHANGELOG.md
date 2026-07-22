@@ -3,7 +3,21 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.20.0 Beta 4 - Unreleased
+## 0.20.0 Beta 5 - Unreleased
+
+- Require an observed matching ISRC instead of treating catalog completeness as
+  recording identity; ambiguous duplicates now remain explicit conflicts.
+- Ignore legacy recording durations without Roon or release-track provenance so
+  stale exact metadata cannot manufacture a recording match.
+- Recover legacy primary artists from stored queries in both title-first and
+  artist-first order without promoting flat composer credits.
+- Search MusicBrainz directly by recording MBID and release title before the
+  bounded release browse, then use observed year, disc and track positions to
+  select an edition only when one verified candidate remains.
+- Invalidate beta 4 recording-resolution caches and preserve shadow-mode,
+  read-only playlist behavior.
+
+## 0.20.0 Beta 4 - 2026-07-22
 
 - Preserve punctuation in MusicBrainz recording searches and remove release
   mastering suffixes without treating a remaster as a distinct recording.

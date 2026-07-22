@@ -184,9 +184,53 @@ test("explicit edition year unlocks exact track duration and edition artwork", a
   assert.equal(identity.evidence.release, "musicbrainz_release");
 });
 
+test("verified Roon year disc and track observations can identify one exact edition", async () => {
+  const valueTrack = track();
+  valueTrack.album = "Are You Experienced?";
+  valueTrack.audio_metadata.album = "Are You Experienced?";
+  valueTrack.audio_metadata.release_year = 1967;
+  valueTrack.audio_metadata.disc_number = 1;
+  valueTrack.audio_metadata.track_number = 2;
+  valueTrack.identity.album = "Are You Experienced?";
+  valueTrack.identity.release_year = 1967;
+  const service = new CatalogReleaseMetadataService({
+    lookupReleaseTrack: async (releaseId, recordingId) => {
+      assert.equal(releaseId, "release-1967");
+      assert.equal(recordingId, "purple-recording");
+      return {
+        status: "exact",
+        reason: "unique_recording_track_on_release",
+        metadata: {
+          ...candidate("release-1967", 1967),
+          track_number: "2",
+          track_title: "Purple Haze",
+          duration_seconds: 173
+        },
+        trace: trace()
+      };
+    }
+  });
+
+  const value = await service.resolve(valueTrack, {
+    title: "Purple Haze",
+    primary_artists: ["The Jimi Hendrix Experience"],
+    featured_artists: [],
+    album_hint: null,
+    release_year_hint: null,
+    recording_intent: "standard",
+    source: "stored_query"
+  }, recordingResult());
+
+  assert.equal(value.status, "exact_release");
+  assert.equal(value.anchor.release_year, 1967);
+  assert.equal(value.release.release_id, "release-1967");
+  assert.equal(value.duration.exact_for_release, true);
+});
+
 test("a wrong Roon album observation is reported instead of replaced by a popular release", async () => {
   const service = new CatalogReleaseMetadataService({
     lookupReleaseTrack: async () => { throw new Error("must not resolve"); },
+    findRecordingReleasesByTitle: async () => ({ releases: [], trace: trace() }),
     listRecordingReleases: async () => ({
       releases: recordingResult().metadata.release_candidates,
       truncated: false,
@@ -217,11 +261,13 @@ test("release identity finds an observed edition outside the recording detail re
   };
   let catalogCalls = 0;
   const service = new CatalogReleaseMetadataService({
-    listRecordingReleases: async (recordingId) => {
+    findRecordingReleasesByTitle: async (recordingId, releaseTitle) => {
       catalogCalls += 1;
       assert.equal(recordingId, "purple-recording");
-      return { releases: [completeCandidate], truncated: false, trace: trace() };
+      assert.equal(releaseTitle, "Smash Hits");
+      return { releases: [completeCandidate], trace: trace() };
     },
+    listRecordingReleases: async () => { throw new Error("targeted anchor search should be enough"); },
     lookupReleaseTrack: async (releaseId, recordingId) => {
       assert.equal(releaseId, "release-compilation");
       assert.equal(recordingId, "purple-recording");
@@ -241,7 +287,9 @@ test("release identity finds an observed edition outside the recording detail re
   const valueTrack = track();
   valueTrack.album = "Smash Hits";
   valueTrack.audio_metadata.album = "Smash Hits";
+  valueTrack.audio_metadata.release_year = 1972;
   valueTrack.identity.album = "Smash Hits";
+  valueTrack.identity.release_year = 1972;
 
   const value = await service.resolve(valueTrack, {
     title: "Purple Haze",
@@ -269,7 +317,8 @@ test("a bracketed Roon edition year does not become part of the album title", as
   };
   const service = new CatalogReleaseMetadataService({
     lookupReleaseTrack: async () => ({ status: "not_found", reason: "missing", metadata: null, trace: trace() }),
-    listRecordingReleases: async () => ({ releases: [edition], truncated: false, trace: trace() })
+    findRecordingReleasesByTitle: async () => ({ releases: [edition], trace: trace() }),
+    listRecordingReleases: async () => { throw new Error("targeted anchor search should be enough"); }
   });
   const valueTrack = track();
   valueTrack.album = "The Very Best Of [2003]";
@@ -294,6 +343,7 @@ test("a bracketed Roon edition year does not become part of the album title", as
 test("a truncated release browse remains insufficient instead of declaring an anchor conflict", async () => {
   const service = new CatalogReleaseMetadataService({
     lookupReleaseTrack: async () => { throw new Error("must not resolve"); },
+    findRecordingReleasesByTitle: async () => ({ releases: [], trace: trace() }),
     listRecordingReleases: async () => ({
       releases: recordingResult().metadata.release_candidates,
       truncated: true,

@@ -86,10 +86,45 @@ function releaseObservation(track: VirtualPlaylistTrack): Record<string, unknown
 function observations(track: VirtualPlaylistTrack) {
   const audio = record(track.audio_metadata);
   const release = releaseObservation(track);
+  const firstInteger = (...values: unknown[]) => values
+    .map(integer)
+    .find((value): value is number => value !== null) ?? null;
   return {
     album: text(release?.title) || text(audio?.album) || text(track.album) || text(track.identity?.album),
-    releaseYear: integer(release?.release_year) || integer(audio?.release_year) || integer(track.identity?.release_year),
+    albumArtist: text(release?.album_artist) || text(audio?.album_artist) || text(track.identity?.album_artist),
+    releaseYear: firstInteger(release?.release_year, audio?.release_year, track.identity?.release_year),
+    mediumPosition: firstInteger(release?.disc_number, audio?.disc_number, track.identity?.disc_number),
+    trackPosition: firstInteger(release?.track_number, audio?.track_number, track.identity?.track_number),
     coverImageKey: text(track.image_key) || text(audio?.image_key)
+  };
+}
+
+function artistEquivalent(left: unknown, right: unknown): boolean {
+  const withoutArticle = (value: unknown) => normalizedRelease(value).replace(/^the\s+/, "");
+  const normalizedLeft = withoutArticle(left);
+  const normalizedRight = withoutArticle(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
+function mergeProviderTraces(traces: CatalogProviderTrace[]): CatalogProviderTrace | null {
+  if (!traces.length) return null;
+  if (traces.length === 1) return traces[0];
+  const layers = new Set(traces.map((trace) => trace.cache_layer));
+  return {
+    cache_hit: traces.every((trace) => trace.cache_hit),
+    cache_layer: traces.every((trace) => trace.cache_hit) && layers.size === 1
+      ? traces[0].cache_layer
+      : null,
+    elapsed_ms: traces.reduce((total, trace) => total + trace.elapsed_ms, 0),
+    provider_requests: traces.reduce((total, trace) => total + trace.provider_requests, 0),
+    search_attempts: traces.flatMap((trace) => trace.search_attempts),
+    candidate_counts: {
+      returned: traces.reduce((total, trace) => total + trace.candidate_counts.returned, 0),
+      accepted: traces.reduce((total, trace) => total + trace.candidate_counts.accepted, 0),
+      rejected: traces.reduce((total, trace) => total + trace.candidate_counts.rejected, 0)
+    },
+    rejected_candidates: traces.flatMap((trace) => trace.rejected_candidates).slice(0, 12),
+    accepted_warnings: Array.from(new Set(traces.flatMap((trace) => trace.accepted_warnings)))
   };
 }
 
@@ -159,10 +194,16 @@ export class CatalogReleaseMetadataService {
       : observed.album
         ? "roon_observation"
         : null;
-    const anchorYear = intent.release_year_hint;
+    const observedEditionMatchesAnchor = Boolean(
+      observed.album && anchorTitle
+      && normalizedRelease(observed.album) === normalizedRelease(anchorTitle)
+    );
+    const observedEditionYear = observedEditionMatchesAnchor ? observed.releaseYear : null;
+    const anchorYear = intent.release_year_hint ?? observedEditionYear;
     const recording = recordingResult.status === "exact" ? recordingResult.metadata : null;
     let candidates = dedupeCandidates((recording?.release_candidates || []).filter(official));
     let candidateTrace: CatalogProviderTrace | null = null;
+    const candidateTraces: CatalogProviderTrace[] = [];
     const base = () => ({
       anchorSource,
       anchorTitle,
@@ -181,8 +222,26 @@ export class CatalogReleaseMetadataService {
     let titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
     if (!titleMatches.length) {
       try {
+        const targeted = await this.recordingMetadataService.findRecordingReleasesByTitle(
+          recording.recording_id,
+          anchorTitle
+        );
+        candidateTraces.push(targeted.trace);
+        candidateTrace = mergeProviderTraces(candidateTraces);
+        candidates = dedupeCandidates([...candidates, ...targeted.releases.filter(official)]);
+        titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
+      } catch (error) {
+        return emptyResolution("provider_error", "release_anchor_provider_error", {
+          ...base(),
+          warnings: [error instanceof Error ? error.message : String(error)]
+        });
+      }
+    }
+    if (!titleMatches.length) {
+      try {
         const complete = await this.recordingMetadataService.listRecordingReleases(recording.recording_id);
-        candidateTrace = complete.trace;
+        candidateTraces.push(complete.trace);
+        candidateTrace = mergeProviderTraces(candidateTraces);
         candidates = dedupeCandidates([...candidates, ...complete.releases.filter(official)]);
         titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
         if (!titleMatches.length && complete.truncated) {
@@ -198,6 +257,7 @@ export class CatalogReleaseMetadataService {
         });
       }
     }
+    candidateTrace = mergeProviderTraces(candidateTraces);
     if (!candidates.length) {
       return emptyResolution("not_found", "recording_has_no_official_release_candidates", base());
     }
@@ -230,11 +290,45 @@ export class CatalogReleaseMetadataService {
       secondary_types: first.secondary_types
     };
     let editionCandidates = titleMatches;
-    if (intent.release_year_hint !== null) {
-      const yearMatches = titleMatches.filter((candidate) => candidate.release_year === intent.release_year_hint);
-      if (yearMatches.length) editionCandidates = yearMatches;
+    let editionEvidenceConflict = false;
+    const editionWarnings: string[] = [];
+    const narrowEdition = (
+      value: number | null,
+      predicate: (candidate: RecordingCatalogReleaseCandidate, value: number) => boolean,
+      warning: string
+    ) => {
+      if (value === null) return;
+      const matches = editionCandidates.filter((candidate) => predicate(candidate, value));
+      if (matches.length) editionCandidates = matches;
+      else {
+        editionEvidenceConflict = true;
+        editionWarnings.push(warning);
+      }
+    };
+    narrowEdition(
+      intent.release_year_hint ?? observedEditionYear,
+      (candidate, value) => candidate.release_year === value,
+      "The observed release year does not match any MusicBrainz edition in the resolved release group."
+    );
+    narrowEdition(
+      observedEditionMatchesAnchor ? observed.mediumPosition : null,
+      (candidate, value) => candidate.medium_position === value,
+      "The observed disc number does not match any MusicBrainz edition candidate."
+    );
+    narrowEdition(
+      observedEditionMatchesAnchor ? observed.trackPosition : null,
+      (candidate, value) => candidate.track_position === value,
+      "The observed track number does not match any MusicBrainz edition candidate."
+    );
+    if (observedEditionMatchesAnchor && observed.albumArtist) {
+      const artistMatches = editionCandidates.filter((candidate) =>
+        candidate.album_artist && artistEquivalent(candidate.album_artist, observed.albumArtist)
+      );
+      if (artistMatches.length) editionCandidates = artistMatches;
     }
-    const selectedCandidate = editionCandidates.length === 1 ? editionCandidates[0] : null;
+    const selectedCandidate = !editionEvidenceConflict && editionCandidates.length === 1
+      ? editionCandidates[0]
+      : null;
     let release: ReleaseTrackCatalogMetadata | null = null;
     let releaseTrace: CatalogProviderTrace | null = null;
     let providerError: string | null = null;
@@ -282,6 +376,7 @@ export class CatalogReleaseMetadataService {
       ...(observed.coverImageKey
         ? ["The Roon image key cannot yet be compared automatically with Cover Art Archive artwork."]
         : []),
+      ...editionWarnings,
       ...(providerError ? [`MusicBrainz release lookup failed: ${providerError}`] : [])
     ];
     return {

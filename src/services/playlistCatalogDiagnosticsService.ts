@@ -46,6 +46,19 @@ function storedAlbumObservation(track: ReturnType<PlaylistService["getPlaylist"]
   return text(release?.title) || text(audio?.album) || text(track.album) || text(track.identity?.album);
 }
 
+function trustedDurationObservation(
+  track: ReturnType<PlaylistService["getPlaylist"]>["tracks"][number]
+): number | null {
+  const audio = record(track.audio_metadata);
+  const enrichment = record(track.resolution?.metadata_enrichment);
+  const provenance = record(audio?.field_provenance) || record(enrichment?.field_provenance);
+  const durationProvenance = record(provenance?.duration_seconds);
+  const source = text(durationProvenance?.source);
+  if (source !== "roon" && source !== "musicbrainz_release_track") return null;
+  const observed = Number(audio?.duration_seconds ?? track.identity?.duration_seconds);
+  return Number.isFinite(observed) && observed > 0 ? observed : null;
+}
+
 function auditStoredMetadata(
   track: ReturnType<PlaylistService["getPlaylist"]>["tracks"][number],
   diagnostic: TrackCatalogIdentityV2,
@@ -136,7 +149,7 @@ export class PlaylistCatalogDiagnosticsService {
           album_observation: storedAlbumObservation(track),
           version_hint: intent.recording_intent,
           isrc: track.identity?.isrc,
-          duration_seconds: track.identity?.duration_seconds
+          duration_seconds: trustedDurationObservation(track)
         });
         const releaseResult = await this.releaseMetadataService.resolve(track, intent, providerResult);
         const diagnostic = trackCatalogIdentityV2(track, intent, providerResult, false, releaseResult);

@@ -53,6 +53,11 @@ export type RecordingReleasesCatalogResult = {
   trace: CatalogProviderTrace;
 };
 
+export type RecordingReleaseAnchorCatalogResult = {
+  releases: RecordingCatalogReleaseCandidate[];
+  trace: CatalogProviderTrace;
+};
+
 export type ReleaseTrackCatalogMetadata = {
   release_id: string;
   release_group_id: string | null;
@@ -411,6 +416,10 @@ export class RecordingMetadataService {
   private readonly cache = new Map<string, { expiresAt: number; value: RecordingCatalogResolution }>();
   private readonly releaseTrackCache = new Map<string, { expiresAt: number; value: ReleaseTrackCatalogResolution }>();
   private readonly recordingReleasesCache = new Map<string, { expiresAt: number; value: RecordingReleasesCatalogResult }>();
+  private readonly recordingReleaseAnchorCache = new Map<string, {
+    expiresAt: number;
+    value: RecordingReleaseAnchorCatalogResult;
+  }>();
   private requestChain: Promise<void> = Promise.resolve();
   private lastRequestAt = 0;
 
@@ -501,7 +510,7 @@ export class RecordingMetadataService {
       releaseKey(input.album_observation),
       normalize(input.version_hint), normalize(input.isrc), input.duration_seconds || ""
     ].join("|");
-    return `recording-resolution:v4:${crypto.createHash("sha256").update(material).digest("hex")}`;
+    return `recording-resolution:v5:${crypto.createHash("sha256").update(material).digest("hex")}`;
   }
 
   private remember(cacheKey: string, value: RecordingCatalogResolution): RecordingCatalogResolution {
@@ -562,6 +571,76 @@ export class RecordingMetadataService {
       ttlMs: EXACT_CACHE_TTL_MS
     });
     return value;
+  }
+
+  private recordingReleaseAnchorCacheKey(recordingId: string, releaseTitle: string): string {
+    const material = `${recordingId}|${releaseKey(releaseTitle)}`;
+    return `recording-release-anchor:v1:${crypto.createHash("sha256").update(material).digest("hex")}`;
+  }
+
+  private rememberRecordingReleaseAnchor(
+    cacheKey: string,
+    value: RecordingReleaseAnchorCatalogResult
+  ): RecordingReleaseAnchorCatalogResult {
+    const ttlMs = value.releases.length ? EXACT_CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS;
+    this.recordingReleaseAnchorCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
+    this.persistentCache?.set({
+      provider: MUSICBRAINZ_PROVIDER,
+      cacheKey,
+      entityType: "recording_release_anchor",
+      status: value.releases.length ? "exact" : "not_found",
+      payload: value,
+      ttlMs
+    });
+    return value;
+  }
+
+  async findRecordingReleasesByTitle(
+    recordingId: string,
+    releaseTitle: string
+  ): Promise<RecordingReleaseAnchorCatalogResult> {
+    const startedAt = Date.now();
+    const cacheKey = this.recordingReleaseAnchorCacheKey(recordingId, releaseTitle);
+    const cached = this.recordingReleaseAnchorCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { ...cached.value, trace: cacheTrace(cached.value.trace, "memory", startedAt) };
+    }
+    const persisted = this.persistentCache?.get<RecordingReleaseAnchorCatalogResult>(
+      MUSICBRAINZ_PROVIDER,
+      cacheKey
+    );
+    if (persisted) {
+      this.recordingReleaseAnchorCache.set(cacheKey, {
+        expiresAt: Date.parse(persisted.expires_at),
+        value: persisted.payload
+      });
+      return { ...persisted.payload, trace: cacheTrace(persisted.payload.trace, "persistent", startedAt) };
+    }
+
+    const trace = emptyTrace();
+    const url = new URL("https://musicbrainz.org/ws/2/recording");
+    url.searchParams.set("query", `rid:${lucene(recordingId)} AND release:"${lucene(releaseTitle)}"`);
+    url.searchParams.set("fmt", "json");
+    url.searchParams.set("limit", "100");
+    const response = await this.requestJson(url, trace);
+    const recording = records(response.recordings).find((candidate) => candidate.id === recordingId) || null;
+    const releases = recording
+      ? compatibleReleases(recording, releaseTitle)
+        .map(releaseCandidate)
+        .filter((release): release is RecordingCatalogReleaseCandidate => Boolean(release))
+      : [];
+    const mapped = Array.from(new Map(releases.map((release) => [release.release_id, release])).values());
+    trace.search_attempts.push({
+      title: `recording:${recordingId}`,
+      artist: "",
+      album: releaseTitle,
+      result_count: mapped.length
+    });
+    trace.candidate_counts = { returned: mapped.length, accepted: mapped.length, rejected: 0 };
+    return this.rememberRecordingReleaseAnchor(cacheKey, {
+      releases: mapped,
+      trace: completedTrace(trace, startedAt)
+    });
   }
 
   async listRecordingReleases(recordingId: string): Promise<RecordingReleasesCatalogResult> {
@@ -844,9 +923,7 @@ export class RecordingMetadataService {
         });
       }
       const strongest = ranked.filter((candidate) => candidate.strength === ranked[0].strength);
-      const isrcSupported = strongest.filter(({ recording }) => strings(recording.isrcs).length > 0);
-      const selectedByCatalogEvidence = strongest.length > 1 && isrcSupported.length === 1;
-      if (strongest.length !== 1 && !selectedByCatalogEvidence) {
+      if (strongest.length !== 1) {
         return this.remember(cacheKey, {
           status: "conflict",
           reason: "multiple_compatible_recordings",
@@ -855,15 +932,9 @@ export class RecordingMetadataService {
           trace: completedTrace(trace, startedAt)
         });
       }
-      const selected = (selectedByCatalogEvidence ? isrcSupported[0] : strongest[0]).recording;
-      if (selectedByCatalogEvidence) {
-        resolutionReason = "unique_catalog_supported_recording";
-        trace.accepted_warnings.push("duplicate_recordings_disambiguated_by_unique_isrc_evidence");
-      }
+      const selected = strongest[0].recording;
       if (requiredRelease && !input.album && input.album_observation) {
-        resolutionReason = selectedByCatalogEvidence
-          ? "unique_catalog_supported_recording_from_release_observation"
-          : "unique_compatible_recording_from_release_observation";
+        resolutionReason = "unique_compatible_recording_from_release_observation";
       }
       const detailUrl = new URL(`https://musicbrainz.org/ws/2/recording/${selected.id}`);
       setMusicBrainzIncludes(detailUrl, [

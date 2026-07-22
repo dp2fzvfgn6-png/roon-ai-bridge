@@ -436,7 +436,7 @@ test("MusicBrainz falls back from an incompatible observed release to the base r
   assert.ok(result.trace.accepted_warnings.includes("release_observation_did_not_identify_recording"));
 });
 
-test("MusicBrainz resolves duplicate-compatible recordings only with unique ISRC evidence", async () => {
+test("MusicBrainz does not treat the mere presence of an ISRC as identity evidence", async () => {
   const service = new RecordingMetadataService(async (url) => {
     if (url.pathname.endsWith("/recording")) {
       return new Response(JSON.stringify({ recordings: [
@@ -466,9 +466,47 @@ test("MusicBrainz resolves duplicate-compatible recordings only with unique ISRC
         }
       ] }), { status: 200 });
     }
-    assert.equal(url.pathname, "/ws/2/recording/catalog-supported");
+    throw new Error("ambiguous candidates must not trigger a detail lookup");
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "More Than a Feeling",
+    artist: "Boston",
+    album_observation: "Boston",
+    version_hint: "standard"
+  });
+
+  assert.equal(result.status, "conflict");
+  assert.equal(result.reason, "multiple_compatible_recordings");
+  assert.equal(result.metadata, null);
+});
+
+test("MusicBrainz uses an ISRC only when it matches the observed code", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    if (url.pathname.endsWith("/recording")) {
+      return new Response(JSON.stringify({ recordings: [
+        {
+          id: "different-isrc",
+          title: "More Than a Feeling",
+          score: 100,
+          isrcs: ["USSM19999999"],
+          "artist-credit": [{ name: "Boston" }],
+          releases: [{ title: "Boston", date: "1993", status: "Official" }]
+        },
+        {
+          id: "matching-isrc",
+          title: "More Than a Feeling",
+          length: 285000,
+          score: 74,
+          isrcs: ["USSM17600941"],
+          "artist-credit": [{ name: "Boston" }],
+          releases: [{ title: "Boston", date: "1976", status: "Official" }]
+        }
+      ] }), { status: 200 });
+    }
+    assert.equal(url.pathname, "/ws/2/recording/matching-isrc");
     return new Response(JSON.stringify({
-      id: "catalog-supported",
+      id: "matching-isrc",
       title: "More Than a Feeling",
       length: 285000,
       isrcs: ["USSM17600941"],
@@ -483,14 +521,47 @@ test("MusicBrainz resolves duplicate-compatible recordings only with unique ISRC
     title: "More Than a Feeling",
     artist: "Boston",
     album_observation: "Boston",
-    version_hint: "standard"
+    version_hint: "standard",
+    isrc: "USSM17600941"
   });
 
   assert.equal(result.status, "exact");
-  assert.equal(result.reason, "unique_catalog_supported_recording_from_release_observation");
-  assert.equal(result.metadata.recording_id, "catalog-supported");
-  assert.equal(result.metadata.confidence, "medium");
-  assert.ok(result.trace.accepted_warnings.includes("duplicate_recordings_disambiguated_by_unique_isrc_evidence"));
+  assert.equal(result.reason, "unique_compatible_recording_from_release_observation");
+  assert.equal(result.metadata.recording_id, "matching-isrc");
+  assert.equal(result.metadata.confidence, "high");
+});
+
+test("MusicBrainz searches a recording anchor directly and caches the matching releases", async () => {
+  let requests = 0;
+  const service = new RecordingMetadataService(async (url) => {
+    requests += 1;
+    assert.equal(url.pathname, "/ws/2/recording");
+    assert.equal(
+      url.searchParams.get("query"),
+      'rid:purple-recording AND release:"Are You Experienced"'
+    );
+    return new Response(JSON.stringify({ recordings: [{
+      id: "purple-recording",
+      title: "Purple Haze",
+      releases: [{
+        id: "purple-release",
+        title: "Are You Experienced",
+        status: "Official",
+        date: "1967-08-23",
+        "release-group": { id: "purple-group", "primary-type": "Album" },
+        media: [{ position: 1, "track-offset": 0, "track-count": 11 }]
+      }]
+    }] }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const first = await service.findRecordingReleasesByTitle("purple-recording", "Are You Experienced");
+  const second = await service.findRecordingReleasesByTitle("purple-recording", "Are You Experienced");
+
+  assert.equal(requests, 1);
+  assert.equal(first.releases[0].release_id, "purple-release");
+  assert.equal(first.trace.cache_hit, false);
+  assert.equal(second.trace.cache_hit, true);
+  assert.equal(second.trace.cache_layer, "memory");
 });
 
 test("MusicBrainz browses and caches the complete release list for a recording", async () => {

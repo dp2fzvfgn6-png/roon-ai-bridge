@@ -672,6 +672,12 @@ Implemented tools:
   early returns `release_catalog_truncated_before_anchor` instead of declaring
   a false conflict. Legacy exact releases contradicted by the catalog report
   `stored_exact_release_conflicts_with_catalog`.
+  Beta.5 no longer treats the mere presence of an ISRC as evidence: the code
+  must match an observed ISRC or duplicates remain ambiguous. Legacy durations
+  participate in matching only with Roon or release-track provenance. Release
+  anchors are searched directly by recording MBID and title before bounded
+  browsing, and observed year, disc and track positions may narrow an edition;
+  MusicBrainz still has to verify the recording on the selected release track.
 - `roon_get_media_details`
 - `roon_list_artist_releases`
 - `roon_play_media`

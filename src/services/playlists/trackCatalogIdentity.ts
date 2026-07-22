@@ -101,9 +101,16 @@ function artistFromStoredQuery(track: VirtualPlaylistTrack, titles: string[]): s
   const query = track.query.trim();
   for (const candidate of unique(titles.flatMap((title) => [title, versionlessTitle(title)]))) {
     if (!candidate || query.length <= candidate.length) continue;
-    if (query.slice(0, candidate.length).toLocaleLowerCase() !== candidate.toLocaleLowerCase()) continue;
-    const remainder = query.slice(candidate.length).trim().replace(/^[-–—·:]+\s*/u, "");
-    if (remainder) return remainder;
+    const normalizedQuery = query.toLocaleLowerCase();
+    const normalizedCandidate = candidate.toLocaleLowerCase();
+    if (normalizedQuery.startsWith(normalizedCandidate)) {
+      const remainder = query.slice(candidate.length).trim().replace(/^[-–—·:]+\s*/u, "");
+      if (remainder) return remainder;
+    }
+    if (normalizedQuery.endsWith(normalizedCandidate)) {
+      const remainder = query.slice(0, query.length - candidate.length).trim().replace(/\s*[-–—·:]+$/u, "");
+      if (remainder) return remainder;
+    }
   }
   return null;
 }
