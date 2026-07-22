@@ -223,7 +223,7 @@ See [v0.7 Validation](v0.7-validation.md).
 
 ## v0.8 Validated
 
-See the historical [v0.8 Validation](https://github.com/dp2fzvfgn6-png/roon-ai-bridge/blob/v0.8.0/docs/v0.8-validation.md) document in the `v0.8.0` tag.
+See the historical [v0.8 Validation](https://github.com/LINEdev-ipc/roon-ai-bridge/blob/v0.8.0/docs/v0.8-validation.md) document in the `v0.8.0` tag.
 
 ## v0.8.1 Scope
 

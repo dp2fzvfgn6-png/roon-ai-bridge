@@ -243,7 +243,7 @@ The network defaults match your Roon VM network screenshot:
 Interactive one-liner:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Example with DHCP:
@@ -253,8 +253,8 @@ VMID=230 \
 ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+REPO_URL=https://github.com/LINEdev-ipc/roon-ai-bridge.git \
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Example with static IP and VLAN:
@@ -267,8 +267,8 @@ BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+REPO_URL=https://github.com/LINEdev-ipc/roon-ai-bridge.git \
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Useful variables:
@@ -288,7 +288,7 @@ Useful variables:
 - `IP_CIDR`: default `dhcp`.
 - `GATEWAY`: required only when using a static IP.
 - `DNS`: empty by default; leave empty to use DHCP/default DNS.
-- `REPO_URL`: default `https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git`.
+- `REPO_URL`: default `https://github.com/LINEdev-ipc/roon-ai-bridge.git`.
 - `GIT_REF`: default `main`.
 - `PORT`: default `3000`.
 - `PRIVILEGED`: default `1`, recommended to simplify Docker inside LXC.
@@ -308,7 +308,7 @@ The Proxmox installer is for the Proxmox host. It cannot be reused inside the LX
 To update the app from inside the LXC, use [scripts/lxc-update-app.sh](scripts/lxc-update-app.sh):
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```
 
 It performs:
@@ -322,7 +322,7 @@ It performs:
 You can also trigger the update from the Proxmox host:
 
 ```bash
-pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
+pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
 ```
 
 ## Manual LXC Preparation
@@ -357,7 +357,7 @@ If the LXC uses Ubuntu, change the Docker URL to `https://download.docker.com/li
 
 ```bash
 cd /opt
-git clone https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git roon-ai-bridge
+git clone https://github.com/LINEdev-ipc/roon-ai-bridge.git roon-ai-bridge
 cd /opt/roon-ai-bridge
 cp .env.example .env
 docker compose pull

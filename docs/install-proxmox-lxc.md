@@ -36,7 +36,7 @@ For those questions, select a number, type a custom value or press Enter for the
 ## Interactive Install
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 ## DHCP Install Without Prompts
@@ -47,8 +47,8 @@ VMID=230 \
 ROOTFS_STORAGE=local-lvm \
 BRIDGE=vmbr30 \
 VLAN_TAG=60 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+REPO_URL=https://github.com/LINEdev-ipc/roon-ai-bridge.git \
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 ## Static IP Install Without Prompts
@@ -64,8 +64,8 @@ BRIDGE=vmbr30 \
 VLAN_TAG=60 \
 IP_CIDR=192.168.60.50/24 \
 GATEWAY=192.168.60.1 \
-REPO_URL=https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git \
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+REPO_URL=https://github.com/LINEdev-ipc/roon-ai-bridge.git \
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 ## Installer Variables
@@ -85,7 +85,7 @@ bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-
 - `IP_CIDR`: default `dhcp`.
 - `GATEWAY`: required only when using a static IP.
 - `DNS`: empty by default; leave empty to use DHCP/default DNS.
-- `REPO_URL`: default `https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git`.
+- `REPO_URL`: default `https://github.com/LINEdev-ipc/roon-ai-bridge.git`.
 - `GIT_REF`: default `main`.
 - `GIT_REF=beta` installs and follows the beta image channel.
 - `PORT`: default `3000`.

@@ -42,7 +42,7 @@ ENV INSTALLED_CHANNEL=${INSTALLED_CHANNEL}
 
 LABEL org.opencontainers.image.title="RoonIA" \
   org.opencontainers.image.description="Roon bridge with HTTP/MCP APIs and administration portal" \
-  org.opencontainers.image.source="https://github.com/dp2fzvfgn6-png/roon-ai-bridge" \
+  org.opencontainers.image.source="https://github.com/LINEdev-ipc/roon-ai-bridge" \
   org.opencontainers.image.version="${APP_VERSION}" \
   org.opencontainers.image.revision="${GIT_COMMIT}" \
   org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

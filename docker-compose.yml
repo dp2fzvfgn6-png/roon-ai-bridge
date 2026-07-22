@@ -1,6 +1,6 @@
 services:
   roon-ai-bridge:
-    image: ghcr.io/dp2fzvfgn6-png/roon-ai-bridge:${ROONIA_IMAGE_TAG:-stable}
+    image: ghcr.io/linedev-ipc/roon-ai-bridge:${ROONIA_IMAGE_TAG:-stable}
     build:
       context: .
       args:

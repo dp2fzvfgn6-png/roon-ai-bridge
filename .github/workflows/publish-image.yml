@@ -77,7 +77,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/dp2fzvfgn6-png/roon-ai-bridge
+          images: ghcr.io/linedev-ipc/roon-ai-bridge
           tags: |
             type=raw,value=beta,enable=${{ github.ref == 'refs/heads/beta' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}

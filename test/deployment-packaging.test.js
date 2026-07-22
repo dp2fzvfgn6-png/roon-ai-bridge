@@ -11,7 +11,7 @@ test("container packaging exposes published stable and beta channels", () => {
   const dockerfile = read("Dockerfile");
   const workflow = read(".github/workflows/publish-image.yml");
 
-  assert.match(compose, /ghcr\.io\/dp2fzvfgn6-png\/roon-ai-bridge:\$\{ROONIA_IMAGE_TAG:-stable\}/);
+  assert.match(compose, /ghcr\.io\/linedev-ipc\/roon-ai-bridge:\$\{ROONIA_IMAGE_TAG:-stable\}/);
   assert.match(compose, /stop_grace_period:\s*15s/);
   assert.match(dockerfile, /FROM node:24-bookworm-slim AS build/);
   assert.match(dockerfile, /FROM node:24-bookworm-slim AS runtime/);
@@ -20,6 +20,8 @@ test("container packaging exposes published stable and beta channels", () => {
   assert.match(workflow, /platforms: linux\/amd64,linux\/arm64/);
   assert.match(workflow, /type=raw,value=beta/);
   assert.match(workflow, /type=raw,value=stable/);
+  assert.match(workflow, /images: ghcr\.io\/linedev-ipc\/roon-ai-bridge/);
+  assert.doesNotMatch(`${compose}\n${dockerfile}\n${workflow}`, /dp2fzvfgn6-png/);
   assert.match(workflow, /provenance: mode=max/);
   assert.match(workflow, /sbom: true/);
 });

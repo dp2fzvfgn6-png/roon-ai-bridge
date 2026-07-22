@@ -5,7 +5,7 @@ repository.
 
 ## Repository And Deployment
 
-- GitHub: `dp2fzvfgn6-png/roon-ai-bridge`
+- GitHub: `LINEdev-ipc/roon-ai-bridge`
 - Default branch: `main`
 - LXC address: `10.0.60.38`
 - SSH user: `codex`

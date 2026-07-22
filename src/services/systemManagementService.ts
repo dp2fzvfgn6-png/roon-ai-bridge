@@ -473,7 +473,7 @@ export class SystemManagementService {
     try {
       const headers = { "user-agent": `roon-ai-bridge/${APP_VERSION}`, accept: "application/vnd.github+json" };
       const runsResponse = await fetch(
-        `https://api.github.com/repos/dp2fzvfgn6-png/roon-ai-bridge/actions/workflows/${PUBLISH_WORKFLOW_FILE}/runs?branch=${ref}&status=completed&per_page=20`,
+        `https://api.github.com/repos/LINEdev-ipc/roon-ai-bridge/actions/workflows/${PUBLISH_WORKFLOW_FILE}/runs?branch=${ref}&status=completed&per_page=20`,
         { headers, signal: controller.signal }
       );
       if (!runsResponse.ok) {
@@ -491,7 +491,7 @@ export class SystemManagementService {
       if (!publishedCommit) throw new PublishedImageUnavailableError(channel);
 
       const packageResponse = await fetch(
-        `https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/${publishedCommit}/package.json`,
+        `https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/${publishedCommit}/package.json`,
         { headers, signal: controller.signal }
       );
       if (!packageResponse.ok) throw new Error(`GitHub returned HTTP ${packageResponse.status}`);

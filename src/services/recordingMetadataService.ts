@@ -464,7 +464,7 @@ export class RecordingMetadataService {
           const response = await this.fetchImpl(url, {
             headers: {
               Accept: "application/json",
-              "User-Agent": `RoonAI-Bridge/${APP_VERSION} (https://github.com/dp2fzvfgn6-png/roon-ai-bridge)`
+              "User-Agent": `RoonAI-Bridge/${APP_VERSION} (https://github.com/LINEdev-ipc/roon-ai-bridge)`
             },
             signal: controller.signal
           });

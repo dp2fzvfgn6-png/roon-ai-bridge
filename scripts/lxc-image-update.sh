@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_DIR="${APP_DIR:-/opt/roon-ai-bridge}"
 GIT_REF="${GIT_REF:-main}"
 STATUS_PATH="${STATUS_PATH:-${APP_DIR}/data/update-status.json}"
-IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/dp2fzvfgn6-png/roon-ai-bridge}"
+IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/linedev-ipc/roon-ai-bridge}"
 CONTAINER_NAME="${CONTAINER_NAME:-roon-ai-bridge}"
 BACKUP_DIR="${APP_DIR}/data/backups"
 RELEASE_PATH="${APP_DIR}/data/installed-release.json"

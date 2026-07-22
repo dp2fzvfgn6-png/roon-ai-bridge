@@ -16,6 +16,8 @@ each release lives under [`docs/`](docs/README.md).
 - Send MusicBrainz `inc` parameters with the literal separator required by the
   API, invalidate beta 3 recording caches and audit exact legacy release
   metadata that conflicts with the catalog.
+- Follow the renamed GitHub repository owner across Actions, GHCR, update
+  checks, installers and deployment documentation.
 
 ## 0.20.0 Beta 3 - 2026-07-22
 

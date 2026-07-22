@@ -4,7 +4,7 @@ set -Eeuo pipefail
 trap 'rc=$?; printf "\nERROR: Installer failed at line %s while running: %s\n" "$LINENO" "$BASH_COMMAND" >&2; exit "$rc"' ERR
 
 APP_NAME="roon-ai-bridge"
-DEFAULT_REPO_URL="https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git"
+DEFAULT_REPO_URL="https://github.com/LINEdev-ipc/roon-ai-bridge.git"
 
 DEFAULT_HOSTNAME="roon-ai-bridge"
 DEFAULT_TEMPLATE=""

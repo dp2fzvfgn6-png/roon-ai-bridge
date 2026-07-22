@@ -73,11 +73,11 @@ This documentation covers the current v0.20.0 beta repository:
 Quick install from the Proxmox host:
 
 ```bash
-bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/proxmox-create-lxc.sh?v=0.19.0')"
 ```
 
 Quick update from inside the LXC:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```

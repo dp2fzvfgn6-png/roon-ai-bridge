@@ -12,8 +12,8 @@ Install Docker Engine and the Compose plugin, then:
 sudo mkdir -p /opt/roon-ai-bridge
 sudo chown "$USER":"$USER" /opt/roon-ai-bridge
 cd /opt/roon-ai-bridge
-curl -fsSLO https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/docker-compose.yml
-curl -fsSLo .env https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/.env.example
+curl -fsSLO https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/docker-compose.yml
+curl -fsSLo .env https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/.env.example
 mkdir -p data
 docker compose pull
 docker compose up -d --no-build
@@ -41,7 +41,7 @@ docker run -d \
   --restart unless-stopped \
   --env-file .env \
   -v "$PWD/data:/app/data" \
-  ghcr.io/dp2fzvfgn6-png/roon-ai-bridge:stable
+  ghcr.io/linedev-ipc/roon-ai-bridge:stable
 ```
 
 With this direct form, updates are manual: pull the new image, stop and remove
@@ -52,7 +52,7 @@ the old container gracefully, then repeat the command. Back up `data/` first.
 Developers can still clone the repository and build locally:
 
 ```bash
-git clone https://github.com/dp2fzvfgn6-png/roon-ai-bridge.git
+git clone https://github.com/LINEdev-ipc/roon-ai-bridge.git
 cd roon-ai-bridge
 cp .env.example .env
 docker compose build

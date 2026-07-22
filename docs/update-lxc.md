@@ -26,13 +26,13 @@ and then installs the published image. Later updates use only the image flow.
 It is also possible to refresh the updater manually from inside the LXC:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/lxc-update-app.sh)"
 ```
 
 For a beta installation, use:
 
 ```bash
-GIT_REF=beta bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/beta/scripts/lxc-update-app.sh)"
+GIT_REF=beta bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/beta/scripts/lxc-update-app.sh)"
 ```
 
 The Proxmox creation script must only be run on the Proxmox host. It uses host
@@ -43,7 +43,7 @@ commands such as `pct`, `pveam` and `pvesh`.
 Replace `230` with the LXC VMID:
 
 ```bash
-pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/dp2fzvfgn6-png/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
+pct exec 230 -- bash -lc 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/LINEdev-ipc/roon-ai-bridge/main/scripts/lxc-update-app.sh)"'
 ```
 
 ## Manual Image Commands
@@ -70,7 +70,7 @@ image ID and registry digest. It contains no credentials.
 
 ## One-Time GHCR Setting
 
-The package `ghcr.io/dp2fzvfgn6-png/roon-ai-bridge` must be public so normal
+The package `ghcr.io/linedev-ipc/roon-ai-bridge` must be public so normal
 installations can download it without a GitHub token. After the first workflow
 publication, open the package settings on GitHub and change its visibility to
 public. This is a one-time repository-owner action.
