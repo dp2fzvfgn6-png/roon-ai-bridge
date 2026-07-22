@@ -128,6 +128,28 @@ test("identity V2 recovers a legacy primary artist from the stored query without
   assert.equal(intent.recording_intent, "remaster");
 });
 
+test("identity V2 prefers a stored album artist over an unclassified flat credit list", () => {
+  const value = track();
+  value.title = "Paint It Black";
+  value.query = "Paint It Black";
+  value.artist = "The Rolling Stones, Mick Jagger, Keith Richards";
+  value.audio_metadata = {
+    title: value.title,
+    artist: value.artist,
+    album_artist: "The Rolling Stones"
+  };
+  value.user_metadata = null;
+  value.identity.title = value.title;
+  value.identity.artist = value.artist;
+  value.identity.album_artist = "The Rolling Stones";
+  value.identity.source = null;
+  value.resolution.selected_candidate = null;
+
+  const intent = catalogIntentForTrack(value);
+  assert.deepEqual(intent.primary_artists, ["The Rolling Stones"]);
+  assert.equal(intent.source, "stored_album_artist");
+});
+
 test("playlist catalog diagnostics are read-only and report the cache state", async () => {
   const value = track();
   const before = JSON.stringify(value);
@@ -212,4 +234,34 @@ test("playlist diagnostics verify a stored recording MBID and flag legacy exact 
     "stored_exact_duration_lacks_release_track_provenance"
   ]);
   assert.equal(JSON.stringify(value), before);
+});
+
+test("playlist diagnostics flag a stored exact release that conflicts with the catalog", async () => {
+  const value = track();
+  value.audio_metadata = {
+    ...value.audio_metadata,
+    metadata_status: "exact",
+    duration_seconds: 211,
+    recording: { musicbrainz_id: "mb-recording-born-wild", title: "Born To Be Wild" },
+    field_provenance: { duration_seconds: { source: "musicbrainz_release_track" } }
+  };
+  const releaseConflict = {
+    status: "anchor_conflict",
+    reason: "roon_observation_not_a_release_of_recording",
+    release_group: null,
+    release: null,
+    duration: { seconds: null, source: null, exact_for_release: false }
+  };
+  const service = new PlaylistCatalogDiagnosticsService(
+    { getPlaylist: () => ({ playlist_id: "p1", tracks: [value] }) },
+    { lookup: async () => exact },
+    { summary: () => ({ provider: "musicbrainz", total_entries: 0, active_entries: 0, expired_entries: 0, statuses: {} }) },
+    undefined,
+    { resolve: async () => releaseConflict }
+  );
+
+  const result = await service.analyze("p1", [value.track_id]);
+  assert.deepEqual(result.tracks[0].stored_metadata_audit.issues, [
+    "stored_exact_release_conflicts_with_catalog"
+  ]);
 });

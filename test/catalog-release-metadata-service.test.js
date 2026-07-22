@@ -74,6 +74,19 @@ function recordingResult() {
   };
 }
 
+function trace() {
+  return {
+    cache_hit: false,
+    cache_layer: null,
+    elapsed_ms: 1,
+    provider_requests: 1,
+    search_attempts: [],
+    candidate_counts: { returned: 1, accepted: 1, rejected: 0 },
+    rejected_candidates: [],
+    accepted_warnings: []
+  };
+}
+
 test("release identity stops at the release group when the edition is ambiguous", async () => {
   let exactLookups = 0;
   const service = new CatalogReleaseMetadataService({ lookupReleaseTrack: async () => {
@@ -172,9 +185,14 @@ test("explicit edition year unlocks exact track duration and edition artwork", a
 });
 
 test("a wrong Roon album observation is reported instead of replaced by a popular release", async () => {
-  const service = new CatalogReleaseMetadataService({ lookupReleaseTrack: async () => {
-    throw new Error("must not resolve");
-  } });
+  const service = new CatalogReleaseMetadataService({
+    lookupReleaseTrack: async () => { throw new Error("must not resolve"); },
+    listRecordingReleases: async () => ({
+      releases: recordingResult().metadata.release_candidates,
+      truncated: false,
+      trace: trace()
+    })
+  });
   const value = await service.resolve(track(), {
     title: "Purple Haze",
     primary_artists: ["The Jimi Hendrix Experience"],
@@ -185,8 +203,114 @@ test("a wrong Roon album observation is reported instead of replaced by a popula
     source: "stored_query"
   }, recordingResult());
 
-  assert.equal(value.status, "not_found");
-  assert.equal(value.reason, "release_title_not_present_for_recording");
+  assert.equal(value.status, "anchor_conflict");
+  assert.equal(value.reason, "roon_observation_not_a_release_of_recording");
   assert.equal(value.release_group, null);
-  assert.match(value.warnings[0], /Roon album is an observation/);
+  assert.match(value.warnings[0], /complete MusicBrainz release list/);
+});
+
+test("release identity finds an observed edition outside the recording detail response", async () => {
+  const completeCandidate = {
+    ...candidate("release-compilation", 1972),
+    release_group_id: "group-compilation",
+    title: "Smash Hits"
+  };
+  let catalogCalls = 0;
+  const service = new CatalogReleaseMetadataService({
+    listRecordingReleases: async (recordingId) => {
+      catalogCalls += 1;
+      assert.equal(recordingId, "purple-recording");
+      return { releases: [completeCandidate], truncated: false, trace: trace() };
+    },
+    lookupReleaseTrack: async (releaseId, recordingId) => {
+      assert.equal(releaseId, "release-compilation");
+      assert.equal(recordingId, "purple-recording");
+      return {
+        status: "exact",
+        reason: "unique_recording_track_on_release",
+        metadata: {
+          ...completeCandidate,
+          track_number: "1",
+          track_title: "Purple Haze",
+          duration_seconds: 173
+        },
+        trace: trace()
+      };
+    }
+  });
+  const valueTrack = track();
+  valueTrack.album = "Smash Hits";
+  valueTrack.audio_metadata.album = "Smash Hits";
+  valueTrack.identity.album = "Smash Hits";
+
+  const value = await service.resolve(valueTrack, {
+    title: "Purple Haze",
+    primary_artists: ["The Jimi Hendrix Experience"],
+    featured_artists: [],
+    album_hint: null,
+    release_year_hint: null,
+    recording_intent: "standard",
+    source: "stored_query"
+  }, recordingResult());
+
+  assert.equal(catalogCalls, 1);
+  assert.equal(value.status, "exact_release");
+  assert.equal(value.release.release_id, "release-compilation");
+  assert.equal(value.release_group.musicbrainz_id, "group-compilation");
+  assert.equal(value.duration.seconds, 173);
+  assert.equal(value.candidate_provider_trace.provider_requests, 1);
+});
+
+test("a bracketed Roon edition year does not become part of the album title", async () => {
+  const edition = {
+    ...candidate("release-best-of", 2003),
+    release_group_id: "group-best-of",
+    title: "The Very Best Of"
+  };
+  const service = new CatalogReleaseMetadataService({
+    lookupReleaseTrack: async () => ({ status: "not_found", reason: "missing", metadata: null, trace: trace() }),
+    listRecordingReleases: async () => ({ releases: [edition], truncated: false, trace: trace() })
+  });
+  const valueTrack = track();
+  valueTrack.album = "The Very Best Of [2003]";
+  valueTrack.audio_metadata.album = "The Very Best Of [2003]";
+  valueTrack.identity.album = "The Very Best Of [2003]";
+
+  const value = await service.resolve(valueTrack, {
+    title: "Purple Haze",
+    primary_artists: ["The Jimi Hendrix Experience"],
+    featured_artists: [],
+    album_hint: null,
+    release_year_hint: null,
+    recording_intent: "standard",
+    source: "stored_query"
+  }, recordingResult());
+
+  assert.equal(value.status, "release_group_candidate");
+  assert.equal(value.release_group.title, "The Very Best Of");
+  assert.equal(value.observations.album_title_coherence, "consistent");
+});
+
+test("a truncated release browse remains insufficient instead of declaring an anchor conflict", async () => {
+  const service = new CatalogReleaseMetadataService({
+    lookupReleaseTrack: async () => { throw new Error("must not resolve"); },
+    listRecordingReleases: async () => ({
+      releases: recordingResult().metadata.release_candidates,
+      truncated: true,
+      trace: trace()
+    })
+  });
+  const value = await service.resolve(track(), {
+    title: "Purple Haze",
+    primary_artists: ["The Jimi Hendrix Experience"],
+    featured_artists: [],
+    album_hint: null,
+    release_year_hint: null,
+    recording_intent: "standard",
+    source: "stored_query"
+  }, recordingResult());
+
+  assert.equal(value.status, "insufficient_evidence");
+  assert.equal(value.reason, "release_catalog_truncated_before_anchor");
+  assert.match(value.warnings[0], /bounded MusicBrainz release browse/);
 });

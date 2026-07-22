@@ -3,7 +3,21 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.20.0 Beta 3 - Unreleased
+## 0.20.0 Beta 4 - Unreleased
+
+- Preserve punctuation in MusicBrainz recording searches and remove release
+  mastering suffixes without treating a remaster as a distinct recording.
+- Use a Roon album as weak recording evidence, fall back when it contradicts
+  the requested standard/live version and report the release anchor conflict.
+- Prefer a structured album artist over flat Roon display credits and allow a
+  unique ISRC-supported duplicate to become a medium-confidence candidate.
+- Browse MusicBrainz releases beyond the 25 linked entities returned by a
+  recording lookup, while reporting a bounded/truncated catalog honestly.
+- Send MusicBrainz `inc` parameters with the literal separator required by the
+  API, invalidate beta 3 recording caches and audit exact legacy release
+  metadata that conflicts with the catalog.
+
+## 0.20.0 Beta 3 - 2026-07-22
 
 - Add per-lookup `cache_hit`, cache layer, elapsed time and provider request
   counts to MusicBrainz recording and release diagnostics.

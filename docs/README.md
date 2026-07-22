@@ -15,6 +15,7 @@ This documentation covers the current v0.20.0 beta repository:
 - [v0.20.0 Beta 1 MusicBrainz Shadow Validation](v0.20.0-beta.1-musicbrainz-shadow-validation.md)
 - [v0.20.0 Beta 2 Release Coherence Validation](v0.20.0-beta.2-release-coherence-validation.md)
 - [v0.20.0 Beta 3 Explainable Matching Validation](v0.20.0-beta.3-explainable-matching-validation.md)
+- [v0.20.0 Beta 4 Catalog Resolution Validation](v0.20.0-beta.4-catalog-resolution-validation.md)
 - [v0.18.0 Release Notes](v0.18.0-release-notes.md)
 - [v0.18.0 Validation](v0.18.0-validation.md)
 - [v0.18.0 Architecture Validation](v0.18.0-architecture-validation.md)

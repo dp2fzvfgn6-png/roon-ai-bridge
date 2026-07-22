@@ -39,6 +39,13 @@ function storedRecordingMbid(track: ReturnType<PlaylistService["getPlaylist"]>["
   return text(recording?.musicbrainz_id) || text(recording?.recording_id);
 }
 
+function storedAlbumObservation(track: ReturnType<PlaylistService["getPlaylist"]>["tracks"][number]): string | null {
+  const audio = record(track.audio_metadata);
+  const enrichment = record(track.resolution?.metadata_enrichment);
+  const release = record(audio?.release) || record(enrichment?.release);
+  return text(release?.title) || text(audio?.album) || text(track.album) || text(track.identity?.album);
+}
+
 function auditStoredMetadata(
   track: ReturnType<PlaylistService["getPlaylist"]>["tracks"][number],
   diagnostic: TrackCatalogIdentityV2,
@@ -59,6 +66,9 @@ function auditStoredMetadata(
   }
   if (storedStatus === "exact" && ["ambiguous_recording", "not_found", "provider_error"].includes(diagnostic.status)) {
     issues.push("stored_exact_conflicts_with_shadow_recording_status");
+  }
+  if (storedStatus === "exact" && ["anchor_conflict", "not_found"].includes(releaseResult?.status || "")) {
+    issues.push("stored_exact_release_conflicts_with_catalog");
   }
   if (
     duration !== null
@@ -123,6 +133,7 @@ export class PlaylistCatalogDiagnosticsService {
           title: intent.title,
           artist: intent.primary_artists[0],
           album: intent.album_hint,
+          album_observation: storedAlbumObservation(track),
           version_hint: intent.recording_intent,
           isrc: track.identity?.isrc,
           duration_seconds: track.identity?.duration_seconds
@@ -158,9 +169,10 @@ export class PlaylistCatalogDiagnosticsService {
       return summary;
     }, {});
     const recordingTraces = tracks.flatMap((track) => track.provider_result?.trace ? [track.provider_result.trace] : []);
-    const releaseTraces = tracks.flatMap((track) => track.release_result?.provider_trace
-      ? [track.release_result.provider_trace]
-      : []);
+    const releaseTraces = tracks.flatMap((track) => [
+      track.release_result?.candidate_provider_trace,
+      track.release_result?.provider_trace
+    ].filter((trace): trace is NonNullable<typeof trace> => Boolean(trace)));
     const traceSummary = (traces: typeof recordingTraces) => ({
       calls: traces.length,
       cache_hits: traces.filter((trace) => trace.cache_hit).length,

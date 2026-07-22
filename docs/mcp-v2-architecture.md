@@ -179,6 +179,18 @@ rejection reasons. A previously stored recording MBID is verified directly
 against MusicBrainz before falling back to search. Stored `exact` durations that
 do not cite a release track are reported as legacy inconsistencies and are not
 silently promoted into identity V2.
+
+Beta.4 repairs the provider boundary and matching sequence found by the full
+playlist beta report. Recording search keeps human punctuation, strips only
+release-level mastering labels and treats a stored Roon album as weak evidence
+that may be discarded when it conflicts with the requested recording family.
+Flat display credits never outrank a structured album artist. When MusicBrainz
+contains duplicate compatible recordings, a result advances only if one has
+unique ISRC evidence and remains a medium-confidence candidate. Release
+identity paginates beyond the 25 linked entities returned by a recording
+lookup; a bounded, truncated browse cannot prove that an observed album is
+absent. MusicBrainz include lists are serialized with the literal `+` separator
+required by the API.
 Generated playlist artwork uses an explicit two-step MCP flow.
 `roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
 name and returns its description, bounded track context, generation requirements

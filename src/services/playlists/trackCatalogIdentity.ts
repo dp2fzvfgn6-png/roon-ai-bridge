@@ -15,7 +15,7 @@ export type TrackCatalogIntent = {
   album_hint: string | null;
   release_year_hint: number | null;
   recording_intent: string;
-  source: "llm_hints" | "stored_query" | "verified_recording" | "stored_artist" | "unknown";
+  source: "llm_hints" | "stored_query" | "verified_recording" | "stored_album_artist" | "stored_artist" | "unknown";
 };
 
 export type TrackCatalogIdentityV2 = {
@@ -163,24 +163,34 @@ export function catalogIntentForTrack(track: VirtualPlaylistTrack): TrackCatalog
   const storedArtist = text(track.artist) || text(audio?.artist) || text(selected?.artist);
   const singleStoredArtist = storedArtist && !/[,;·]/u.test(storedArtist) ? storedArtist : null;
   const verifiedArtist = text(recording?.artist);
+  const observedRelease = releaseObservation(track);
+  const storedAlbumArtist = text(observedRelease?.album_artist)
+    || text(audio?.album_artist)
+    || text(track.identity?.album_artist)
+    || text(selected?.album_artist);
+  const singleAlbumArtist = storedAlbumArtist && !/[,;·]/u.test(storedAlbumArtist) ? storedAlbumArtist : null;
   const primaryArtists = proposedPrimary.length
     ? proposedPrimary
     : fromQuery
       ? [fromQuery]
       : verifiedArtist
         ? [verifiedArtist]
-        : singleStoredArtist
-          ? [singleStoredArtist]
-          : [];
+        : singleAlbumArtist
+          ? [singleAlbumArtist]
+          : singleStoredArtist
+            ? [singleStoredArtist]
+            : [];
   const source: TrackCatalogIntent["source"] = proposedPrimary.length
     ? "llm_hints"
     : fromQuery
       ? "stored_query"
       : verifiedArtist
         ? "verified_recording"
-        : singleStoredArtist
-          ? "stored_artist"
-          : "unknown";
+        : singleAlbumArtist
+          ? "stored_album_artist"
+          : singleStoredArtist
+            ? "stored_artist"
+            : "unknown";
   const hintedAlbum = text(hints?.album);
   return {
     title,

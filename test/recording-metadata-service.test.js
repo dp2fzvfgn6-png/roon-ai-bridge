@@ -61,6 +61,8 @@ test("MusicBrainz recording metadata resolves an explicitly named mix and follow
       }] }), { status: 200 });
     }
     if (url.pathname.endsWith("/recording/who-2022")) {
+      assert.doesNotMatch(String(url), /%2B/u);
+      assert.match(String(url), /inc=artist-credits\+isrcs/u);
       return new Response(JSON.stringify({
         id: "who-2022",
         title: "Won't Get Fooled Again",
@@ -319,4 +321,205 @@ test("MusicBrainz verifies a stored recording MBID while keeping a distinct arti
   assert.deepEqual(result.trace.search_attempts, []);
   assert.deepEqual(result.trace.accepted_warnings, ["artist_credit_differs_from_intent"]);
   assert.deepEqual(result.trace.candidate_counts, { returned: 1, accepted: 1, rejected: 0 });
+});
+
+test("MusicBrainz search preserves apostrophes while removing a remaster suffix", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    assert.equal(
+      url.searchParams.get("query"),
+      'recording:"Won\'t Get Fooled Again" AND artist:"The Who"'
+    );
+    return new Response(JSON.stringify({ recordings: [] }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "Won't Get Fooled Again (Remastered 2022)",
+    artist: "The Who",
+    version_hint: "remaster"
+  });
+
+  assert.equal(result.status, "not_found");
+  assert.equal(result.trace.search_attempts[0].title, "Won't Get Fooled Again");
+});
+
+test("MusicBrainz treats remaster as release evidence rather than a recording variant", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    if (url.pathname.endsWith("/recording")) {
+      assert.match(url.searchParams.get("query"), /recording:"Highway Star"/);
+      return new Response(JSON.stringify({ recordings: [
+        {
+          id: "highway-studio",
+          title: "Highway Star",
+          score: 100,
+          "artist-credit": [{ name: "Deep Purple" }],
+          releases: []
+        },
+        {
+          id: "highway-live",
+          title: "Highway Star",
+          disambiguation: "live recording",
+          score: 100,
+          "artist-credit": [{ name: "Deep Purple" }],
+          releases: []
+        }
+      ] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      id: "highway-studio",
+      title: "Highway Star",
+      length: 367000,
+      "artist-credit": [{ name: "Deep Purple" }],
+      releases: [],
+      relations: [],
+      genres: [],
+      isrcs: []
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "Highway Star (Remastered 2012)",
+    artist: "Deep Purple",
+    version_hint: "remaster"
+  });
+
+  assert.equal(result.status, "exact");
+  assert.equal(result.metadata.recording_id, "highway-studio");
+  assert.deepEqual(result.trace.rejected_candidates[0].reasons, ["variant_mismatch"]);
+});
+
+test("MusicBrainz falls back from an incompatible observed release to the base recording", async () => {
+  const queries = [];
+  const service = new RecordingMetadataService(async (url) => {
+    if (url.pathname.endsWith("/recording")) {
+      const query = url.searchParams.get("query");
+      queries.push(query);
+      const recordings = query.includes('release:"Live Steppenwolf"')
+        ? [{
+            id: "born-live",
+            title: "Born To Be Wild",
+            disambiguation: "live recording",
+            score: 100,
+            "artist-credit": [{ name: "Steppenwolf" }],
+            releases: [{ title: "Live Steppenwolf" }]
+          }]
+        : [{
+            id: "born-studio",
+            title: "Born To Be Wild",
+            score: 100,
+            "artist-credit": [{ name: "Steppenwolf" }],
+            releases: [{ title: "Steppenwolf" }]
+          }];
+      return new Response(JSON.stringify({ recordings }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      id: "born-studio",
+      title: "Born To Be Wild",
+      length: 211000,
+      "artist-credit": [{ name: "Steppenwolf" }],
+      releases: [],
+      relations: [],
+      genres: [],
+      isrcs: []
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "Born To Be Wild",
+    artist: "Steppenwolf",
+    album_observation: "Live Steppenwolf",
+    version_hint: "standard"
+  });
+
+  assert.equal(result.status, "exact");
+  assert.equal(result.metadata.recording_id, "born-studio");
+  assert.equal(queries.length, 2);
+  assert.ok(result.trace.accepted_warnings.includes("release_observation_did_not_identify_recording"));
+});
+
+test("MusicBrainz resolves duplicate-compatible recordings only with unique ISRC evidence", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    if (url.pathname.endsWith("/recording")) {
+      return new Response(JSON.stringify({ recordings: [
+        {
+          id: "sparse-2017",
+          title: "More Than a Feeling",
+          score: 100,
+          "artist-credit": [{ name: "Boston" }],
+          releases: [{ title: "Boston", date: "2017", status: "Official" }]
+        },
+        {
+          id: "sparse-1993",
+          title: "More Than a Feeling",
+          length: 285000,
+          score: 95,
+          "artist-credit": [{ name: "Boston" }],
+          releases: [{ title: "Boston", date: "1993", status: "Official" }]
+        },
+        {
+          id: "catalog-supported",
+          title: "More Than a Feeling",
+          length: 285000,
+          score: 74,
+          isrcs: ["USSM17600941"],
+          "artist-credit": [{ name: "Boston" }],
+          releases: [{ title: "Boston", date: "1976", status: "Official" }]
+        }
+      ] }), { status: 200 });
+    }
+    assert.equal(url.pathname, "/ws/2/recording/catalog-supported");
+    return new Response(JSON.stringify({
+      id: "catalog-supported",
+      title: "More Than a Feeling",
+      length: 285000,
+      isrcs: ["USSM17600941"],
+      "artist-credit": [{ name: "Boston" }],
+      releases: [{ title: "Boston", date: "1976", status: "Official" }],
+      relations: [],
+      genres: []
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "More Than a Feeling",
+    artist: "Boston",
+    album_observation: "Boston",
+    version_hint: "standard"
+  });
+
+  assert.equal(result.status, "exact");
+  assert.equal(result.reason, "unique_catalog_supported_recording_from_release_observation");
+  assert.equal(result.metadata.recording_id, "catalog-supported");
+  assert.equal(result.metadata.confidence, "medium");
+  assert.ok(result.trace.accepted_warnings.includes("duplicate_recordings_disambiguated_by_unique_isrc_evidence"));
+});
+
+test("MusicBrainz browses and caches the complete release list for a recording", async () => {
+  let requests = 0;
+  const service = new RecordingMetadataService(async (url) => {
+    requests += 1;
+    assert.equal(url.pathname, "/ws/2/release");
+    assert.equal(url.searchParams.get("recording"), "recording-id");
+    assert.match(url.searchParams.get("inc"), /release-groups/);
+    assert.doesNotMatch(String(url), /%2B/u);
+    assert.match(String(url), /inc=release-groups\+media\+artist-credits/u);
+    return new Response(JSON.stringify({
+      "release-count": 1,
+      releases: [{
+        id: "compilation-release",
+        title: "The Very Best",
+        status: "Official",
+        "release-group": { id: "compilation-group", "primary-type": "Album", "secondary-types": ["Compilation"] },
+        media: [{ position: 1, "track-offset": 4, "track-count": 20 }]
+      }]
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const first = await service.listRecordingReleases("recording-id");
+  const second = await service.listRecordingReleases("recording-id");
+
+  assert.equal(requests, 1);
+  assert.equal(first.releases[0].release_group_id, "compilation-group");
+  assert.equal(first.releases[0].track_position, 5);
+  assert.equal(second.trace.cache_hit, true);
+  assert.equal(second.trace.cache_layer, "memory");
 });

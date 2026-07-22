@@ -664,6 +664,14 @@ Implemented tools:
   attempts and rejection reasons. A stored recording MBID is verified directly
   before a new search, and `stored_metadata_audit` reports legacy exact fields
   that lack release-track evidence.
+  Beta.4 preserves search punctuation, treats remastering as release evidence,
+  uses album observations as a reversible recording hint and can distinguish a
+  duplicate recording only when one compatible candidate has unique ISRC
+  evidence. Release diagnostics browse beyond the recording lookup's linked
+  entities and expose `candidate_provider_trace`; a bounded browse that ends
+  early returns `release_catalog_truncated_before_anchor` instead of declaring
+  a false conflict. Legacy exact releases contradicted by the catalog report
+  `stored_exact_release_conflicts_with_catalog`.
 - `roon_get_media_details`
 - `roon_list_artist_releases`
 - `roon_play_media`

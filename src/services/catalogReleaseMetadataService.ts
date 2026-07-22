@@ -9,7 +9,7 @@ import type { TrackCatalogIntent } from "./playlists/trackCatalogIdentity";
 import type { VirtualPlaylistTrack } from "./playlists/playlistContracts";
 
 export type CatalogReleaseResolution = {
-  status: "exact_release" | "release_group_candidate" | "ambiguous_release" | "not_found" | "insufficient_evidence" | "recording_unresolved" | "provider_error";
+  status: "exact_release" | "release_group_candidate" | "ambiguous_release" | "anchor_conflict" | "not_found" | "insufficient_evidence" | "recording_unresolved" | "provider_error";
   reason: string;
   anchor: {
     source: "intent_album_hint" | "roon_observation" | null;
@@ -24,6 +24,7 @@ export type CatalogReleaseResolution = {
     secondary_types: string[];
   } | null;
   release: ReleaseTrackCatalogMetadata | null;
+  candidate_provider_trace: CatalogProviderTrace | null;
   provider_trace: CatalogProviderTrace | null;
   duration: {
     seconds: number | null;
@@ -65,6 +66,7 @@ function integer(value: unknown): number | null {
 
 function normalizedRelease(value: unknown): string {
   return String(value || "")
+    .replace(/\s*[([](?:19|20)\d{2}[\])]\s*$/u, " ")
     .normalize("NFKD")
     .replace(/\p{Mark}/gu, "")
     .toLocaleLowerCase()
@@ -110,6 +112,7 @@ function emptyResolution(
     observedYear: number | null;
     observedCover: string | null;
     candidates: RecordingCatalogReleaseCandidate[];
+    candidateTrace?: CatalogProviderTrace | null;
     warnings?: string[];
   }
 ): CatalogReleaseResolution {
@@ -124,6 +127,7 @@ function emptyResolution(
     },
     release_group: null,
     release: null,
+    candidate_provider_trace: input.candidateTrace || null,
     provider_trace: null,
     duration: { seconds: null, source: null, exact_for_release: false },
     cover_art: null,
@@ -157,35 +161,63 @@ export class CatalogReleaseMetadataService {
         : null;
     const anchorYear = intent.release_year_hint;
     const recording = recordingResult.status === "exact" ? recordingResult.metadata : null;
-    const candidates = dedupeCandidates((recording?.release_candidates || []).filter(official));
-    const base = {
+    let candidates = dedupeCandidates((recording?.release_candidates || []).filter(official));
+    let candidateTrace: CatalogProviderTrace | null = null;
+    const base = () => ({
       anchorSource,
       anchorTitle,
       anchorYear,
       observedAlbum: observed.album,
       observedYear: observed.releaseYear,
       observedCover: observed.coverImageKey,
-      candidates
-    };
-    if (!recording) return emptyResolution("recording_unresolved", "recording_must_be_resolved_first", base);
-    if (!candidates.length) return emptyResolution("not_found", "recording_has_no_official_release_candidates", base);
+      candidates,
+      candidateTrace
+    });
+    if (!recording) return emptyResolution("recording_unresolved", "recording_must_be_resolved_first", base());
     if (!anchorTitle) {
-      return emptyResolution("insufficient_evidence", "release_title_anchor_is_required", base);
+      return emptyResolution("insufficient_evidence", "release_title_anchor_is_required", base());
     }
 
-    const titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
+    let titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
     if (!titleMatches.length) {
-      return emptyResolution("not_found", "release_title_not_present_for_recording", {
-        ...base,
+      try {
+        const complete = await this.recordingMetadataService.listRecordingReleases(recording.recording_id);
+        candidateTrace = complete.trace;
+        candidates = dedupeCandidates([...candidates, ...complete.releases.filter(official)]);
+        titleMatches = candidates.filter((candidate) => normalizedRelease(candidate.title) === normalizedRelease(anchorTitle));
+        if (!titleMatches.length && complete.truncated) {
+          return emptyResolution("insufficient_evidence", "release_catalog_truncated_before_anchor", {
+            ...base(),
+            warnings: ["The bounded MusicBrainz release browse ended before the observed album could be verified."]
+          });
+        }
+      } catch (error) {
+        return emptyResolution("provider_error", "release_candidates_provider_error", {
+          ...base(),
+          warnings: [error instanceof Error ? error.message : String(error)]
+        });
+      }
+    }
+    if (!candidates.length) {
+      return emptyResolution("not_found", "recording_has_no_official_release_candidates", base());
+    }
+    if (!titleMatches.length) {
+      return emptyResolution(
+        anchorSource === "roon_observation" ? "anchor_conflict" : "not_found",
+        anchorSource === "roon_observation"
+          ? "roon_observation_not_a_release_of_recording"
+          : "release_title_not_present_for_recording",
+        {
+        ...base(),
         warnings: anchorSource === "roon_observation"
-          ? ["The Roon album is an observation and did not match a MusicBrainz release for this recording."]
+          ? ["The complete MusicBrainz release list does not contain the observed Roon album for this recording."]
           : []
       });
     }
     const groupKeys = new Set(titleMatches.map((candidate) => candidate.release_group_id || `release:${candidate.release_id}`));
     if (groupKeys.size !== 1) {
       return emptyResolution("ambiguous_release", "album_title_matches_multiple_release_groups", {
-        ...base,
+        ...base(),
         candidates: titleMatches
       });
     }
@@ -267,6 +299,7 @@ export class CatalogReleaseMetadataService {
       },
       release_group: group,
       release,
+      candidate_provider_trace: candidateTrace,
       provider_trace: releaseTrace,
       duration: release
         ? { seconds: release.duration_seconds, source: "musicbrainz_release_track", exact_for_release: true }
