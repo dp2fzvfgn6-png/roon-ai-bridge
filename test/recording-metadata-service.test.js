@@ -34,7 +34,13 @@ test("MusicBrainz recording metadata reports a conflict instead of choosing the 
   const second = await service.lookup({ title: "Riders on the Storm", artist: "The Doors", album: "L.A. Woman" });
 
   assert.equal(requests, 1);
-  assert.deepEqual(second, first);
+  assert.deepEqual({ ...second, trace: null }, { ...first, trace: null });
+  assert.equal(first.trace.cache_hit, false);
+  assert.equal(first.trace.provider_requests, 1);
+  assert.deepEqual(first.trace.candidate_counts, { returned: 2, accepted: 2, rejected: 0 });
+  assert.equal(second.trace.cache_hit, true);
+  assert.equal(second.trace.cache_layer, "memory");
+  assert.equal(second.trace.provider_requests, 0);
   assert.equal(first.status, "conflict");
   assert.equal(first.metadata, null);
   assert.deepEqual(first.candidates.map((candidate) => candidate.duration_seconds), [429, 432]);
@@ -87,6 +93,8 @@ test("MusicBrainz recording metadata resolves an explicitly named mix and follow
 
   assert.equal(result.status, "exact");
   assert.equal(result.metadata.recording_id, "who-2022");
+  assert.deepEqual(result.metadata.artists, ["The Who"]);
+  assert.deepEqual(result.metadata.artist_credit, [{ musicbrainz_id: null, name: "The Who", join_phrase: "" }]);
   assert.equal(result.metadata.duration_seconds, 512);
   assert.deepEqual(result.metadata.composers, ["Pete Townshend"]);
   assert.deepEqual(result.metadata.lyricists, ["Pete Townshend"]);
@@ -205,4 +213,110 @@ test("MusicBrainz keeps release identity separate and resolves an exact release 
   assert.equal(releaseTrack.metadata.duration_seconds, 173);
   assert.equal(releaseTrack.metadata.track_position, 2);
   assert.equal(releaseTrack.metadata.release_group_id, "group-experienced");
+});
+
+test("MusicBrainz explains why returned recording candidates were rejected", async () => {
+  const service = new RecordingMetadataService(async () => new Response(JSON.stringify({ recordings: [
+    {
+      id: "purple-live",
+      title: "Purple Haze",
+      disambiguation: "live at Atlanta Pop Festival",
+      score: 100,
+      "artist-credit": [{ name: "Jimi Hendrix" }],
+      releases: []
+    },
+    {
+      id: "purple-cover",
+      title: "Purple Haze",
+      score: 90,
+      "artist-credit": [{ name: "Unrelated Cover Band" }],
+      releases: []
+    }
+  ] }), { status: 200 }), { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    title: "Purple Haze",
+    artist: "The Jimi Hendrix Experience",
+    version_hint: "standard"
+  });
+
+  assert.equal(result.status, "not_found");
+  assert.deepEqual(result.trace.candidate_counts, { returned: 2, accepted: 0, rejected: 2 });
+  assert.deepEqual(result.trace.rejected_candidates.map((candidate) => candidate.reasons), [
+    ["artist_mismatch", "variant_mismatch"],
+    ["artist_mismatch"]
+  ]);
+});
+
+test("MusicBrainz reports a persistent cache hit without making a provider request", async () => {
+  let stored = null;
+  const cache = {
+    get: () => stored,
+    set: ({ payload, status }) => {
+      stored = {
+        payload,
+        status,
+        fetched_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 60_000).toISOString()
+      };
+    }
+  };
+  let requests = 0;
+  const firstService = new RecordingMetadataService(async () => {
+    requests += 1;
+    return new Response(JSON.stringify({ recordings: [] }), { status: 200 });
+  }, { cache, minRequestIntervalMs: 0 });
+  const first = await firstService.lookup({ title: "Unknown", artist: "Unknown" });
+  const secondService = new RecordingMetadataService(async () => {
+    throw new Error("persistent cache should prevent this request");
+  }, { cache, minRequestIntervalMs: 0 });
+  const second = await secondService.lookup({ title: "Unknown", artist: "Unknown" });
+
+  assert.equal(requests, 1);
+  assert.equal(first.trace.cache_hit, false);
+  assert.equal(second.trace.cache_hit, true);
+  assert.equal(second.trace.cache_layer, "persistent");
+  assert.equal(second.trace.provider_requests, 0);
+});
+
+test("MusicBrainz verifies a stored recording MBID while keeping a distinct artist credit explicit", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    assert.equal(url.pathname, "/ws/2/recording/107af95b-776e-40af-a677-328ce4a72f16");
+    return new Response(JSON.stringify({
+      id: "107af95b-776e-40af-a677-328ce4a72f16",
+      title: "Purple Haze",
+      disambiguation: "original mono studio mix",
+      length: 173240,
+      isrcs: [],
+      genres: [],
+      "artist-credit": [{
+        name: "The Jimi Hendrix Experience",
+        artist: { id: "experience-mbid", name: "The Jimi Hendrix Experience" },
+        joinphrase: ""
+      }],
+      releases: [{
+        id: "purple-release",
+        title: "Are You Experienced",
+        status: "Official",
+        "release-group": { id: "purple-group", "primary-type": "Album", "secondary-types": [] },
+        media: [{ position: 1, "track-offset": 0, "track-count": 11 }]
+      }],
+      relations: []
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const result = await service.lookup({
+    recording_id: "107af95b-776e-40af-a677-328ce4a72f16",
+    title: "Purple Haze",
+    artist: "Jimi Hendrix",
+    version_hint: "standard"
+  });
+
+  assert.equal(result.status, "exact");
+  assert.equal(result.reason, "verified_recording_mbid_with_distinct_artist_credit");
+  assert.equal(result.metadata.confidence, "medium");
+  assert.deepEqual(result.metadata.artists, ["The Jimi Hendrix Experience"]);
+  assert.deepEqual(result.trace.search_attempts, []);
+  assert.deepEqual(result.trace.accepted_warnings, ["artist_credit_differs_from_intent"]);
+  assert.deepEqual(result.trace.candidate_counts, { returned: 1, accepted: 1, rejected: 0 });
 });

@@ -172,6 +172,13 @@ available anchors identify one release and MusicBrainz confirms the recording
 as a unique track on it. Otherwise it stops at a release-group candidate or an
 explicit ambiguity. Track duration and Cover Art Archive evidence always state
 which MusicBrainz entity they belong to.
+
+Beta.3 makes those decisions auditable. Recording and exact-release lookups
+report memory/SQLite cache hits, provider request counts and bounded candidate
+rejection reasons. A previously stored recording MBID is verified directly
+against MusicBrainz before falling back to search. Stored `exact` durations that
+do not cite a release track are reported as legacy inconsistencies and are not
+silently promoted into identity V2.
 Generated playlist artwork uses an explicit two-step MCP flow.
 `roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
 name and returns its description, bounded track context, generation requirements

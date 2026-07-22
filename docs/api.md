@@ -660,6 +660,10 @@ Implemented tools:
   ambiguity, duration provenance and edition-bound Cover Art Archive evidence.
   The returned `catalog_diagnostics` always declares `mode=shadow` and
   `mutates_playlist=false`.
+  Beta.3 adds bounded provider traces with cache layer, request counts, search
+  attempts and rejection reasons. A stored recording MBID is verified directly
+  before a new search, and `stored_metadata_audit` reports legacy exact fields
+  that lack release-track evidence.
 - `roon_get_media_details`
 - `roon_list_artist_releases`
 - `roon_play_media`

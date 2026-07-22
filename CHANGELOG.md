@@ -3,7 +3,23 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.20.0 Beta 2 - Unreleased
+## 0.20.0 Beta 3 - Unreleased
+
+- Add per-lookup `cache_hit`, cache layer, elapsed time and provider request
+  counts to MusicBrainz recording and release diagnostics.
+- Preserve complete MusicBrainz artist credits and join phrases instead of
+  exposing only the first credited artist.
+- Explain rejected recording candidates with bounded reason codes for title,
+  artist, release, ISRC, duration and version mismatches.
+- Stop treating partial artist-name containment as identity equivalence, keeping
+  people such as Jimi Hendrix distinct from groups such as The Jimi Hendrix
+  Experience.
+- Verify a stored recording MBID directly before searching again, while keeping
+  a differing MusicBrainz artist credit explicit instead of rewriting intent.
+- Audit legacy `exact` durations that lack `musicbrainz_release_track`
+  provenance or disagree with the shadow result.
+
+## 0.20.0 Beta 2 - 2026-07-22
 
 - Resolve MusicBrainz recordings and releases as separate identities instead of
   treating the most common album as the recording's canonical edition.

@@ -72,6 +72,8 @@ const exact = {
     recording_id: "mb-recording-born-wild",
     title: "Born to Be Wild",
     artist: "Steppenwolf",
+    artists: ["Steppenwolf"],
+    artist_credit: [{ musicbrainz_id: "mb-artist-steppenwolf", name: "Steppenwolf", join_phrase: "" }],
     album: null,
     disambiguation: "original studio recording",
     duration_seconds: 211,
@@ -84,7 +86,16 @@ const exact = {
     genres: ["rock"],
     confidence: "medium"
   },
-  candidates: []
+  candidates: [],
+  trace: {
+    cache_hit: false,
+    cache_layer: null,
+    elapsed_ms: 15,
+    provider_requests: 3,
+    search_attempts: [],
+    candidate_counts: { returned: 1, accepted: 1, rejected: 0 },
+    rejected_candidates: []
+  }
 };
 
 test("identity V2 keeps the proposed artist separate from Roon display credits", () => {
@@ -135,5 +146,70 @@ test("playlist catalog diagnostics are read-only and report the cache state", as
   assert.equal(result.mutates_playlist, false);
   assert.equal(result.identity_contract_version, 2);
   assert.equal(result.statuses.candidate_recording, 1);
+  assert.deepEqual(result.observability.recording, {
+    calls: 1,
+    cache_hits: 0,
+    memory_hits: 0,
+    persistent_hits: 0,
+    provider_requests: 3
+  });
+  assert.equal(JSON.stringify(value), before);
+});
+
+test("playlist diagnostics verify a stored recording MBID and flag legacy exact duration provenance", async () => {
+  const value = track();
+  value.audio_metadata = {
+    ...value.audio_metadata,
+    metadata_status: "exact",
+    duration_seconds: 211,
+    recording: { musicbrainz_id: "mb-recording-born-wild", title: "Born To Be Wild" },
+    field_provenance: { duration_seconds: { source: "musicbrainz" } }
+  };
+  const before = JSON.stringify(value);
+  const releaseResult = {
+    status: "exact_release",
+    reason: "unique_release_and_track",
+    anchor: { source: "roon_observation", title: "Live Steppenwolf", release_year: null, strength: "observed" },
+    release_group: { musicbrainz_id: "group", title: "Live Steppenwolf", primary_type: "Album", secondary_types: ["Live"] },
+    release: {
+      release_id: "release",
+      release_group_id: "group",
+      title: "Live Steppenwolf",
+      album_artist: "Steppenwolf",
+      release_year: 1969,
+      medium_position: 1,
+      track_position: 1,
+      duration_seconds: 211,
+      cover_art_archive: { artwork: true, front: true, back: false }
+    },
+    provider_trace: exact.trace,
+    duration: { seconds: 211, source: "musicbrainz_release_track", exact_for_release: true },
+    cover_art: null,
+    observations: {
+      roon_album: "Live Steppenwolf",
+      roon_release_year: null,
+      roon_cover_image_key: "cover-live",
+      album_title_coherence: "consistent",
+      cover_coherence: "unverified"
+    },
+    candidates: [],
+    warnings: []
+  };
+  const service = new PlaylistCatalogDiagnosticsService(
+    { getPlaylist: () => ({ playlist_id: "p1", tracks: [value] }) },
+    { lookup: async (input) => {
+      assert.equal(input.recording_id, "mb-recording-born-wild");
+      return exact;
+    } },
+    { summary: () => ({ provider: "musicbrainz", total_entries: 1, active_entries: 1, expired_entries: 0, statuses: { exact: 1 } }) },
+    undefined,
+    { resolve: async () => releaseResult }
+  );
+
+  const result = await service.analyze("p1", [value.track_id]);
+  assert.equal(result.tracks[0].release_result.status, "exact_release");
+  assert.deepEqual(result.tracks[0].stored_metadata_audit.issues, [
+    "stored_exact_duration_lacks_release_track_provenance"
+  ]);
   assert.equal(JSON.stringify(value), before);
 });

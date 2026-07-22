@@ -6,6 +6,12 @@ export type RecordingCatalogMetadata = {
   recording_id: string;
   title: string;
   artist: string | null;
+  artists: string[];
+  artist_credit: Array<{
+    musicbrainz_id: string | null;
+    name: string;
+    join_phrase: string;
+  }>;
   album: string | null;
   disambiguation: string | null;
   duration_seconds: number | null;
@@ -68,6 +74,7 @@ export type ReleaseTrackCatalogResolution = {
   status: "exact" | "conflict" | "not_found";
   reason: string;
   metadata: ReleaseTrackCatalogMetadata | null;
+  trace: CatalogProviderTrace;
 };
 
 export type RecordingCatalogCandidate = {
@@ -84,7 +91,35 @@ export type RecordingCatalogResolution = {
   reason: string;
   metadata: RecordingCatalogMetadata | null;
   candidates: RecordingCatalogCandidate[];
+  trace: CatalogProviderTrace;
 };
+
+export type CatalogProviderTrace = {
+  cache_hit: boolean;
+  cache_layer: "memory" | "persistent" | null;
+  elapsed_ms: number;
+  provider_requests: number;
+  search_attempts: Array<{
+    title: string;
+    artist: string;
+    album: string | null;
+    result_count: number;
+  }>;
+  candidate_counts: {
+    returned: number;
+    accepted: number;
+    rejected: number;
+  };
+  rejected_candidates: Array<{
+    recording_id: string | null;
+    title: string | null;
+    disambiguation: string | null;
+    reasons: string[];
+  }>;
+  accepted_warnings: string[];
+};
+
+type MutableCatalogProviderTrace = Omit<CatalogProviderTrace, "elapsed_ms">;
 
 type FetchLike = typeof fetch;
 type JsonRecord = Record<string, unknown>;
@@ -153,6 +188,62 @@ function artistNames(value: unknown): string[] {
         : null;
     return name ? [name] : [];
   });
+}
+
+function artistEquivalent(left: unknown, right: unknown): boolean {
+  const normalizedLeft = normalize(left);
+  const normalizedRight = normalize(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft === normalizedRight) return true;
+  const withoutArticle = (value: string) => value.replace(/^the\s+/, "");
+  return withoutArticle(normalizedLeft) === withoutArticle(normalizedRight);
+}
+
+function artistCredit(value: unknown): RecordingCatalogMetadata["artist_credit"] {
+  return records(value).flatMap((credit) => {
+    const artist = objectValue(credit.artist);
+    const name = typeof credit.name === "string"
+      ? credit.name
+      : typeof artist?.name === "string"
+        ? artist.name
+        : null;
+    if (!name) return [];
+    return [{
+      musicbrainz_id: typeof artist?.id === "string" ? artist.id : null,
+      name,
+      join_phrase: typeof credit.joinphrase === "string" ? credit.joinphrase : ""
+    }];
+  });
+}
+
+function emptyTrace(): MutableCatalogProviderTrace {
+  return {
+    cache_hit: false,
+    cache_layer: null,
+    provider_requests: 0,
+    search_attempts: [],
+    candidate_counts: { returned: 0, accepted: 0, rejected: 0 },
+    rejected_candidates: [],
+    accepted_warnings: []
+  };
+}
+
+function completedTrace(trace: MutableCatalogProviderTrace, startedAt: number): CatalogProviderTrace {
+  return { ...trace, elapsed_ms: Math.max(0, Date.now() - startedAt) };
+}
+
+function cacheTrace(
+  previous: CatalogProviderTrace | undefined,
+  layer: "memory" | "persistent",
+  startedAt: number
+): CatalogProviderTrace {
+  return {
+    ...(previous || completedTrace(emptyTrace(), startedAt)),
+    cache_hit: true,
+    cache_layer: layer,
+    elapsed_ms: Math.max(0, Date.now() - startedAt),
+    provider_requests: 0
+  };
 }
 
 function baseRecordingTitle(value: unknown): string {
@@ -327,7 +418,7 @@ export class RecordingMetadataService {
     return this.retryBaseMs * (2 ** attempt);
   }
 
-  private async requestJson(url: URL): Promise<JsonRecord> {
+  private async requestJson(url: URL, trace?: MutableCatalogProviderTrace): Promise<JsonRecord> {
     let releaseRequest: () => void = () => undefined;
     const previous = this.requestChain;
     this.requestChain = new Promise<void>((resolve) => { releaseRequest = resolve; });
@@ -339,6 +430,7 @@ export class RecordingMetadataService {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 6000);
         try {
+          if (trace) trace.provider_requests += 1;
           const response = await this.fetchImpl(url, {
             headers: {
               Accept: "application/json",
@@ -364,6 +456,7 @@ export class RecordingMetadataService {
   }
 
   private cacheKey(input: {
+    recording_id?: string | null;
     title: string;
     artist: string;
     album?: string | null;
@@ -372,10 +465,11 @@ export class RecordingMetadataService {
     duration_seconds?: number | null;
   }): string {
     const material = [
+      normalize(input.recording_id),
       normalize(input.title), normalize(input.artist), releaseKey(input.album),
       normalize(input.version_hint), normalize(input.isrc), input.duration_seconds || ""
     ].join("|");
-    return `recording-resolution:v2:${crypto.createHash("sha256").update(material).digest("hex")}`;
+    return `recording-resolution:v3:${crypto.createHash("sha256").update(material).digest("hex")}`;
   }
 
   private remember(cacheKey: string, value: RecordingCatalogResolution): RecordingCatalogResolution {
@@ -397,7 +491,7 @@ export class RecordingMetadataService {
   }
 
   private releaseTrackCacheKey(releaseId: string, recordingId: string): string {
-    return `release-track:${crypto.createHash("sha256").update(`${releaseId}|${recordingId}`).digest("hex")}`;
+    return `release-track:v2:${crypto.createHash("sha256").update(`${releaseId}|${recordingId}`).digest("hex")}`;
   }
 
   private rememberReleaseTrack(cacheKey: string, value: ReleaseTrackCatalogResolution): ReleaseTrackCatalogResolution {
@@ -419,22 +513,27 @@ export class RecordingMetadataService {
   }
 
   async lookupReleaseTrack(releaseId: string, recordingId: string): Promise<ReleaseTrackCatalogResolution> {
+    const startedAt = Date.now();
     const cacheKey = this.releaseTrackCacheKey(releaseId, recordingId);
     const cached = this.releaseTrackCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (cached && cached.expiresAt > Date.now()) {
+      return { ...cached.value, trace: cacheTrace(cached.value.trace, "memory", startedAt) };
+    }
     const persisted = this.persistentCache?.get<ReleaseTrackCatalogResolution>(MUSICBRAINZ_PROVIDER, cacheKey);
     if (persisted) {
       this.releaseTrackCache.set(cacheKey, {
         expiresAt: Date.parse(persisted.expires_at),
         value: persisted.payload
       });
-      return persisted.payload;
+      return { ...persisted.payload, trace: cacheTrace(persisted.payload.trace, "persistent", startedAt) };
     }
+
+    const trace = emptyTrace();
 
     const url = new URL(`https://musicbrainz.org/ws/2/release/${releaseId}`);
     url.searchParams.set("inc", "recordings+artist-credits+release-groups");
     url.searchParams.set("fmt", "json");
-    const detail = await this.requestJson(url);
+    const detail = await this.requestJson(url, trace);
     const group = releaseGroup(detail);
     const matches = records(detail.media).flatMap((medium) => records(medium.tracks).flatMap((track) => {
       const recording = objectValue(track.recording);
@@ -445,14 +544,16 @@ export class RecordingMetadataService {
       return this.rememberReleaseTrack(cacheKey, {
         status: "not_found",
         reason: "recording_not_present_on_release",
-        metadata: null
+        metadata: null,
+        trace: completedTrace(trace, startedAt)
       });
     }
     if (matches.length !== 1) {
       return this.rememberReleaseTrack(cacheKey, {
         status: "conflict",
         reason: "recording_occurs_multiple_times_on_release",
-        metadata: null
+        metadata: null,
+        trace: completedTrace(trace, startedAt)
       });
     }
     const { medium, track } = matches[0];
@@ -476,11 +577,17 @@ export class RecordingMetadataService {
         track_title: String(track.title || objectValue(track.recording)?.title || ""),
         duration_seconds: durationSeconds(track.length),
         cover_art_archive: coverArtArchive(detail["cover-art-archive"])
-      }
+      },
+      trace: completedTrace(trace, startedAt)
     });
   }
 
-  private async search(title: string, artist: string, album?: string | null): Promise<JsonRecord[]> {
+  private async search(
+    title: string,
+    artist: string,
+    album: string | null | undefined,
+    trace: MutableCatalogProviderTrace
+  ): Promise<JsonRecord[]> {
     const terms = [
       `recording:"${lucene(title)}"`,
       `artist:"${lucene(artist)}"`,
@@ -490,11 +597,14 @@ export class RecordingMetadataService {
     url.searchParams.set("query", terms.join(" AND "));
     url.searchParams.set("fmt", "json");
     url.searchParams.set("limit", "100");
-    const response = await this.requestJson(url);
-    return records(response.recordings);
+    const response = await this.requestJson(url, trace);
+    const result = records(response.recordings);
+    trace.search_attempts.push({ title, artist, album: album || null, result_count: result.length });
+    return result;
   }
 
   async lookup(input: {
+    recording_id?: string | null;
     title: string;
     artist: string;
     album?: string | null;
@@ -502,71 +612,130 @@ export class RecordingMetadataService {
     isrc?: string | null;
     duration_seconds?: number | null;
   }): Promise<RecordingCatalogResolution> {
+    const startedAt = Date.now();
     const cacheKey = this.cacheKey(input);
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (cached && cached.expiresAt > Date.now()) {
+      return { ...cached.value, trace: cacheTrace(cached.value.trace, "memory", startedAt) };
+    }
     const persisted = this.persistentCache?.get<RecordingCatalogResolution>(MUSICBRAINZ_PROVIDER, cacheKey);
     if (persisted) {
       this.cache.set(cacheKey, { expiresAt: Date.parse(persisted.expires_at), value: persisted.payload });
-      return persisted.payload;
+      return { ...persisted.payload, trace: cacheTrace(persisted.payload.trace, "persistent", startedAt) };
     }
 
-    const searchTitle = baseRecordingTitle(input.title) || input.title;
-    const releaseAlias = input.album ? releaseSearchAlias(input.album) : null;
-    let recordings = await this.search(searchTitle, input.artist, releaseAlias);
-    if (!recordings.length && releaseAlias) recordings = await this.search(searchTitle, input.artist);
+    const trace = emptyTrace();
 
     const expectedTitle = baseRecordingTitle(input.title);
     const expectedArtist = normalize(input.artist);
     const requestedVariant = variantProfile(input.title, input.version_hint);
     const expectedIsrc = normalize(input.isrc);
-    const ranked = recordings.flatMap((recording) => {
-      if (typeof recording.id !== "string" || typeof recording.title !== "string") return [];
-      if (baseRecordingTitle(recording.title) !== expectedTitle) return [];
-      const artists = artistNames(recording["artist-credit"]);
-      if (artists.length && !artists.some((artist) => {
-        const candidate = normalize(artist);
-        return candidate === expectedArtist || candidate.includes(expectedArtist) || expectedArtist.includes(candidate);
-      })) return [];
-      const releases = compatibleReleases(recording, input.album);
-      if (input.album && !releases.length) return [];
-      const isrcs = strings(recording.isrcs);
-      if (expectedIsrc && !isrcs.some((isrc) => normalize(isrc) === expectedIsrc)) return [];
-      const duration = durationSeconds(recording.length);
-      if (input.duration_seconds && duration && Math.abs(duration - input.duration_seconds) > 2) return [];
-      const disambiguation = typeof recording.disambiguation === "string" ? recording.disambiguation : "";
-      const strength = variantStrength(requestedVariant, `${recording.title} ${disambiguation}`);
-      if (strength === null) return [];
-      return [{ recording, releases, strength, searchScore: Number(recording.score) || 0 }];
-    }).sort((left, right) => right.strength - left.strength || right.searchScore - left.searchScore);
+    let detail: JsonRecord;
+    let selectedSnapshot: RecordingCatalogCandidate;
+    let resolutionReason = "unique_compatible_recording";
+    let anchoredArtistMismatch = false;
 
-    const snapshots = ranked.slice(0, 8).map(({ recording }) => candidateSnapshot(recording));
-    if (!ranked.length) {
-      const value: RecordingCatalogResolution = {
-        status: "not_found",
-        reason: "no_compatible_recording",
-        metadata: null,
-        candidates: []
-      };
-      return this.remember(cacheKey, value);
+    if (input.recording_id) {
+      const detailUrl = new URL(`https://musicbrainz.org/ws/2/recording/${input.recording_id}`);
+      detailUrl.searchParams.set("inc", "artist-credits+isrcs+releases+release-groups+media+work-rels+genres+tags");
+      detailUrl.searchParams.set("fmt", "json");
+      detail = await this.requestJson(detailUrl, trace);
+      const rejectionReasons: string[] = [];
+      if (baseRecordingTitle(detail.title) !== expectedTitle) rejectionReasons.push("title_mismatch");
+      const disambiguation = typeof detail.disambiguation === "string" ? detail.disambiguation : "";
+      if (variantStrength(requestedVariant, `${detail.title || ""} ${disambiguation}`) === null) {
+        rejectionReasons.push("variant_mismatch");
+      }
+      const detailedIsrcs = strings(detail.isrcs);
+      if (expectedIsrc && detailedIsrcs.length && !detailedIsrcs.some((isrc) => normalize(isrc) === expectedIsrc)) {
+        rejectionReasons.push("isrc_mismatch");
+      }
+      if (input.album && !compatibleReleases(detail, input.album).length) rejectionReasons.push("release_mismatch");
+      const detailedArtists = artistNames(detail["artist-credit"]);
+      anchoredArtistMismatch = detailedArtists.length > 0
+        && !detailedArtists.some((artist) => artistEquivalent(artist, expectedArtist));
+      if (anchoredArtistMismatch) trace.accepted_warnings.push("artist_credit_differs_from_intent");
+      trace.candidate_counts = { returned: 1, accepted: rejectionReasons.length ? 0 : 1, rejected: rejectionReasons.length ? 1 : 0 };
+      if (rejectionReasons.length) {
+        trace.rejected_candidates.push({
+          recording_id: typeof detail.id === "string" ? detail.id : input.recording_id,
+          title: typeof detail.title === "string" ? detail.title : null,
+          disambiguation: disambiguation || null,
+          reasons: rejectionReasons
+        });
+        return this.remember(cacheKey, {
+          status: "not_found",
+          reason: "stored_recording_mbid_failed_verification",
+          metadata: null,
+          candidates: [],
+          trace: completedTrace(trace, startedAt)
+        });
+      }
+      selectedSnapshot = candidateSnapshot(detail);
+      resolutionReason = anchoredArtistMismatch
+        ? "verified_recording_mbid_with_distinct_artist_credit"
+        : "verified_recording_mbid";
+    } else {
+      const searchTitle = baseRecordingTitle(input.title) || input.title;
+      const releaseAlias = input.album ? releaseSearchAlias(input.album) : null;
+      let recordings = await this.search(searchTitle, input.artist, releaseAlias, trace);
+      if (!recordings.length && releaseAlias) recordings = await this.search(searchTitle, input.artist, null, trace);
+      const ranked = recordings.flatMap((recording) => {
+        const reasons: string[] = [];
+        if (typeof recording.id !== "string" || typeof recording.title !== "string") reasons.push("invalid_recording_shape");
+        if (typeof recording.title === "string" && baseRecordingTitle(recording.title) !== expectedTitle) reasons.push("title_mismatch");
+        const artists = artistNames(recording["artist-credit"]);
+        if (artists.length && !artists.some((artist) => artistEquivalent(artist, expectedArtist))) reasons.push("artist_mismatch");
+        const releases = compatibleReleases(recording, input.album);
+        if (input.album && !releases.length) reasons.push("release_mismatch");
+        const isrcs = strings(recording.isrcs);
+        if (expectedIsrc && !isrcs.some((isrc) => normalize(isrc) === expectedIsrc)) reasons.push("isrc_mismatch");
+        const duration = durationSeconds(recording.length);
+        if (input.duration_seconds && duration && Math.abs(duration - input.duration_seconds) > 2) reasons.push("duration_mismatch");
+        const disambiguation = typeof recording.disambiguation === "string" ? recording.disambiguation : "";
+        const strength = variantStrength(requestedVariant, `${recording.title} ${disambiguation}`);
+        if (strength === null) reasons.push("variant_mismatch");
+        if (reasons.length) {
+          if (trace.rejected_candidates.length < 12) {
+            trace.rejected_candidates.push({
+              recording_id: typeof recording.id === "string" ? recording.id : null,
+              title: typeof recording.title === "string" ? recording.title : null,
+              disambiguation: disambiguation || null,
+              reasons
+            });
+          }
+          return [];
+        }
+        return [{ recording, strength: strength!, searchScore: Number(recording.score) || 0 }];
+      }).sort((left, right) => right.strength - left.strength || right.searchScore - left.searchScore);
+      trace.candidate_counts = { returned: recordings.length, accepted: ranked.length, rejected: recordings.length - ranked.length };
+      const snapshots = ranked.slice(0, 8).map(({ recording }) => candidateSnapshot(recording));
+      if (!ranked.length) {
+        return this.remember(cacheKey, {
+          status: "not_found",
+          reason: "no_compatible_recording",
+          metadata: null,
+          candidates: [],
+          trace: completedTrace(trace, startedAt)
+        });
+      }
+      const strongest = ranked.filter((candidate) => candidate.strength === ranked[0].strength);
+      if (strongest.length !== 1) {
+        return this.remember(cacheKey, {
+          status: "conflict",
+          reason: "multiple_compatible_recordings",
+          metadata: null,
+          candidates: snapshots,
+          trace: completedTrace(trace, startedAt)
+        });
+      }
+      const selected = strongest[0].recording;
+      const detailUrl = new URL(`https://musicbrainz.org/ws/2/recording/${selected.id}`);
+      detailUrl.searchParams.set("inc", "artist-credits+isrcs+releases+release-groups+media+work-rels+genres+tags");
+      detailUrl.searchParams.set("fmt", "json");
+      detail = await this.requestJson(detailUrl, trace);
+      selectedSnapshot = candidateSnapshot(detail);
     }
-
-    const strongest = ranked.filter((candidate) => candidate.strength === ranked[0].strength);
-    if (strongest.length !== 1) {
-      const value: RecordingCatalogResolution = {
-        status: "conflict",
-        reason: "multiple_compatible_recordings",
-        metadata: null,
-        candidates: snapshots
-      };
-      return this.remember(cacheKey, value);
-    }
-
-    const selected = strongest[0];
-    const detailUrl = new URL(`https://musicbrainz.org/ws/2/recording/${selected.recording.id}`);
-    detailUrl.searchParams.set("inc", "artist-credits+isrcs+releases+release-groups+media+work-rels+genres+tags");
-    detailUrl.searchParams.set("fmt", "json");
-    const detail = await this.requestJson(detailUrl);
     const workRelation = records(detail.relations).find((relation) => objectValue(relation.work));
     const work = objectValue(workRelation?.work);
     let workDetail: JsonRecord | null = null;
@@ -574,7 +743,7 @@ export class RecordingMetadataService {
       const workUrl = new URL(`https://musicbrainz.org/ws/2/work/${work.id}`);
       workUrl.searchParams.set("inc", "artist-rels+genres+tags");
       workUrl.searchParams.set("fmt", "json");
-      workDetail = await this.requestJson(workUrl);
+      workDetail = await this.requestJson(workUrl, trace);
     }
 
     const relations = records(workDetail?.relations);
@@ -608,9 +777,11 @@ export class RecordingMetadataService {
     const composers = namesFor(["composer", "writer"]);
     const lyricists = namesFor(["lyricist"]);
     const metadata: RecordingCatalogMetadata = {
-      recording_id: String(detail.id || selected.recording.id),
-      title: String(detail.title || selected.recording.title),
+      recording_id: String(detail.id || input.recording_id || selectedSnapshot.recording_id),
+      title: String(detail.title || selectedSnapshot.title),
       artist: artistNames(detail["artist-credit"])[0] || input.artist || null,
+      artists: artistNames(detail["artist-credit"]),
+      artist_credit: artistCredit(detail["artist-credit"]),
       album: input.album || (typeof detailedReleases[0]?.title === "string" ? detailedReleases[0].title : null),
       disambiguation,
       duration_seconds: durationSeconds(detail.length),
@@ -622,13 +793,14 @@ export class RecordingMetadataService {
       lyricists,
       genres,
       release_candidates: releaseCandidates,
-      confidence: input.album || expectedIsrc ? "high" : "medium"
+      confidence: anchoredArtistMismatch ? "medium" : input.recording_id || input.album || expectedIsrc ? "high" : "medium"
     };
     const value: RecordingCatalogResolution = {
       status: "exact",
-      reason: "unique_compatible_recording",
+      reason: resolutionReason,
       metadata,
-      candidates: [candidateSnapshot(detail)]
+      candidates: [selectedSnapshot],
+      trace: completedTrace(trace, startedAt)
     };
     return this.remember(cacheKey, value);
   }

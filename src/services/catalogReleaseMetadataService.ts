@@ -2,6 +2,7 @@ import type {
   RecordingCatalogReleaseCandidate,
   RecordingCatalogResolution,
   RecordingMetadataService,
+  CatalogProviderTrace,
   ReleaseTrackCatalogMetadata
 } from "./recordingMetadataService";
 import type { TrackCatalogIntent } from "./playlists/trackCatalogIdentity";
@@ -23,6 +24,7 @@ export type CatalogReleaseResolution = {
     secondary_types: string[];
   } | null;
   release: ReleaseTrackCatalogMetadata | null;
+  provider_trace: CatalogProviderTrace | null;
   duration: {
     seconds: number | null;
     source: "musicbrainz_release_track" | "musicbrainz_recording_median" | null;
@@ -122,6 +124,7 @@ function emptyResolution(
     },
     release_group: null,
     release: null,
+    provider_trace: null,
     duration: { seconds: null, source: null, exact_for_release: false },
     cover_art: null,
     observations: {
@@ -201,6 +204,7 @@ export class CatalogReleaseMetadataService {
     }
     const selectedCandidate = editionCandidates.length === 1 ? editionCandidates[0] : null;
     let release: ReleaseTrackCatalogMetadata | null = null;
+    let releaseTrace: CatalogProviderTrace | null = null;
     let providerError: string | null = null;
     if (selectedCandidate) {
       try {
@@ -208,6 +212,7 @@ export class CatalogReleaseMetadataService {
           selectedCandidate.release_id,
           recording.recording_id
         );
+        releaseTrace = trackResult.trace;
         if (trackResult.status === "exact") release = trackResult.metadata;
       } catch (error) {
         providerError = error instanceof Error ? error.message : String(error);
@@ -262,6 +267,7 @@ export class CatalogReleaseMetadataService {
       },
       release_group: group,
       release,
+      provider_trace: releaseTrace,
       duration: release
         ? { seconds: release.duration_seconds, source: "musicbrainz_release_track", exact_for_release: true }
         : { seconds: recording.duration_seconds, source: "musicbrainz_recording_median", exact_for_release: false },

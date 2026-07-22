@@ -27,6 +27,12 @@ export type TrackCatalogIdentityV2 = {
     musicbrainz_id: string;
     title: string;
     primary_artists: string[];
+    credited_artists: string[];
+    artist_credit: Array<{
+      musicbrainz_id: string | null;
+      name: string;
+      join_phrase: string;
+    }>;
     disambiguation: string | null;
     duration_seconds: number | null;
     isrcs: string[];
@@ -223,7 +229,9 @@ export function trackCatalogIdentityV2(
     recording: metadata ? {
       musicbrainz_id: metadata.recording_id,
       title: metadata.title,
-      primary_artists: unique([metadata.artist]),
+      primary_artists: unique(metadata.artists?.length ? metadata.artists : [metadata.artist]),
+      credited_artists: unique(metadata.artists?.length ? metadata.artists : [metadata.artist]),
+      artist_credit: metadata.artist_credit || [],
       disambiguation: metadata.disambiguation,
       duration_seconds: metadata.duration_seconds,
       isrcs: metadata.isrcs

@@ -124,7 +124,20 @@ test("explicit edition year unlocks exact track duration and edition artwork", a
     lookupReleaseTrack: async (releaseId, recordingId) => {
       assert.equal(releaseId, "release-1967");
       assert.equal(recordingId, "purple-recording");
-      return { status: "exact", reason: "unique_recording_track_on_release", metadata: releaseTrack };
+      return {
+        status: "exact",
+        reason: "unique_recording_track_on_release",
+        metadata: releaseTrack,
+        trace: {
+          cache_hit: true,
+          cache_layer: "persistent",
+          elapsed_ms: 1,
+          provider_requests: 0,
+          search_attempts: [],
+          candidate_counts: { returned: 0, accepted: 0, rejected: 0 },
+          rejected_candidates: []
+        }
+      };
     }
   });
   const intent = {
@@ -148,6 +161,8 @@ test("explicit edition year unlocks exact track duration and edition artwork", a
   });
   assert.equal(value.cover_art.entity, "release");
   assert.equal(value.cover_art.availability, "declared");
+  assert.equal(value.provider_trace.cache_hit, true);
+  assert.equal(value.provider_trace.cache_layer, "persistent");
 
   const identity = trackCatalogIdentityV2(track(), intent, recording, false, value);
   assert.equal(identity.release.musicbrainz_id, "release-1967");
