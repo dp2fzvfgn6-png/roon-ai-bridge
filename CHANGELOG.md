@@ -3,7 +3,19 @@
 All notable production changes are documented here. Validation evidence for
 each release lives under [`docs/`](docs/README.md).
 
-## 0.20.0 Beta 1 - Unreleased
+## 0.20.0 Beta 2 - Unreleased
+
+- Resolve MusicBrainz recordings and releases as separate identities instead of
+  treating the most common album as the recording's canonical edition.
+- Stop at a release-group candidate when several editions remain possible and
+  expose the evidence used to match an explicit hint or a Roon observation.
+- Report an edition track duration only after verifying the recording inside a
+  unique release; otherwise label the recording duration as a MusicBrainz
+  median.
+- Bind diagnostic Cover Art Archive URLs to the selected release or release
+  group and explicitly leave existing Roon artwork coherence unverified.
+
+## 0.20.0 Beta 1 - 2026-07-22
 
 - Add the additive identity V2 shadow contract without changing stored playlist
   identity or manual Roon selections.

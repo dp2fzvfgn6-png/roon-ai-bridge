@@ -165,6 +165,13 @@ Starting with v0.20.0 beta.1, `roon_analyze_playlist` accepts up to ten explicit
 mode. The diagnostic separates proposed primary artists, MusicBrainz work
 credits and role-unknown Roon display credits. It is read-only and must not be
 used as evidence that the stored playlist was migrated or repaired.
+
+Starting with beta.2, the diagnostic also treats recording, release group and
+exact release as separate identities. It returns an exact edition only when the
+available anchors identify one release and MusicBrainz confirms the recording
+as a unique track on it. Otherwise it stops at a release-group candidate or an
+explicit ambiguity. Track duration and Cover Art Archive evidence always state
+which MusicBrainz entity they belong to.
 Generated playlist artwork uses an explicit two-step MCP flow.
 `roon_prepare_playlist_cover` resolves the playlist by exact ID or normalized
 name and returns its description, bounded track context, generation requirements

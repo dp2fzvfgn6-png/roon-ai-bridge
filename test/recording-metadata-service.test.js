@@ -113,3 +113,96 @@ test("MusicBrainz retries bounded 503 responses before reporting a result", asyn
   assert.equal(requests, 2);
   assert.deepEqual(waits, [0]);
 });
+
+test("MusicBrainz keeps release identity separate and resolves an exact release track duration", async () => {
+  const service = new RecordingMetadataService(async (url) => {
+    if (url.pathname.endsWith("/recording")) {
+      return new Response(JSON.stringify({ recordings: [{
+        id: "purple-recording",
+        title: "Purple Haze",
+        length: 170000,
+        score: 100,
+        "artist-credit": [{ name: "The Jimi Hendrix Experience" }],
+        releases: [{ title: "Are You Experienced?", status: "Official" }]
+      }] }), { status: 200 });
+    }
+    if (url.pathname.endsWith("/recording/purple-recording")) {
+      assert.match(url.searchParams.get("inc"), /media/);
+      assert.match(url.searchParams.get("inc"), /release-groups/);
+      return new Response(JSON.stringify({
+        id: "purple-recording",
+        title: "Purple Haze",
+        length: 170000,
+        isrcs: ["USRE16700001"],
+        genres: [],
+        "artist-credit": [{ name: "The Jimi Hendrix Experience" }],
+        releases: [{
+          id: "release-1967",
+          title: "Are You Experienced?",
+          date: "1967-05-12",
+          country: "GB",
+          status: "Official",
+          "artist-credit": [{ name: "The Jimi Hendrix Experience" }],
+          "release-group": {
+            id: "group-experienced",
+            "primary-type": "Album",
+            "secondary-types": []
+          },
+          media: [{ position: 1, "track-offset": 1, "track-count": 11 }],
+          "cover-art-archive": { artwork: true, front: true, back: false }
+        }],
+        relations: []
+      }), { status: 200 });
+    }
+    assert.equal(url.pathname, "/ws/2/release/release-1967");
+    return new Response(JSON.stringify({
+      id: "release-1967",
+      title: "Are You Experienced?",
+      date: "1967-05-12",
+      country: "GB",
+      status: "Official",
+      "artist-credit": [{ name: "The Jimi Hendrix Experience" }],
+      "release-group": { id: "group-experienced", "primary-type": "Album", "secondary-types": [] },
+      "cover-art-archive": { artwork: true, front: true, back: false },
+      media: [{
+        position: 1,
+        tracks: [{
+          position: 2,
+          number: "2",
+          title: "Purple Haze",
+          length: 173000,
+          recording: { id: "purple-recording", title: "Purple Haze" }
+        }]
+      }]
+    }), { status: 200 });
+  }, { minRequestIntervalMs: 0 });
+
+  const recording = await service.lookup({
+    title: "Purple Haze",
+    artist: "The Jimi Hendrix Experience",
+    album: "Are You Experienced?"
+  });
+  assert.equal(recording.status, "exact");
+  assert.deepEqual(recording.metadata.release_candidates[0], {
+    release_id: "release-1967",
+    release_group_id: "group-experienced",
+    title: "Are You Experienced?",
+    album_artist: "The Jimi Hendrix Experience",
+    date: "1967-05-12",
+    release_year: 1967,
+    country: "GB",
+    status: "Official",
+    primary_type: "Album",
+    secondary_types: [],
+    medium_position: 1,
+    track_position: 2,
+    track_count: 11,
+    cover_art_archive: { artwork: true, front: true, back: false }
+  });
+
+  const releaseTrack = await service.lookupReleaseTrack("release-1967", "purple-recording");
+  assert.equal(releaseTrack.status, "exact");
+  assert.equal(releaseTrack.metadata.duration_seconds, 173);
+  assert.equal(releaseTrack.metadata.track_position, 2);
+  assert.equal(releaseTrack.metadata.release_group_id, "group-experienced");
+});

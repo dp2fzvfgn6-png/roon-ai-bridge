@@ -1,4 +1,5 @@
 import type { RecordingCatalogResolution } from "../recordingMetadataService";
+import type { CatalogReleaseResolution } from "../catalogReleaseMetadataService";
 import type { VirtualPlaylistTrack } from "./playlistContracts";
 
 export type CatalogCredit = {
@@ -39,6 +40,9 @@ export type TrackCatalogIdentityV2 = {
     original_release_year: number | null;
     medium_position: number | null;
     track_position: number | null;
+    match_status: CatalogReleaseResolution["status"] | "roon_observation";
+    duration: CatalogReleaseResolution["duration"] | null;
+    cover_art: CatalogReleaseResolution["cover_art"] | null;
   } | null;
   credits: {
     primary_artists: CatalogCredit[];
@@ -56,7 +60,7 @@ export type TrackCatalogIdentityV2 = {
   };
   evidence: {
     recording: "musicbrainz" | null;
-    release: "roon_observation" | null;
+    release: "musicbrainz_release" | "musicbrainz_release_group" | "roon_observation" | null;
     credits: Array<"intent" | "musicbrainz" | "roon_display">;
   };
 };
@@ -191,10 +195,13 @@ export function trackCatalogIdentityV2(
   track: VirtualPlaylistTrack,
   intent: TrackCatalogIntent,
   result: RecordingCatalogResolution | null,
-  providerError = false
+  providerError = false,
+  releaseResult: CatalogReleaseResolution | null = null
 ): TrackCatalogIdentityV2 {
   const metadata = result?.status === "exact" ? result.metadata : null;
-  const release = releaseObservation(track);
+  const roonRelease = releaseObservation(track);
+  const catalogRelease = releaseResult?.release;
+  const catalogGroup = releaseResult?.release_group;
   const status: TrackCatalogIdentityV2["status"] = providerError
     ? "provider_error"
     : !intent.primary_artists.length
@@ -221,15 +228,30 @@ export function trackCatalogIdentityV2(
       duration_seconds: metadata.duration_seconds,
       isrcs: metadata.isrcs
     } : null,
-    release: release && text(release.title) ? {
+    release: catalogRelease || catalogGroup ? {
+      musicbrainz_id: catalogRelease?.release_id || null,
+      release_group_id: catalogRelease?.release_group_id || catalogGroup?.musicbrainz_id || null,
+      title: catalogRelease?.title || catalogGroup?.title || "",
+      album_artist: catalogRelease?.album_artist || null,
+      release_year: catalogRelease?.release_year || null,
+      original_release_year: metadata?.original_release_year || null,
+      medium_position: catalogRelease?.medium_position || null,
+      track_position: catalogRelease?.track_position || null,
+      match_status: releaseResult!.status,
+      duration: releaseResult!.duration,
+      cover_art: releaseResult!.cover_art
+    } : roonRelease && text(roonRelease.title) ? {
       musicbrainz_id: null,
       release_group_id: null,
-      title: text(release.title)!,
-      album_artist: text(release.album_artist),
-      release_year: integer(release.release_year),
-      original_release_year: integer(release.original_release_year),
-      medium_position: integer(release.disc_number),
-      track_position: integer(release.track_number)
+      title: text(roonRelease.title)!,
+      album_artist: text(roonRelease.album_artist),
+      release_year: integer(roonRelease.release_year),
+      original_release_year: integer(roonRelease.original_release_year),
+      medium_position: integer(roonRelease.disc_number),
+      track_position: integer(roonRelease.track_number),
+      match_status: "roon_observation",
+      duration: null,
+      cover_art: null
     } : null,
     credits: {
       primary_artists: credits(intent.primary_artists, "primary", "intent"),
@@ -247,7 +269,13 @@ export function trackCatalogIdentityV2(
     },
     evidence: {
       recording: metadata ? "musicbrainz" : null,
-      release: release ? "roon_observation" : null,
+      release: catalogRelease
+        ? "musicbrainz_release"
+        : catalogGroup
+          ? "musicbrainz_release_group"
+          : roonRelease
+            ? "roon_observation"
+            : null,
       credits: Array.from(sources)
     }
   };

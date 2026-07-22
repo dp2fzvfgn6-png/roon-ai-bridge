@@ -425,7 +425,7 @@ export function registerBridgeV2Tools(server: McpServer, context: BridgeV2Contex
 
   register("roon_analyze_playlist", {
     title: "Analyze RoonIA Playlist",
-    description: "Use this when playlist identity readiness, missing metadata, ambiguity or probable duplicates should be checked without modifying it. In v0.20 beta, pass up to 10 catalog_track_ids to run the MusicBrainz identity V2 diagnostic in shadow mode; it never changes the playlist or replaces a Roon selection.",
+    description: "Use this when playlist identity readiness, missing metadata, ambiguity or probable duplicates should be checked without modifying it. In v0.20 beta, pass up to 10 catalog_track_ids to run the MusicBrainz identity V2 recording and release diagnostic in shadow mode; it never changes the playlist or replaces a Roon selection.",
     annotations: readOnly,
     inputSchema: {
       playlist_id: z.string().min(1),

@@ -16,7 +16,58 @@ export type RecordingCatalogMetadata = {
   composers: string[];
   lyricists: string[];
   genres: string[];
+  release_candidates: RecordingCatalogReleaseCandidate[];
   confidence: "high" | "medium";
+};
+
+export type RecordingCatalogReleaseCandidate = {
+  release_id: string;
+  release_group_id: string | null;
+  title: string;
+  album_artist: string | null;
+  date: string | null;
+  release_year: number | null;
+  country: string | null;
+  status: string | null;
+  primary_type: string | null;
+  secondary_types: string[];
+  medium_position: number | null;
+  track_position: number | null;
+  track_count: number | null;
+  cover_art_archive: {
+    artwork: boolean;
+    front: boolean;
+    back: boolean;
+  };
+};
+
+export type ReleaseTrackCatalogMetadata = {
+  release_id: string;
+  release_group_id: string | null;
+  title: string;
+  album_artist: string | null;
+  date: string | null;
+  release_year: number | null;
+  country: string | null;
+  status: string | null;
+  primary_type: string | null;
+  secondary_types: string[];
+  medium_position: number;
+  track_position: number;
+  track_number: string | null;
+  track_title: string;
+  duration_seconds: number | null;
+  cover_art_archive: {
+    artwork: boolean;
+    front: boolean;
+    back: boolean;
+  };
+};
+
+export type ReleaseTrackCatalogResolution = {
+  status: "exact" | "conflict" | "not_found";
+  reason: string;
+  metadata: ReleaseTrackCatalogMetadata | null;
 };
 
 export type RecordingCatalogCandidate = {
@@ -85,6 +136,11 @@ function durationSeconds(value: unknown): number | null {
   return Number.isFinite(milliseconds) && milliseconds >= 30_000 && milliseconds <= 30 * 60_000
     ? Math.round(milliseconds / 1000)
     : null;
+}
+
+function integer(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.floor(number) : null;
 }
 
 function artistNames(value: unknown): string[] {
@@ -174,6 +230,43 @@ function releaseTitles(recording: JsonRecord): string[] {
     .filter(Boolean);
 }
 
+function releaseGroup(release: JsonRecord): JsonRecord | null {
+  return objectValue(release["release-group"]);
+}
+
+function coverArtArchive(value: unknown): { artwork: boolean; front: boolean; back: boolean } {
+  const cover = objectValue(value);
+  return {
+    artwork: cover?.artwork === true,
+    front: cover?.front === true,
+    back: cover?.back === true
+  };
+}
+
+function releaseCandidate(release: JsonRecord): RecordingCatalogReleaseCandidate | null {
+  if (typeof release.id !== "string" || typeof release.title !== "string") return null;
+  const group = releaseGroup(release);
+  const media = records(release.media);
+  const matchingMedium = media.find((medium) => integer(medium["track-offset"]) !== null) || media[0] || null;
+  const trackOffset = integer(matchingMedium?.["track-offset"]);
+  return {
+    release_id: release.id,
+    release_group_id: typeof group?.id === "string" ? group.id : null,
+    title: release.title,
+    album_artist: artistNames(release["artist-credit"])[0] || null,
+    date: typeof release.date === "string" && release.date ? release.date : null,
+    release_year: year(release.date),
+    country: typeof release.country === "string" && release.country ? release.country : null,
+    status: typeof release.status === "string" && release.status ? release.status : null,
+    primary_type: typeof group?.["primary-type"] === "string" ? String(group["primary-type"]) : null,
+    secondary_types: strings(group?.["secondary-types"]),
+    medium_position: integer(matchingMedium?.position),
+    track_position: trackOffset === null ? null : trackOffset + 1,
+    track_count: integer(matchingMedium?.["track-count"]),
+    cover_art_archive: coverArtArchive(release["cover-art-archive"])
+  };
+}
+
 function compatibleReleases(recording: JsonRecord, album?: string | null): JsonRecord[] {
   const releases = records(recording.releases);
   if (!album) return releases;
@@ -196,6 +289,7 @@ function candidateSnapshot(recording: JsonRecord): RecordingCatalogCandidate {
 
 export class RecordingMetadataService {
   private readonly cache = new Map<string, { expiresAt: number; value: RecordingCatalogResolution }>();
+  private readonly releaseTrackCache = new Map<string, { expiresAt: number; value: ReleaseTrackCatalogResolution }>();
   private requestChain: Promise<void> = Promise.resolve();
   private lastRequestAt = 0;
 
@@ -281,7 +375,7 @@ export class RecordingMetadataService {
       normalize(input.title), normalize(input.artist), releaseKey(input.album),
       normalize(input.version_hint), normalize(input.isrc), input.duration_seconds || ""
     ].join("|");
-    return `recording-resolution:${crypto.createHash("sha256").update(material).digest("hex")}`;
+    return `recording-resolution:v2:${crypto.createHash("sha256").update(material).digest("hex")}`;
   }
 
   private remember(cacheKey: string, value: RecordingCatalogResolution): RecordingCatalogResolution {
@@ -300,6 +394,90 @@ export class RecordingMetadataService {
       ttlMs
     });
     return value;
+  }
+
+  private releaseTrackCacheKey(releaseId: string, recordingId: string): string {
+    return `release-track:${crypto.createHash("sha256").update(`${releaseId}|${recordingId}`).digest("hex")}`;
+  }
+
+  private rememberReleaseTrack(cacheKey: string, value: ReleaseTrackCatalogResolution): ReleaseTrackCatalogResolution {
+    const ttlMs = value.status === "exact"
+      ? EXACT_CACHE_TTL_MS
+      : value.status === "conflict"
+        ? CONFLICT_CACHE_TTL_MS
+        : NOT_FOUND_CACHE_TTL_MS;
+    this.releaseTrackCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
+    this.persistentCache?.set({
+      provider: MUSICBRAINZ_PROVIDER,
+      cacheKey,
+      entityType: "release_track_resolution",
+      status: value.status,
+      payload: value,
+      ttlMs
+    });
+    return value;
+  }
+
+  async lookupReleaseTrack(releaseId: string, recordingId: string): Promise<ReleaseTrackCatalogResolution> {
+    const cacheKey = this.releaseTrackCacheKey(releaseId, recordingId);
+    const cached = this.releaseTrackCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const persisted = this.persistentCache?.get<ReleaseTrackCatalogResolution>(MUSICBRAINZ_PROVIDER, cacheKey);
+    if (persisted) {
+      this.releaseTrackCache.set(cacheKey, {
+        expiresAt: Date.parse(persisted.expires_at),
+        value: persisted.payload
+      });
+      return persisted.payload;
+    }
+
+    const url = new URL(`https://musicbrainz.org/ws/2/release/${releaseId}`);
+    url.searchParams.set("inc", "recordings+artist-credits+release-groups");
+    url.searchParams.set("fmt", "json");
+    const detail = await this.requestJson(url);
+    const group = releaseGroup(detail);
+    const matches = records(detail.media).flatMap((medium) => records(medium.tracks).flatMap((track) => {
+      const recording = objectValue(track.recording);
+      if (recording?.id !== recordingId) return [];
+      return [{ medium, track }];
+    }));
+    if (!matches.length) {
+      return this.rememberReleaseTrack(cacheKey, {
+        status: "not_found",
+        reason: "recording_not_present_on_release",
+        metadata: null
+      });
+    }
+    if (matches.length !== 1) {
+      return this.rememberReleaseTrack(cacheKey, {
+        status: "conflict",
+        reason: "recording_occurs_multiple_times_on_release",
+        metadata: null
+      });
+    }
+    const { medium, track } = matches[0];
+    return this.rememberReleaseTrack(cacheKey, {
+      status: "exact",
+      reason: "unique_recording_track_on_release",
+      metadata: {
+        release_id: String(detail.id || releaseId),
+        release_group_id: typeof group?.id === "string" ? group.id : null,
+        title: String(detail.title || ""),
+        album_artist: artistNames(detail["artist-credit"])[0] || null,
+        date: typeof detail.date === "string" && detail.date ? detail.date : null,
+        release_year: year(detail.date),
+        country: typeof detail.country === "string" && detail.country ? detail.country : null,
+        status: typeof detail.status === "string" && detail.status ? detail.status : null,
+        primary_type: typeof group?.["primary-type"] === "string" ? String(group["primary-type"]) : null,
+        secondary_types: strings(group?.["secondary-types"]),
+        medium_position: integer(medium.position) || 1,
+        track_position: integer(track.position) || 1,
+        track_number: typeof track.number === "string" && track.number ? track.number : null,
+        track_title: String(track.title || objectValue(track.recording)?.title || ""),
+        duration_seconds: durationSeconds(track.length),
+        cover_art_archive: coverArtArchive(detail["cover-art-archive"])
+      }
+    });
   }
 
   private async search(title: string, artist: string, album?: string | null): Promise<JsonRecord[]> {
@@ -386,7 +564,7 @@ export class RecordingMetadataService {
 
     const selected = strongest[0];
     const detailUrl = new URL(`https://musicbrainz.org/ws/2/recording/${selected.recording.id}`);
-    detailUrl.searchParams.set("inc", "artist-credits+isrcs+releases+work-rels+genres+tags");
+    detailUrl.searchParams.set("inc", "artist-credits+isrcs+releases+release-groups+media+work-rels+genres+tags");
     detailUrl.searchParams.set("fmt", "json");
     const detail = await this.requestJson(detailUrl);
     const workRelation = records(detail.relations).find((relation) => objectValue(relation.work));
@@ -411,6 +589,9 @@ export class RecordingMetadataService {
       .filter((genre) => Number(genre.count) > 0 && typeof genre.name === "string")
       .sort((left, right) => Number(right.count) - Number(left.count))
       .map((genre) => String(genre.name)))).slice(0, 8);
+    const releaseCandidates = records(detail.releases)
+      .map(releaseCandidate)
+      .filter((release): release is RecordingCatalogReleaseCandidate => Boolean(release));
     const detailedReleases = compatibleReleases(detail, input.album);
     const releaseYears = detailedReleases
       .filter((release) => normalize(release.status) === "official" || !release.status)
@@ -440,6 +621,7 @@ export class RecordingMetadataService {
       composers,
       lyricists,
       genres,
+      release_candidates: releaseCandidates,
       confidence: input.album || expectedIsrc ? "high" : "medium"
     };
     const value: RecordingCatalogResolution = {

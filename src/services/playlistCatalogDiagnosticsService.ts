@@ -1,6 +1,7 @@
 import { MetadataProviderCacheService } from "./metadataProviderCacheService";
 import { PlaylistService } from "./playlistService";
 import { RecordingCatalogResolution, RecordingMetadataService } from "./recordingMetadataService";
+import { CatalogReleaseMetadataService, CatalogReleaseResolution } from "./catalogReleaseMetadataService";
 import {
   catalogIntentForTrack,
   TrackCatalogIdentityV2,
@@ -16,6 +17,7 @@ type CatalogTrackDiagnostic = {
   title: string;
   diagnostic: TrackCatalogIdentityV2;
   provider_result: RecordingCatalogResolution | null;
+  release_result: CatalogReleaseResolution | null;
   error: string | null;
 };
 
@@ -24,7 +26,8 @@ export class PlaylistCatalogDiagnosticsService {
     private readonly playlistService: PlaylistService,
     private readonly recordingMetadataService: RecordingMetadataService,
     private readonly cache: MetadataProviderCacheService,
-    private readonly logger?: Logger
+    private readonly logger?: Logger,
+    private readonly releaseMetadataService = new CatalogReleaseMetadataService(recordingMetadataService)
   ) {}
 
   async analyze(playlistId: string, trackIds: string[]) {
@@ -51,6 +54,7 @@ export class PlaylistCatalogDiagnosticsService {
           title: track.title || track.query,
           diagnostic: trackCatalogIdentityV2(track, intent, null),
           provider_result: null,
+          release_result: null,
           error: "A reliable primary artist could not be reconstructed without guessing from Roon display credits."
         });
         continue;
@@ -64,11 +68,13 @@ export class PlaylistCatalogDiagnosticsService {
           isrc: track.identity?.isrc,
           duration_seconds: track.identity?.duration_seconds
         });
+        const releaseResult = await this.releaseMetadataService.resolve(track, intent, providerResult);
         tracks.push({
           track_id: track.track_id,
           title: track.title || track.query,
-          diagnostic: trackCatalogIdentityV2(track, intent, providerResult),
+          diagnostic: trackCatalogIdentityV2(track, intent, providerResult, false, releaseResult),
           provider_result: providerResult,
+          release_result: releaseResult,
           error: null
         });
       } catch (error) {
@@ -77,6 +83,7 @@ export class PlaylistCatalogDiagnosticsService {
           title: track.title || track.query,
           diagnostic: trackCatalogIdentityV2(track, intent, null, true),
           provider_result: null,
+          release_result: null,
           error: error instanceof Error ? error.message : String(error)
         });
       }

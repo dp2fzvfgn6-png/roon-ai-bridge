@@ -655,9 +655,11 @@ Implemented tools:
 - `roon_promote_temporary_playlist`
 - `roon_search_media`
 - `roon_analyze_playlist` optionally accepts one to ten `catalog_track_ids` for
-  read-only MusicBrainz identity V2 diagnostics. The returned
-  `catalog_diagnostics` always declares `mode=shadow` and
-  `mutates_playlist=false` in v0.20.0 beta.1.
+  read-only MusicBrainz identity V2 diagnostics. In v0.20.0 beta.2 the result
+  resolves recording and release identities separately, includes release-group
+  ambiguity, duration provenance and edition-bound Cover Art Archive evidence.
+  The returned `catalog_diagnostics` always declares `mode=shadow` and
+  `mutates_playlist=false`.
 - `roon_get_media_details`
 - `roon_list_artist_releases`
 - `roon_play_media`
